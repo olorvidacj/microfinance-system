@@ -20,7 +20,7 @@ import { eq, desc } from 'drizzle-orm';
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3003;
+const PORT = 3000;
 
 app.use(express.json());
 
