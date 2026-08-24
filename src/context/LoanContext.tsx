@@ -3,9 +3,15 @@ import {
   AuditLogEntry,
   Borrower,
   Branch,
+  ClientStatus,
+  ClientStatusLog,
   CreditCommitteeEvaluation,
   InstallmentScheduleItem,
   InterestCreditLog,
+  KycDocument,
+  KycDocumentType,
+  KycReviewLog,
+  KycStatus,
   Loan,
   LoanDisbursementVoucher,
   LoanProduct,
@@ -132,7 +138,26 @@ interface LoanContextType {
   managerRejectWithdrawal: (requestId: string, reason: string) => void;
   runMonthlyInterestCrediting: () => { totalCredited: number; membersCount: number };
 
-  // 3. Loans Actions (Cooperative 6-step lifecycle)
+  // 3. Client & Loans Actions
+  registerClient: (clientData: Partial<Borrower>) => Borrower;
+  updateClientStatus: (clientId: string, newStatus: ClientStatus, reason: string) => void;
+  uploadKycDocument: (
+    clientId: string,
+    doc: {
+      docType: KycDocumentType;
+      fileName: string;
+      fileSize?: string;
+      fileUrl?: string;
+      notes?: string;
+    }
+  ) => void;
+  reviewKyc: (
+    clientId: string,
+    decision: 'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED',
+    notes: string,
+    itemsChecked?: string[]
+  ) => void;
+  deleteKycDocument: (clientId: string, documentId: string) => void;
   addBorrower: (borrower: Partial<Borrower>) => Borrower;
   createBorrower: (borrower: Partial<Borrower>) => Borrower;
   updateBorrower: (id: string, updates: Partial<Borrower>) => void;
@@ -179,6 +204,13 @@ interface LoanContextType {
     optionsOrTenor: number | { newTermMonths: number; newInterestRate?: number; newInterestType?: any; reason?: string },
     reason?: string
   ) => void;
+  logAudit: (
+    action: string,
+    details: string,
+    type: AuditLogEntry['type'],
+    extra?: { targetType?: string; targetId?: string; userName?: string; userRole?: string; ipAddress?: string }
+  ) => void;
+  clearAuditLogs: () => void;
   resetToDefaults: () => void;
 }
 
@@ -408,17 +440,31 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
   ]);
 
   // Helper log function
-  const logAudit = (action: string, details: string, type: AuditLogEntry['type']) => {
+  const logAudit = (
+    action: string,
+    details: string,
+    type: AuditLogEntry['type'],
+    extra?: { targetType?: string; targetId?: string; userName?: string; userRole?: string; ipAddress?: string }
+  ) => {
     const entry: AuditLogEntry = {
       id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       timestamp: new Date().toISOString(),
       action,
       details,
       performedBy: `${currentUser.name} (${currentUser.title})`,
+      userName: extra?.userName || currentUser.name,
+      userRole: (extra?.userRole as any) || currentUser.role,
       branchId: activeBranchId === 'all' ? 'br-main' : activeBranchId,
       type,
+      targetType: extra?.targetType,
+      targetId: extra?.targetId,
+      ipAddress: extra?.ipAddress || '192.168.1.104',
     };
-    setAuditLogs((prev) => [entry, ...prev.slice(0, 199)]);
+    setAuditLogs((prev) => [entry, ...prev.slice(0, 499)]);
+  };
+
+  const clearAuditLogs = () => {
+    setAuditLogs([]);
   };
 
   // Active Branch
@@ -965,32 +1011,281 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
   };
 
   // ==========================================
-  // 3. LOAN MANAGEMENT (Cooperative 6-Step Workflow & Vouchers)
+  // 3. CLIENT MANAGEMENT & KYC WORKFLOW
   // ==========================================
 
+  const registerClient = (clientData: Partial<Borrower>): Borrower => {
+    const year = new Date().getFullYear();
+    const count = borrowers.length + 101;
+    const generatedId = `CLI-${year}-${String(count).padStart(4, '0')}`;
+    const today = new Date().toISOString().split('T')[0];
+
+    const initialStatus: ClientStatus = clientData.clientStatus || clientData.memberStatus || 'Pending';
+
+    const newClient: Borrower = {
+      id: `bor-${Date.now()}`,
+      borrowerNumber: clientData.borrowerNumber || generatedId,
+      clientId: clientData.clientId || generatedId,
+      fullName: clientData.fullName || 'New Registered Client',
+      idNumber: clientData.idNumber || 'ID-PENDING',
+      idType: clientData.idType || 'Government ID',
+      phone: clientData.phone || '',
+      secondaryPhone: clientData.secondaryPhone || '',
+      email: clientData.email || '',
+      dateOfBirth: clientData.dateOfBirth || '1990-01-01',
+      placeOfBirth: clientData.placeOfBirth || '',
+      nationality: clientData.nationality || 'Filipino',
+      gender: clientData.gender || 'Female',
+      civilStatus: clientData.civilStatus || 'Single',
+      address: clientData.address || '',
+      barangay: clientData.barangay || '',
+      city: clientData.city || '',
+      province: clientData.province || '',
+      postalCode: clientData.postalCode || '',
+      homeOwnership: clientData.homeOwnership || 'Owned',
+      yearsAtAddress: clientData.yearsAtAddress || 1,
+      facebookAccount: clientData.facebookAccount || '',
+      branchId: clientData.branchId || (activeBranchId === 'all' ? 'br-main' : activeBranchId),
+      employmentStatus: clientData.employmentStatus || 'Employed',
+      employerOrBusiness: clientData.employerOrBusiness || '',
+      employer: clientData.employerOrBusiness || '',
+      businessNature: clientData.businessNature || '',
+      occupation: clientData.occupation || '',
+      yearsInBusinessOrJob: clientData.yearsInBusinessOrJob || 1,
+      workAddress: clientData.workAddress || '',
+      workPhone: clientData.workPhone || '',
+      monthlyIncome: clientData.monthlyIncome || 25000,
+      monthlyExpenses: clientData.monthlyExpenses || 12000,
+      emergencyContactName: clientData.emergencyContactName || '',
+      emergencyContactPhone: clientData.emergencyContactPhone || '',
+      emergencyContactRelation: clientData.emergencyContactRelation || '',
+      creditScore: clientData.creditScore || 670,
+      creditTier: clientData.creditTier || 'Good',
+      kycStatus: clientData.kycStatus || 'Pending Review',
+      memberStatus: initialStatus,
+      clientStatus: initialStatus,
+      kycDocuments: clientData.kycDocuments || [],
+      kycReviewLogs: [],
+      statusLogs: [
+        {
+          id: `stat-${Date.now()}`,
+          date: today,
+          fromStatus: 'Pending',
+          toStatus: initialStatus,
+          changedBy: `${currentUser.name} (${currentUser.title})`,
+          reason: 'Initial client onboarding and KYC registration submitted.',
+        },
+      ],
+      membershipDate: clientData.membershipDate || today,
+      savingsBalance: clientData.savingsBalance || 0,
+      shareCapital: clientData.shareCapital || 0,
+      activeLoansCount: 0,
+      totalBorrowed: 0,
+      totalRepaid: 0,
+      avatar: clientData.avatar || `https://ui-avatars.com/api/?background=2563EB&color=fff&name=${encodeURIComponent(clientData.fullName || 'Client')}`,
+      joinedDate: today,
+      lastActivityDate: today,
+      notes: clientData.notes,
+    };
+
+    setBorrowers((prev) => [newClient, ...prev]);
+    logAudit('CLIENT_REGISTERED', `Registered new client ${newClient.fullName} (${newClient.borrowerNumber})`, 'BORROWER');
+    return newClient;
+  };
+
+  const updateClientStatus = (clientId: string, newStatus: ClientStatus, reason: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const client = borrowers.find((b) => b.id === clientId);
+    if (!client) return;
+
+    const oldStatus = client.clientStatus || client.memberStatus;
+
+    const statusLog: ClientStatusLog = {
+      id: `stat-${Date.now()}`,
+      date: today,
+      fromStatus: oldStatus,
+      toStatus: newStatus,
+      changedBy: `${currentUser.name} (${currentUser.title})`,
+      reason: reason || `Status updated from ${oldStatus} to ${newStatus}`,
+    };
+
+    setBorrowers((prev) =>
+      prev.map((b) =>
+        b.id === clientId
+          ? {
+              ...b,
+              clientStatus: newStatus,
+              memberStatus: newStatus,
+              statusLogs: [statusLog, ...(b.statusLogs || [])],
+              lastActivityDate: today,
+            }
+          : b
+      )
+    );
+
+    logAudit('CLIENT_STATUS_UPDATED', `Updated client ${client.fullName} status from ${oldStatus} to ${newStatus}. Reason: ${reason}`, 'BORROWER');
+  };
+
+  const uploadKycDocument = (
+    clientId: string,
+    doc: {
+      docType: KycDocumentType;
+      fileName: string;
+      fileSize?: string;
+      fileUrl?: string;
+      notes?: string;
+    }
+  ) => {
+    const today = new Date().toISOString().split('T')[0];
+    const newDoc: KycDocument = {
+      id: `doc-${Date.now()}`,
+      docType: doc.docType,
+      fileName: doc.fileName,
+      fileSize: doc.fileSize || '1.5 MB',
+      fileUrl: doc.fileUrl,
+      uploadedAt: today,
+      uploadedBy: `${currentUser.name} (${currentUser.title})`,
+      status: 'Pending Review',
+    };
+
+    setBorrowers((prev) =>
+      prev.map((b) => {
+        if (b.id === clientId) {
+          const currentDocs = b.kycDocuments || [];
+          return {
+            ...b,
+            kycDocuments: [newDoc, ...currentDocs],
+            kycStatus: b.kycStatus === 'Verified' ? 'Verified' : 'Pending Review',
+            lastActivityDate: today,
+          };
+        }
+        return b;
+      })
+    );
+
+    logAudit('KYC_DOCUMENT_UPLOADED', `Uploaded ${doc.docType} (${doc.fileName}) for client ${clientId}`, 'BORROWER');
+  };
+
+  const reviewKyc = (
+    clientId: string,
+    decision: 'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED',
+    notes: string,
+    itemsChecked?: string[]
+  ) => {
+    const today = new Date().toISOString().split('T')[0];
+    const client = borrowers.find((b) => b.id === clientId);
+    if (!client) return;
+
+    let newKycStatus: KycStatus = 'Verified';
+    let newClientStatus: ClientStatus = client.clientStatus || client.memberStatus;
+
+    if (decision === 'APPROVED') {
+      newKycStatus = 'Verified';
+      if (newClientStatus === 'Pending') newClientStatus = 'Active';
+    } else if (decision === 'CORRECTION_REQUESTED') {
+      newKycStatus = 'Correction Requested';
+    } else if (decision === 'REJECTED') {
+      newKycStatus = 'Rejected';
+      newClientStatus = 'Rejected';
+    }
+
+    const reviewLog: KycReviewLog = {
+      id: `rev-${Date.now()}`,
+      date: today,
+      reviewerName: currentUser.name,
+      reviewerRole: currentUser.title,
+      decision,
+      notes,
+      itemsChecked,
+    };
+
+    setBorrowers((prev) =>
+      prev.map((b) => {
+        if (b.id === clientId) {
+          const updatedDocs = (b.kycDocuments || []).map((doc) => {
+            if (decision === 'APPROVED') return { ...doc, status: 'Verified' as const, verifiedAt: today, verifiedBy: currentUser.name };
+            if (decision === 'REJECTED') return { ...doc, status: 'Rejected' as const, rejectionReason: notes };
+            return doc;
+          });
+
+          return {
+            ...b,
+            kycStatus: newKycStatus,
+            clientStatus: newClientStatus,
+            memberStatus: newClientStatus,
+            kycReviewedBy: `${currentUser.name} (${currentUser.title})`,
+            kycReviewedAt: today,
+            kycCorrectionNotes: decision === 'CORRECTION_REQUESTED' ? notes : b.kycCorrectionNotes,
+            kycRejectionReason: decision === 'REJECTED' ? notes : undefined,
+            kycDocuments: updatedDocs,
+            kycReviewLogs: [reviewLog, ...(b.kycReviewLogs || [])],
+            lastActivityDate: today,
+          };
+        }
+        return b;
+      })
+    );
+
+    logAudit('KYC_DECISION_RECORDED', `Recorded KYC ${decision} for client ${client.fullName} (${client.borrowerNumber}): ${notes}`, 'BORROWER');
+  };
+
+  const deleteKycDocument = (clientId: string, documentId: string) => {
+    setBorrowers((prev) =>
+      prev.map((b) => {
+        if (b.id === clientId) {
+          return {
+            ...b,
+            kycDocuments: (b.kycDocuments || []).filter((d) => d.id !== documentId),
+          };
+        }
+        return b;
+      })
+    );
+    logAudit('KYC_DOCUMENT_DELETED', `Deleted KYC document ${documentId} for client ${clientId}`, 'BORROWER');
+  };
+
   const addBorrower = (borrowerData: Partial<Borrower>): Borrower => {
+    const year = new Date().getFullYear();
+    const count = borrowers.length + 101;
+    const generatedId = `CLI-${year}-${String(count).padStart(4, '0')}`;
+
     const newBorrower: Borrower = {
       id: `bor-${Date.now()}`,
-      borrowerNumber: `MEM-${new Date().getFullYear()}-${String(borrowers.length + 101).padStart(4, '0')}`,
+      borrowerNumber: borrowerData.borrowerNumber || generatedId,
+      clientId: borrowerData.clientId || generatedId,
       fullName: borrowerData.fullName || 'Unnamed Member',
       idNumber: borrowerData.idNumber || 'ID-000000',
+      idType: borrowerData.idType || 'Government ID',
       phone: borrowerData.phone || '',
+      secondaryPhone: borrowerData.secondaryPhone || '',
       email: borrowerData.email || '',
       dateOfBirth: borrowerData.dateOfBirth || '1990-01-01',
+      placeOfBirth: borrowerData.placeOfBirth || '',
+      nationality: borrowerData.nationality || 'Filipino',
       gender: borrowerData.gender || 'Male',
       civilStatus: borrowerData.civilStatus || 'Single',
       address: borrowerData.address || '',
+      barangay: borrowerData.barangay || '',
+      city: borrowerData.city || '',
+      province: borrowerData.province || '',
+      postalCode: borrowerData.postalCode || '',
+      homeOwnership: borrowerData.homeOwnership || 'Owned',
+      yearsAtAddress: borrowerData.yearsAtAddress || 1,
       facebookAccount: borrowerData.facebookAccount || '',
       branchId: borrowerData.branchId || (activeBranchId === 'all' ? 'br-main' : activeBranchId),
       employmentStatus: borrowerData.employmentStatus || 'Employed',
       employerOrBusiness: borrowerData.employerOrBusiness || '',
+      businessNature: borrowerData.businessNature || '',
       occupation: borrowerData.occupation || '',
+      yearsInBusinessOrJob: borrowerData.yearsInBusinessOrJob || 1,
+      workAddress: borrowerData.workAddress || '',
       monthlyIncome: borrowerData.monthlyIncome || 30000,
       monthlyExpenses: borrowerData.monthlyExpenses || 12000,
       creditScore: borrowerData.creditScore || 700,
       creditTier: borrowerData.creditTier || 'Good',
       kycStatus: borrowerData.kycStatus || 'Verified',
-      memberStatus: borrowerData.memberStatus || 'Active',
+      memberStatus: borrowerData.clientStatus || borrowerData.memberStatus || 'Active',
+      clientStatus: borrowerData.clientStatus || borrowerData.memberStatus || 'Active',
       membershipDate: borrowerData.membershipDate || new Date().toISOString().split('T')[0],
       savingsBalance: borrowerData.savingsBalance || 2500,
       shareCapital: borrowerData.shareCapital || 2500,
@@ -1675,6 +1970,11 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         managerRejectWithdrawal,
         runMonthlyInterestCrediting,
 
+        registerClient,
+        updateClientStatus,
+        uploadKycDocument,
+        reviewKyc,
+        deleteKycDocument,
         addBorrower,
         createBorrower: addBorrower,
         updateBorrower,
@@ -1697,6 +1997,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         updateLoanProduct,
         sendReminder,
         restructureLoan,
+        logAudit,
+        clearAuditLogs,
         resetToDefaults,
       }}
     >

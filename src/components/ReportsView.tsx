@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
 import { formatCurrency, formatDate } from '../utils/loanMath';
+import { AuditTrail } from './AuditTrail';
 
 export const ReportsView: React.FC = () => {
   const { filteredLoans, filteredPayments, branches, auditLogs, stats } = useLoan();
@@ -335,59 +336,7 @@ export const ReportsView: React.FC = () => {
 
       {/* TAB 3: Audit Trail */}
       {activeReportTab === 'audit' && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-2xs overflow-hidden">
-          <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="font-bold text-gray-900 text-base">Security & Compliance Audit Trail</h3>
-              <p className="text-xs text-gray-500">Chronological logging of transactions and staff operations</p>
-            </div>
-
-            <div className="sm:w-60">
-              <select
-                value={auditFilter}
-                onChange={(e) => setAuditFilter(e.target.value)}
-                className="w-full p-2 text-xs bg-gray-50 border border-gray-200 rounded-xl"
-              >
-                <option value="ALL">All Audit Event Actions</option>
-                <option value="PAYMENT_RECORDED">PAYMENT_RECORDED</option>
-                <option value="LOAN_CREATED">LOAN_CREATED</option>
-                <option value="LOAN_APPROVED">LOAN_APPROVED</option>
-                <option value="LOAN_DISBURSED">LOAN_DISBURSED</option>
-                <option value="REMINDER_SENT">REMINDER_SENT</option>
-                <option value="BORROWER_CREATED">BORROWER_CREATED</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-            {filteredAudits.length === 0 ? (
-              <div className="p-8 text-center text-gray-400 text-xs">No matching audit events found.</div>
-            ) : (
-              filteredAudits.map((log) => (
-                <div key={log.id} className="p-4 hover:bg-gray-50/80 transition text-xs flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[11px]">
-                        {log.action}
-                      </span>
-                      <span className="font-semibold text-gray-900">{log.userName}</span>
-                      <span className="text-gray-400">({log.userRole})</span>
-                    </div>
-                    <p className="text-gray-600 font-sans">{log.details}</p>
-                    <div className="text-[11px] text-gray-400 font-mono">
-                      Target: {log.targetType} #{log.targetId} • IP: {log.ipAddress}
-                    </div>
-                  </div>
-
-                  <div className="text-right text-[11px] text-gray-400 font-mono shrink-0">
-                    <Clock className="w-3 h-3 inline mr-1 text-gray-400" />
-                    {log.timestamp}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <AuditTrail standalone />
       )}
     </div>
   );

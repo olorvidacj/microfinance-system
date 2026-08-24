@@ -60,33 +60,108 @@ export interface LoanProduct {
   badgeColor: string;
 }
 
-export type KycStatus = 'Verified' | 'Pending Review' | 'Incomplete';
+export type KycStatus = 'Verified' | 'Pending Review' | 'Correction Requested' | 'Incomplete' | 'Rejected';
 export type CreditTier = 'Excellent' | 'Good' | 'Fair' | 'High Risk';
-export type MemberStatus = 'Active' | 'Inactive' | 'Irregular' | 'Under Review' | 'Resigned' | 'Probationary';
+export type ClientStatus = 'Pending' | 'Active' | 'Inactive' | 'Suspended' | 'Rejected' | 'Irregular' | 'Under Review' | 'Resigned' | 'Probationary';
+export type MemberStatus = ClientStatus;
+
+export type KycDocumentType =
+  | 'Government ID (Primary)'
+  | 'Government ID (Secondary)'
+  | 'Proof of Income / Payslip / ITR'
+  | 'Business Permit / DTI'
+  | 'Proof of Billing / Residence'
+  | '2x2 ID Photo'
+  | 'Barangay Clearance'
+  | 'Signature Specimen'
+  | 'Other Document';
+
+export type KycDocumentStatus = 'Verified' | 'Pending Review' | 'Correction Requested' | 'Rejected';
+
+export interface KycDocument {
+  id: string;
+  docType: KycDocumentType;
+  fileName: string;
+  fileUrl?: string;
+  fileSize?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+  status: KycDocumentStatus;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  correctionNotes?: string;
+  rejectionReason?: string;
+}
+
+export interface ClientStatusLog {
+  id: string;
+  date: string;
+  fromStatus: ClientStatus;
+  toStatus: ClientStatus;
+  changedBy: string;
+  reason: string;
+}
+
+export interface KycReviewLog {
+  id: string;
+  date: string;
+  reviewerName: string;
+  reviewerRole: string;
+  decision: 'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED';
+  notes: string;
+  itemsChecked?: string[];
+}
 
 export interface Borrower {
   id: string;
   borrowerNumber: string;
+  clientId?: string;
   fullName: string;
   idNumber: string;
+  idType?: string;
   phone: string;
+  secondaryPhone?: string;
   email: string;
   dateOfBirth: string;
+  placeOfBirth?: string;
+  nationality?: string;
   gender: 'Male' | 'Female' | 'Other';
   civilStatus: 'Single' | 'Married' | 'Widowed' | 'Separated' | 'Divorced';
   address: string;
+  barangay?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  homeOwnership?: 'Owned' | 'Rented' | 'Living with Parents/Family' | 'Mortgaged';
+  yearsAtAddress?: number;
   facebookAccount?: string;
   branchId: string;
-  employmentStatus: 'Employed' | 'Self-Employed' | 'Business Owner' | 'Contractor' | 'Farmer';
+  employmentStatus: 'Employed' | 'Self-Employed' | 'Business Owner' | 'Contractor' | 'Farmer' | 'OFW / Overseas Worker' | 'Retired';
   employerOrBusiness: string;
   employer?: string;
+  businessNature?: string;
   occupation: string;
+  yearsInBusinessOrJob?: number;
+  workAddress?: string;
+  workPhone?: string;
   monthlyIncome: number;
   monthlyExpenses: number;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
   creditScore: number;
   creditTier: CreditTier;
   kycStatus: KycStatus;
   memberStatus: MemberStatus;
+  clientStatus?: ClientStatus;
+  kycDocuments?: KycDocument[];
+  kycReviewLogs?: KycReviewLog[];
+  kycCorrectionNotes?: string;
+  kycRejectionReason?: string;
+  statusChangeReason?: string;
+  kycReviewedBy?: string;
+  kycReviewedAt?: string;
+  statusLogs?: ClientStatusLog[];
   membershipDate: string;
   savingsBalance: number;
   shareCapital: number;

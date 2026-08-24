@@ -14,6 +14,7 @@ import { BranchesView } from './components/BranchesView';
 import { ProductsView } from './components/ProductsView';
 import { ReportsView } from './components/ReportsView';
 import { MembershipView } from './components/MembershipView';
+import { ClientManagementView } from './components/ClientManagementView';
 import { SavingsView } from './components/SavingsView';
 import { GroupLendingView } from './components/GroupLendingView';
 import { ClientPortalView } from './components/ClientPortalView';
@@ -128,12 +129,9 @@ const MainApp: React.FC = () => {
         )}
 
         {activeTab === 'membership' && (
-          <MembershipView
-            onSelectBorrower={(b) => setSelectedBorrower(b)}
-            onOpenAddBorrower={() => {
-              setEditBorrower(null);
-              setIsAddBorrowerOpen(true);
-            }}
+          <ClientManagementView
+            onSelectClient={(b) => setSelectedBorrower(b)}
+            onOpenNewLoanForClient={(b) => handleOpenNewLoan(b)}
           />
         )}
 

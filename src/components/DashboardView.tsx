@@ -38,6 +38,7 @@ import {
 import { useLoan } from '../context/LoanContext';
 import { formatCurrency, formatDate } from '../utils/loanMath';
 import { Loan } from '../types';
+import { AuditTrail } from './AuditTrail';
 
 interface DashboardViewProps {
   onSelectLoan: (loan: Loan) => void;
@@ -455,6 +456,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* System Audit Trail & Chronological Operations Ledger */}
+      <AuditTrail onSelectLoan={onSelectLoan} onNavigateTab={onNavigateTab} />
     </div>
   );
 };
