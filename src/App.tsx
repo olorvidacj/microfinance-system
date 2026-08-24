@@ -19,6 +19,7 @@ import { SavingsView } from './components/SavingsView';
 import { GroupLendingView } from './components/GroupLendingView';
 import { ClientPortalView } from './components/ClientPortalView';
 import { LoginView } from './components/LoginView';
+import { LandingView } from './components/LandingView';
 import { Building2, Loader2, LogOut } from 'lucide-react';
 
 import { NewLoanModal } from './components/NewLoanModal';
@@ -32,6 +33,45 @@ import { BranchModal } from './components/BranchModal';
 import { ProductModal } from './components/ProductModal';
 
 import { Borrower, Branch, InterestType, Loan, LoanProduct, PaymentRecord, RepaymentFrequency } from './types';
+
+interface NewLoanParams {
+  principalAmount?: number;
+  termMonths?: number;
+  interestRate?: number;
+  interestType?: InterestType;
+  repaymentFrequency?: RepaymentFrequency;
+}
+
+const getInitials = (name?: string) =>
+  (name || 'U')
+    .trim()
+    .split(/\s+/)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+const SafeAvatar: React.FC<{ src?: string; name?: string; className?: string }> = ({ src, name, className }) => {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div
+        className={`${className || ''} bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold`}
+        title={name}
+      >
+        {getInitials(name)}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={name || 'Avatar'}
+      className={className}
+      onError={() => setFailed(true)}
+    />
+  );
+};
 
 const MainApp: React.FC = () => {
   const { user } = useAuth();
@@ -54,13 +94,7 @@ const MainApp: React.FC = () => {
   // Modal States
   const [isNewLoanOpen, setIsNewLoanOpen] = useState(false);
   const [newLoanBorrower, setNewLoanBorrower] = useState<Borrower | null>(null);
-  const [newLoanParams, setNewLoanParams] = useState<{
-    principalAmount?: number;
-    termMonths?: number;
-    interestRate?: number;
-    interestType?: InterestType;
-    repaymentFrequency?: RepaymentFrequency;
-  } | null>(null);
+  const [newLoanParams, setNewLoanParams] = useState<NewLoanParams | null>(null);
 
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
   const [targetPaymentLoan, setTargetPaymentLoan] = useState<Loan | null>(null);
@@ -81,7 +115,7 @@ const MainApp: React.FC = () => {
   const [editProduct, setEditProduct] = useState<LoanProduct | null>(null);
 
   // Handlers
-  const handleOpenNewLoan = (borrower?: Borrower | null, params?: any) => {
+  const handleOpenNewLoan = (borrower?: Borrower | null, params?: NewLoanParams) => {
     setNewLoanBorrower(borrower || null);
     setNewLoanParams(params || null);
     setIsNewLoanOpen(true);
@@ -281,10 +315,10 @@ const ClientAppShell: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <img
-                src={user?.avatar || `https://ui-avatars.com/api/?background=2563EB&color=fff&name=${encodeURIComponent(user?.fullName || 'C')}`}
-                alt={user?.fullName}
-                className="w-8 h-8 rounded-full object-cover border border-slate-200"
+              <SafeAvatar
+                src={user?.avatar}
+                name={user?.fullName}
+                className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
               />
               <div className="hidden sm:block text-right">
                 <div className="text-xs font-semibold text-slate-800 leading-tight">{user?.fullName}</div>
@@ -333,9 +367,10 @@ const ShieldInfoIcon: React.FC = () => (
   </div>
 );
 
-// Root gate: restores session, blocks app until authenticated, routes by role
+// Root gate: restores session, shows public landing, blocks app until authenticated, routes by role
 const AuthGate: React.FC = () => {
   const { user, isRestoring } = useAuth();
+  const [showAuth, setShowAuth] = useState(false);
 
   if (isRestoring) {
     return (
@@ -351,7 +386,17 @@ const AuthGate: React.FC = () => {
     );
   }
 
-  if (!user) return <LoginView />;
+  if (!user) {
+    if (showAuth) {
+      return (
+        <LoginView
+          onBack={() => setShowAuth(false)}
+          onAuthenticated={() => setShowAuth(false)}
+        />
+      );
+    }
+    return <LandingView onSignIn={() => setShowAuth(true)} />;
+  }
 
   if (user.role === 'CLIENT') return <ClientAppShell />;
 
