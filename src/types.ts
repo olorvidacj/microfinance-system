@@ -275,18 +275,66 @@ export interface MemberFollowUpLog {
 }
 
 // 2. SAVINGS MANAGEMENT (1% p.a., ₱1,000 maintaining balance, flexible withdrawal with Manager approval)
+export type SavingsAccountStatus = 'Active' | 'Dormant' | 'Suspended' | 'Closed';
+export type SavingsAccountType = 'Regular Savings' | 'Capital Build-up' | 'Time Deposit' | 'Special Savings' | 'Youth Savings';
+export type SavingsTransactionType = 'Deposit' | 'Withdrawal' | 'Interest Credited' | 'Account Opening' | 'Transfer' | 'Fee / Charge';
+
+export interface SavingsAccountStatusLog {
+  id: string;
+  date: string;
+  fromStatus: SavingsAccountStatus;
+  toStatus: SavingsAccountStatus;
+  changedBy: string;
+  reason: string;
+}
+
+export interface SavingsAccount {
+  id: string;
+  accountNumber: string; // Unique Savings Account ID (e.g. SAV-2026-00101)
+  clientId: string; // Member / Borrower ID
+  clientName: string;
+  memberId?: string;
+  memberName?: string;
+  clientNumber?: string;
+  clientPhone?: string;
+  clientEmail?: string;
+  clientAvatar?: string;
+  branchId: string;
+  accountType: SavingsAccountType;
+  balance: number; // Current balance
+  availableBalance: number; // Balance minus maintaining balance
+  maintainingBalance: number; // e.g. 1000
+  interestRate: number; // e.g. 1.0% p.a.
+  status: SavingsAccountStatus;
+  statusReason?: string;
+  openedDate: string;
+  lastTransactionDate: string;
+  totalDeposited: number;
+  totalWithdrawn: number;
+  totalInterestEarned: number;
+  notes?: string;
+  passbookNumber?: string;
+  statusLogs?: SavingsAccountStatusLog[];
+}
+
 export interface SavingsTransaction {
   id: string;
   savingsAccountId: string;
+  accountNumber?: string;
   memberId: string;
+  clientId?: string;
   memberName: string;
+  branchId?: string;
   transactionNumber: string;
+  referenceNumber?: string;
   date: string;
-  type: 'Deposit' | 'Withdrawal' | 'Interest Credited' | 'Transfer';
+  type: SavingsTransactionType;
   amount: number;
   balanceBefore: number;
   balanceAfter: number;
+  paymentMethod?: string;
   processedBy: string;
+  processedByRole?: string;
   notes?: string;
   officialReceiptNumber?: string;
 }

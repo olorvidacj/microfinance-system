@@ -129,7 +129,7 @@ export const BorrowersView: React.FC<BorrowersViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {displayBorrowers.map((member) => {
           const branch = branches.find((b) => b.id === member.branchId);
-          const savings = savingsAccounts.find((s) => s.memberId === member.id);
+          const savings = savingsAccounts.find((s) => s.clientId === member.id || s.memberId === member.id);
 
           return (
             <div

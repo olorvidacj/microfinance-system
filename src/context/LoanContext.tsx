@@ -24,6 +24,10 @@ import {
   MemberUpdateRequest,
   PaymentRecord,
   ReminderItem,
+  SavingsAccount,
+  SavingsAccountStatus,
+  SavingsAccountType,
+  SavingsAccountStatusLog,
   SavingsTransaction,
   SavingsWithdrawalRequest,
   UserStaff,
@@ -38,6 +42,7 @@ import {
   INITIAL_LOANS,
   INITIAL_MEMBERSHIP_APPLICATIONS,
   INITIAL_PAYMENTS,
+  INITIAL_SAVINGS_ACCOUNTS,
   INITIAL_SAVINGS_TRANSACTIONS,
   INITIAL_STAFF,
   INITIAL_UPDATE_REQUESTS,
@@ -127,7 +132,39 @@ interface LoanContextType {
   reactivateMember: (memberId: string) => void;
 
   // 2. Savings Actions
-  savingsAccounts: { id: string; memberId: string; memberName: string; balance: number; passbookNumber: string }[];
+  savingsAccounts: SavingsAccount[];
+  openSavingsAccount: (params: {
+    clientId: string;
+    accountType?: SavingsAccountType;
+    initialDeposit: number;
+    paymentMethod: string;
+    referenceNumber?: string;
+    notes?: string;
+    maintainingBalance?: number;
+    interestRate?: number;
+    branchId?: string;
+  }) => { success: boolean; account?: SavingsAccount; transaction?: SavingsTransaction; error?: string };
+  recordSavingsDeposit: (params: {
+    accountId: string;
+    amount: number;
+    paymentMethod: string;
+    referenceNumber?: string;
+    date?: string;
+    notes?: string;
+  }) => { success: boolean; transaction?: SavingsTransaction; error?: string };
+  recordSavingsWithdrawal: (params: {
+    accountId: string;
+    amount: number;
+    paymentMethod?: string;
+    referenceNumber?: string;
+    date?: string;
+    reason: string;
+  }) => { success: boolean; transaction?: SavingsTransaction; error?: string };
+  updateSavingsAccountStatus: (
+    accountId: string,
+    newStatus: SavingsAccountStatus,
+    reason: string
+  ) => { success: boolean; error?: string };
   creditMonthlySavingsInterest: () => { totalCredited: number; membersCount: number };
   depositSavings: (params: {
     memberId: string;
@@ -333,6 +370,16 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
+  // Savings Accounts Master State
+  const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_savingsAccounts`);
+      return saved ? JSON.parse(saved) : INITIAL_SAVINGS_ACCOUNTS;
+    } catch {
+      return INITIAL_SAVINGS_ACCOUNTS;
+    }
+  });
+
   // Savings Transactions
   const [savingsTransactions, setSavingsTransactions] = useState<SavingsTransaction[]>(() => {
     try {
@@ -428,6 +475,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(`${STORAGE_KEY}_membershipApps`, JSON.stringify(membershipApplications));
       localStorage.setItem(`${STORAGE_KEY}_updateRequests`, JSON.stringify(memberUpdateRequests));
       localStorage.setItem(`${STORAGE_KEY}_followUps`, JSON.stringify(memberFollowUpLogs));
+      localStorage.setItem(`${STORAGE_KEY}_savingsAccounts`, JSON.stringify(savingsAccounts));
       localStorage.setItem(`${STORAGE_KEY}_savingsTx`, JSON.stringify(savingsTransactions));
       localStorage.setItem(`${STORAGE_KEY}_withdrawals`, JSON.stringify(withdrawalRequests));
       localStorage.setItem(`${STORAGE_KEY}_interestLogs`, JSON.stringify(interestLogs));
@@ -446,6 +494,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     membershipApplications,
     memberUpdateRequests,
     memberFollowUpLogs,
+    savingsAccounts,
     savingsTransactions,
     withdrawalRequests,
     interestLogs,
@@ -800,19 +849,448 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
   // 2. SAVINGS SERVICES IMPLEMENTATION
   // ==========================================
 
-  // Savings Deposit
+  // Open a brand-new savings account for a client with unique account ID & initial deposit
+  const openSavingsAccount = (params: {
+    clientId: string;
+    accountType?: SavingsAccountType;
+    initialDeposit: number;
+    paymentMethod: string;
+    referenceNumber?: string;
+    notes?: string;
+    maintainingBalance?: number;
+    interestRate?: number;
+    branchId?: string;
+  }): { success: boolean; account?: SavingsAccount; transaction?: SavingsTransaction; error?: string } => {
+    const client = borrowers.find((b) => b.id === params.clientId);
+    if (!client) return { success: false, error: 'Selected client not found in cooperative records.' };
+
+    const MAINTAINING_BAL = params.maintainingBalance ?? 1000;
+    if (params.initialDeposit < MAINTAINING_BAL) {
+      return {
+        success: false,
+        error: `Initial deposit of ₱${params.initialDeposit.toLocaleString()} is below the required maintaining balance of ₱${MAINTAINING_BAL.toLocaleString()}.`,
+      };
+    }
+
+    const year = new Date().getFullYear();
+    const accountSeq = String(savingsAccounts.length + 101).padStart(5, '0');
+    const accountNumber = `SAV-${year}-${accountSeq}`;
+    const accountId = `sav-acc-${Date.now()}`;
+    const dateStr = new Date().toISOString().split('T')[0];
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const fullDateTime = `${dateStr} ${timeStr}`;
+    const refNo = params.referenceNumber || `OR-SAV-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newAccount: SavingsAccount = {
+      id: accountId,
+      accountNumber,
+      clientId: client.id,
+      clientName: client.fullName,
+      clientNumber: client.borrowerNumber,
+      clientPhone: client.phone,
+      clientEmail: client.email,
+      clientAvatar: client.avatar,
+      branchId: params.branchId || client.branchId || 'br-main',
+      accountType: params.accountType || 'Regular Savings',
+      balance: params.initialDeposit,
+      availableBalance: Math.max(0, params.initialDeposit - MAINTAINING_BAL),
+      maintainingBalance: MAINTAINING_BAL,
+      interestRate: params.interestRate ?? 1.0,
+      status: 'Active',
+      openedDate: dateStr,
+      lastTransactionDate: dateStr,
+      totalDeposited: params.initialDeposit,
+      totalWithdrawn: 0,
+      totalInterestEarned: 0,
+      passbookNumber: `PB-${year}-${accountSeq.slice(-4)}`,
+      notes: params.notes || 'Newly opened savings account',
+      statusLogs: [
+        {
+          id: `stat-log-${Date.now()}`,
+          date: dateStr,
+          fromStatus: 'Active',
+          toStatus: 'Active',
+          changedBy: `${currentUser.name} (${currentUser.title})`,
+          reason: 'Initial account opening with opening deposit.',
+        },
+      ],
+    };
+
+    const initialTx: SavingsTransaction = {
+      id: `sav-tx-${Date.now()}`,
+      savingsAccountId: accountId,
+      accountNumber,
+      memberId: client.id,
+      clientId: client.id,
+      memberName: client.fullName,
+      branchId: newAccount.branchId,
+      transactionNumber: `TXN-SAV-${Date.now().toString().slice(-6)}`,
+      referenceNumber: refNo,
+      officialReceiptNumber: refNo,
+      date: fullDateTime,
+      type: 'Account Opening',
+      amount: params.initialDeposit,
+      balanceBefore: 0,
+      balanceAfter: params.initialDeposit,
+      paymentMethod: params.paymentMethod || 'Cash',
+      processedBy: `${currentUser.name} (${currentUser.title})`,
+      processedByRole: currentUser.title || 'Teller',
+      notes: params.notes || 'Initial account opening deposit & passbook activation',
+    };
+
+    setSavingsAccounts((prev) => [newAccount, ...prev]);
+    setSavingsTransactions((prev) => [initialTx, ...prev]);
+
+    // Update client total savings balance
+    setBorrowers((prev) =>
+      prev.map((b) =>
+        b.id === client.id
+          ? {
+              ...b,
+              savingsBalance: (b.savingsBalance || 0) + params.initialDeposit,
+              lastActivityDate: dateStr,
+            }
+          : b
+      )
+    );
+
+    if (params.paymentMethod === 'Cash') {
+      setBranches((prev) =>
+        prev.map((br) =>
+          br.id === newAccount.branchId
+            ? { ...br, cashVaultBalance: br.cashVaultBalance + params.initialDeposit }
+            : br
+        )
+      );
+    }
+
+    logAudit(
+      'SAVINGS_ACCOUNT_OPENED',
+      `Opened savings account ${accountNumber} for ${client.fullName} with initial deposit ₱${params.initialDeposit.toLocaleString()} (OR: ${refNo})`,
+      'SAVINGS',
+      { targetType: 'SavingsAccount', targetId: accountId }
+    );
+
+    return { success: true, account: newAccount, transaction: initialTx };
+  };
+
+  // Record Deposit with automatic balance calculation, receipt reference, and dormant reactivation
+  const recordSavingsDeposit = (params: {
+    accountId: string;
+    amount: number;
+    paymentMethod: string;
+    referenceNumber?: string;
+    date?: string;
+    notes?: string;
+  }): { success: boolean; transaction?: SavingsTransaction; error?: string } => {
+    const account = savingsAccounts.find(
+      (a) => a.id === params.accountId || a.accountNumber === params.accountId
+    );
+    if (!account) return { success: false, error: 'Savings account not found.' };
+
+    if (account.status === 'Closed') {
+      return { success: false, error: 'Cannot deposit funds: This savings account is Closed.' };
+    }
+    if (account.status === 'Suspended') {
+      return { success: false, error: 'Cannot deposit funds: This account is Suspended pending compliance check.' };
+    }
+    if (params.amount <= 0) {
+      return { success: false, error: 'Deposit amount must be greater than zero.' };
+    }
+
+    const dateStr = params.date || new Date().toISOString().split('T')[0];
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const fullDateTime = `${dateStr} ${timeStr}`;
+    const year = new Date().getFullYear();
+    const refNo = params.referenceNumber || `OR-SAV-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const balanceBefore = account.balance;
+    const balanceAfter = balanceBefore + params.amount;
+    const availableBalanceAfter = Math.max(0, balanceAfter - account.maintainingBalance);
+
+    const tx: SavingsTransaction = {
+      id: `sav-tx-${Date.now()}`,
+      savingsAccountId: account.id,
+      accountNumber: account.accountNumber,
+      memberId: account.clientId,
+      clientId: account.clientId,
+      memberName: account.clientName,
+      branchId: account.branchId,
+      transactionNumber: `TXN-SAV-${Date.now().toString().slice(-6)}`,
+      referenceNumber: refNo,
+      officialReceiptNumber: refNo,
+      date: fullDateTime,
+      type: 'Deposit',
+      amount: params.amount,
+      balanceBefore,
+      balanceAfter,
+      paymentMethod: params.paymentMethod || 'Cash',
+      processedBy: `${currentUser.name} (${currentUser.title})`,
+      processedByRole: currentUser.title || 'Teller',
+      notes: params.notes || `Over-the-counter deposit via ${params.paymentMethod || 'Cash'}`,
+    };
+
+    // If account was Dormant, automatically reactivate to Active
+    const shouldReactivate = account.status === 'Dormant';
+
+    setSavingsAccounts((prev) =>
+      prev.map((a) => {
+        if (a.id === account.id) {
+          const updatedLogs = shouldReactivate
+            ? [
+                {
+                  id: `stat-log-${Date.now()}`,
+                  date: dateStr,
+                  fromStatus: 'Dormant' as SavingsAccountStatus,
+                  toStatus: 'Active' as SavingsAccountStatus,
+                  changedBy: `${currentUser.name} (${currentUser.title})`,
+                  reason: 'Reactivated from Dormancy upon member deposit.',
+                },
+                ...(a.statusLogs || []),
+              ]
+            : a.statusLogs;
+
+          return {
+            ...a,
+            balance: balanceAfter,
+            availableBalance: availableBalanceAfter,
+            totalDeposited: a.totalDeposited + params.amount,
+            lastTransactionDate: dateStr,
+            status: shouldReactivate ? 'Active' : a.status,
+            statusLogs: updatedLogs,
+          };
+        }
+        return a;
+      })
+    );
+
+    setSavingsTransactions((prev) => [tx, ...prev]);
+
+    // Update borrower savings balance
+    setBorrowers((prev) =>
+      prev.map((b) =>
+        b.id === account.clientId
+          ? {
+              ...b,
+              savingsBalance: (b.savingsBalance || 0) + params.amount,
+              lastActivityDate: dateStr,
+            }
+          : b
+      )
+    );
+
+    if (params.paymentMethod === 'Cash') {
+      setBranches((prev) =>
+        prev.map((br) =>
+          br.id === account.branchId
+            ? { ...br, cashVaultBalance: br.cashVaultBalance + params.amount }
+            : br
+        )
+      );
+    }
+
+    logAudit(
+      'SAVINGS_DEPOSIT',
+      `Recorded deposit of ₱${params.amount.toLocaleString()} on account ${account.accountNumber} (${account.clientName}) - Ref: ${refNo}`,
+      'SAVINGS',
+      { targetType: 'SavingsAccount', targetId: account.id }
+    );
+
+    return { success: true, transaction: tx };
+  };
+
+  // Record Withdrawal with strict available balance and maintaining balance validation
+  const recordSavingsWithdrawal = (params: {
+    accountId: string;
+    amount: number;
+    paymentMethod?: string;
+    referenceNumber?: string;
+    date?: string;
+    reason: string;
+  }): { success: boolean; transaction?: SavingsTransaction; error?: string } => {
+    const account = savingsAccounts.find(
+      (a) => a.id === params.accountId || a.accountNumber === params.accountId
+    );
+    if (!account) return { success: false, error: 'Savings account not found.' };
+
+    if (account.status === 'Closed') {
+      return { success: false, error: 'Withdrawal rejected: This savings account is Closed.' };
+    }
+    if (account.status === 'Suspended') {
+      return { success: false, error: 'Withdrawal rejected: Account is Suspended pending compliance/KYC hold.' };
+    }
+    if (account.status === 'Dormant') {
+      return { success: false, error: 'Withdrawal rejected: Account is Dormant. Please reactivate the account through customer service first.' };
+    }
+    if (params.amount <= 0) {
+      return { success: false, error: 'Withdrawal amount must be greater than zero.' };
+    }
+
+    const available = Math.max(0, account.balance - account.maintainingBalance);
+
+    if (params.amount > account.balance) {
+      return {
+        success: false,
+        error: `Insufficient funds: Requested withdrawal ₱${params.amount.toLocaleString()} exceeds total balance of ₱${account.balance.toLocaleString()}.`,
+      };
+    }
+
+    if (account.balance - params.amount < account.maintainingBalance) {
+      const excess = params.amount - available;
+      return {
+        success: false,
+        error: `Withdrawal exceeds available balance! Account must retain ₱${account.maintainingBalance.toLocaleString()} maintaining balance. Available for withdrawal: ₱${available.toLocaleString()}. Requested: ₱${params.amount.toLocaleString()} (Exceeds by ₱${excess.toLocaleString()}).`,
+      };
+    }
+
+    const dateStr = params.date || new Date().toISOString().split('T')[0];
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const fullDateTime = `${dateStr} ${timeStr}`;
+    const year = new Date().getFullYear();
+    const refNo = params.referenceNumber || `WD-SLIP-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const balanceBefore = account.balance;
+    const balanceAfter = balanceBefore - params.amount;
+    const availableBalanceAfter = Math.max(0, balanceAfter - account.maintainingBalance);
+
+    const tx: SavingsTransaction = {
+      id: `sav-tx-${Date.now()}`,
+      savingsAccountId: account.id,
+      accountNumber: account.accountNumber,
+      memberId: account.clientId,
+      clientId: account.clientId,
+      memberName: account.clientName,
+      branchId: account.branchId,
+      transactionNumber: `TXN-SAV-${Date.now().toString().slice(-6)}`,
+      referenceNumber: refNo,
+      officialReceiptNumber: refNo,
+      date: fullDateTime,
+      type: 'Withdrawal',
+      amount: params.amount,
+      balanceBefore,
+      balanceAfter,
+      paymentMethod: params.paymentMethod || 'Cash',
+      processedBy: `${currentUser.name} (${currentUser.title})`,
+      processedByRole: currentUser.title || 'Teller / Cashier',
+      notes: params.reason || 'Over-the-counter savings withdrawal',
+    };
+
+    setSavingsAccounts((prev) =>
+      prev.map((a) =>
+        a.id === account.id
+          ? {
+              ...a,
+              balance: balanceAfter,
+              availableBalance: availableBalanceAfter,
+              totalWithdrawn: a.totalWithdrawn + params.amount,
+              lastTransactionDate: dateStr,
+            }
+          : a
+      )
+    );
+
+    setSavingsTransactions((prev) => [tx, ...prev]);
+
+    // Update borrower savings balance
+    setBorrowers((prev) =>
+      prev.map((b) =>
+        b.id === account.clientId
+          ? {
+              ...b,
+              savingsBalance: Math.max(0, (b.savingsBalance || 0) - params.amount),
+              lastActivityDate: dateStr,
+            }
+          : b
+      )
+    );
+
+    // Update branch cash vault
+    setBranches((prev) =>
+      prev.map((br) =>
+        br.id === account.branchId
+          ? { ...br, cashVaultBalance: Math.max(0, br.cashVaultBalance - params.amount) }
+          : br
+      )
+    );
+
+    logAudit(
+      'SAVINGS_WITHDRAWAL',
+      `Processed withdrawal of ₱${params.amount.toLocaleString()} from account ${account.accountNumber} (${account.clientName}) - Reason: ${params.reason} (Ref: ${refNo})`,
+      'SAVINGS',
+      { targetType: 'SavingsAccount', targetId: account.id }
+    );
+
+    return { success: true, transaction: tx };
+  };
+
+  // Update Savings Account Status with Audit Log
+  const updateSavingsAccountStatus = (
+    accountId: string,
+    newStatus: SavingsAccountStatus,
+    reason: string
+  ): { success: boolean; error?: string } => {
+    const account = savingsAccounts.find(
+      (a) => a.id === accountId || a.accountNumber === accountId
+    );
+    if (!account) return { success: false, error: 'Savings account not found.' };
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    const statusLog: SavingsAccountStatusLog = {
+      id: `stat-log-${Date.now()}`,
+      date: dateStr,
+      fromStatus: account.status,
+      toStatus: newStatus,
+      changedBy: `${currentUser.name} (${currentUser.title})`,
+      reason: reason || `Status changed from ${account.status} to ${newStatus}`,
+    };
+
+    setSavingsAccounts((prev) =>
+      prev.map((a) =>
+        a.id === account.id
+          ? {
+              ...a,
+              status: newStatus,
+              statusReason: reason,
+              statusLogs: [statusLog, ...(a.statusLogs || [])],
+            }
+          : a
+      )
+    );
+
+    logAudit(
+      'SAVINGS_STATUS_UPDATED',
+      `Updated savings account ${account.accountNumber} status from ${account.status} to ${newStatus}. Reason: ${reason}`,
+      'SAVINGS',
+      { targetType: 'SavingsAccount', targetId: account.id }
+    );
+
+    return { success: true };
+  };
+
+  // Legacy depositSavings adapter
   const depositSavings = (params: {
     memberId: string;
     amount: number;
     paymentMethod?: string;
     notes?: string;
   }): SavingsTransaction | null => {
+    const account = savingsAccounts.find((a) => a.clientId === params.memberId);
+    if (account) {
+      const res = recordSavingsDeposit({
+        accountId: account.id,
+        amount: params.amount,
+        paymentMethod: params.paymentMethod || 'Cash',
+        notes: params.notes,
+      });
+      return res.transaction || null;
+    }
+
     const member = borrowers.find((b) => b.id === params.memberId);
     if (!member || params.amount <= 0) return null;
 
     const balanceBefore = member.savingsBalance || 0;
     const balanceAfter = balanceBefore + params.amount;
-    const orNumber = `OR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const orNumber = `OR-SAV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const tx: SavingsTransaction = {
       id: `sav-tx-${Date.now()}`,
@@ -820,29 +1298,23 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       memberId: member.id,
       memberName: member.fullName,
       transactionNumber: `SAV-DEP-${Date.now().toString().slice(-6)}`,
+      referenceNumber: orNumber,
+      officialReceiptNumber: orNumber,
       date: new Date().toISOString().split('T')[0],
       type: 'Deposit',
       amount: params.amount,
       balanceBefore,
       balanceAfter,
+      paymentMethod: params.paymentMethod || 'Cash',
       processedBy: `${currentUser.name} (${currentUser.title})`,
-      officialReceiptNumber: orNumber,
       notes: params.notes || `Over-the-counter deposit via ${params.paymentMethod || 'Cash'}`,
     };
 
-    // Update member savings balance
     setBorrowers((prev) =>
       prev.map((b) => (b.id === member.id ? { ...b, savingsBalance: balanceAfter, lastActivityDate: new Date().toISOString().split('T')[0] } : b))
     );
-
     setSavingsTransactions((prev) => [tx, ...prev]);
 
-    // Update cash vault balance
-    setBranches((prev) =>
-      prev.map((br) => (br.id === member.branchId ? { ...br, cashVaultBalance: br.cashVaultBalance + params.amount } : br))
-    );
-
-    logAudit('SAVINGS_DEPOSIT', `Deposited ₱${params.amount.toLocaleString()} for ${member.fullName} (OR ${orNumber})`, 'SAVINGS');
     return tx;
   };
 
@@ -898,6 +1370,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     const member = borrowers.find((b) => b.id === req.memberId);
     if (!member) return false;
 
+    const account = savingsAccounts.find((a) => a.clientId === req.memberId);
+
     const newBalance = (member.savingsBalance || 0) - req.requestedAmount;
     if (newBalance < 1000) return false;
 
@@ -921,18 +1395,43 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       prev.map((b) => (b.id === member.id ? { ...b, savingsBalance: newBalance, lastActivityDate: new Date().toISOString().split('T')[0] } : b))
     );
 
+    // Update account if found
+    if (account) {
+      setSavingsAccounts((prev) =>
+        prev.map((a) =>
+          a.id === account.id
+            ? {
+                ...a,
+                balance: newBalance,
+                availableBalance: Math.max(0, newBalance - a.maintainingBalance),
+                totalWithdrawn: a.totalWithdrawn + req.requestedAmount,
+                lastTransactionDate: new Date().toISOString().split('T')[0],
+              }
+            : a
+        )
+      );
+    }
+
+    const orNumber = `WD-OR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
     // Record savings transaction
     const tx: SavingsTransaction = {
       id: `sav-tx-${Date.now()}`,
-      savingsAccountId: member.id,
+      savingsAccountId: account ? account.id : member.id,
+      accountNumber: account ? account.accountNumber : `SAV-${member.id}`,
       memberId: member.id,
+      clientId: member.id,
       memberName: member.fullName,
+      branchId: member.branchId,
       transactionNumber: `SAV-WDR-${Date.now().toString().slice(-6)}`,
-      date: new Date().toISOString().split('T')[0],
+      referenceNumber: orNumber,
+      officialReceiptNumber: orNumber,
+      date: `${new Date().toISOString().split('T')[0]} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       type: 'Withdrawal',
       amount: req.requestedAmount,
       balanceBefore: member.savingsBalance || 0,
       balanceAfter: newBalance,
+      paymentMethod: 'Cash',
       processedBy: `${currentUser.name} (Manager Approval & Cash Payout)`,
       notes: `Manager approved withdrawal for ${req.reason}`,
     };
@@ -973,6 +1472,49 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
 
     const newTransactions: SavingsTransaction[] = [];
 
+    // Credit in savings accounts
+    setSavingsAccounts((prev) =>
+      prev.map((account) => {
+        if (account.status === 'Active' && account.balance > 0) {
+          const monthlyInterest = calculateMonthlySavingsInterest(account.balance, 0.01);
+          if (monthlyInterest > 0) {
+            const newBal = Math.round((account.balance + monthlyInterest) * 100) / 100;
+            const refNo = `INT-CREDIT-${monthName.replace(' ', '-').toUpperCase()}`;
+
+            newTransactions.push({
+              id: `sav-tx-int-${Date.now()}-${account.id}`,
+              savingsAccountId: account.id,
+              accountNumber: account.accountNumber,
+              memberId: account.clientId,
+              clientId: account.clientId,
+              memberName: account.clientName,
+              branchId: account.branchId,
+              transactionNumber: `SAV-INT-${Date.now().toString().slice(-6)}`,
+              referenceNumber: refNo,
+              officialReceiptNumber: refNo,
+              date: `${dateStr} 08:00`,
+              type: 'Interest Credited',
+              amount: monthlyInterest,
+              balanceBefore: account.balance,
+              balanceAfter: newBal,
+              paymentMethod: 'Internal Transfer',
+              processedBy: `System Batch (1% p.a. Interest Credited by ${currentUser.name})`,
+              notes: `${monthName} 1.0% Annual Interest credited to savings balance`,
+            });
+
+            return {
+              ...account,
+              balance: newBal,
+              availableBalance: Math.max(0, newBal - account.maintainingBalance),
+              totalInterestEarned: (account.totalInterestEarned || 0) + monthlyInterest,
+              lastTransactionDate: dateStr,
+            };
+          }
+        }
+        return account;
+      })
+    );
+
     const updatedBorrowers = borrowers.map((member) => {
       const currentBal = member.savingsBalance || 0;
       if (currentBal > 0) {
@@ -980,24 +1522,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         if (monthlyInterest > 0) {
           totalInterestDistributed += monthlyInterest;
           membersCount += 1;
-
           const newBal = Math.round((currentBal + monthlyInterest) * 100) / 100;
-
-          newTransactions.push({
-            id: `sav-tx-int-${Date.now()}-${member.id}`,
-            savingsAccountId: member.id,
-            memberId: member.id,
-            memberName: member.fullName,
-            transactionNumber: `SAV-INT-${Date.now().toString().slice(-6)}`,
-            date: dateStr,
-            type: 'Interest Credited',
-            amount: monthlyInterest,
-            balanceBefore: currentBal,
-            balanceAfter: newBal,
-            processedBy: `System Batch (1% p.a. Interest Credited by ${currentUser.name})`,
-            notes: `${monthName} 1.0% Annual Interest credited to savings balance`,
-          });
-
           return { ...member, savingsBalance: newBal };
         }
       }
@@ -2139,6 +2664,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(`${STORAGE_KEY}_membershipApps`);
     localStorage.removeItem(`${STORAGE_KEY}_updateRequests`);
     localStorage.removeItem(`${STORAGE_KEY}_followUps`);
+    localStorage.removeItem(`${STORAGE_KEY}_savingsAccounts`);
     localStorage.removeItem(`${STORAGE_KEY}_savingsTx`);
     localStorage.removeItem(`${STORAGE_KEY}_withdrawals`);
     localStorage.removeItem(`${STORAGE_KEY}_interestLogs`);
@@ -2154,6 +2680,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     setMembershipApplications(INITIAL_MEMBERSHIP_APPLICATIONS);
     setMemberUpdateRequests(INITIAL_UPDATE_REQUESTS);
     setMemberFollowUpLogs(INITIAL_FOLLOW_UP_LOGS);
+    setSavingsAccounts(INITIAL_SAVINGS_ACCOUNTS);
     setSavingsTransactions(INITIAL_SAVINGS_TRANSACTIONS);
     setWithdrawalRequests(INITIAL_WITHDRAWAL_REQUESTS);
     setInterestLogs(INITIAL_INTEREST_LOGS);
@@ -2181,17 +2708,15 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         memberUpdateRequests,
         memberFollowUpLogs,
 
+        savingsAccounts,
         savingsTransactions,
         withdrawalRequests,
         interestLogs,
 
-        savingsAccounts: borrowers.map((b) => ({
-          id: `sav-${b.id}`,
-          memberId: b.id,
-          memberName: b.fullName,
-          balance: b.savingsBalance || 1000,
-          passbookNumber: `PB-${b.borrowerNumber.replace('MBR-', '')}`,
-        })),
+        openSavingsAccount,
+        recordSavingsDeposit,
+        recordSavingsWithdrawal,
+        updateSavingsAccountStatus,
         creditMonthlySavingsInterest: runMonthlyInterestCrediting,
 
         filteredLoans,
