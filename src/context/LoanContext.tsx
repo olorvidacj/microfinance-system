@@ -31,6 +31,14 @@ import {
   SavingsTransaction,
   SavingsWithdrawalRequest,
   UserStaff,
+  SolidarityGroup,
+  SolidarityGroupMember,
+  GroupLoan,
+  GroupLoanMemberObligation,
+  GroupLoanStatus,
+  GroupMeetingLog,
+  GroupMeetingAttendance,
+  GroupMeetingCollection,
 } from '../types';
 import {
   INITIAL_AUDIT_LOGS,
@@ -47,6 +55,9 @@ import {
   INITIAL_STAFF,
   INITIAL_UPDATE_REQUESTS,
   INITIAL_WITHDRAWAL_REQUESTS,
+  INITIAL_SOLIDARITY_GROUPS,
+  INITIAL_GROUP_LOANS,
+  INITIAL_GROUP_MEETING_LOGS,
 } from '../data/initialData';
 import { authFetch } from './AuthContext';
 import {
@@ -82,6 +93,13 @@ interface LoanContextType {
   savingsTransactions: SavingsTransaction[];
   withdrawalRequests: SavingsWithdrawalRequest[];
   interestLogs: InterestCreditLog[];
+
+  // 3. Group Lending & Solidarity Mechanism State
+  solidarityGroups: SolidarityGroup[];
+  groupLoans: GroupLoan[];
+  groupMeetingLogs: GroupMeetingLog[];
+  filteredSolidarityGroups: SolidarityGroup[];
+  filteredGroupLoans: GroupLoan[];
 
   // Filtered views based on activeBranchId
   filteredLoans: Loan[];
@@ -243,6 +261,32 @@ interface LoanContextType {
     date?: string;
     isAdvancePayment?: boolean;
   }) => PaymentRecord | null;
+
+  // 5. Group Lending & Solidarity Actions
+  createSolidarityGroup: (groupData: Partial<SolidarityGroup>) => SolidarityGroup;
+  updateSolidarityGroup: (groupId: string, updates: Partial<SolidarityGroup>) => void;
+  deleteSolidarityGroup: (groupId: string) => void;
+  addMemberToGroup: (groupId: string, member: SolidarityGroupMember) => void;
+  removeMemberFromGroup: (groupId: string, borrowerId: string) => void;
+  assignGroupLeader: (groupId: string, leaderBorrowerId: string) => void;
+  createGroupLoan: (loanData: Partial<GroupLoan>) => GroupLoan;
+  approveGroupLoan: (groupLoanId: string) => void;
+  disburseGroupLoan: (groupLoanId: string) => void;
+  recordCenterMeeting: (meetingData: Partial<GroupMeetingLog>) => GroupMeetingLog;
+  recordGroupRepayment: (params: {
+    groupLoanId: string;
+    borrowerId: string;
+    amount: number;
+    solidarityContribution?: number;
+    paymentMethod?: string;
+    notes?: string;
+  }) => { success: boolean; error?: string };
+  activateSolidarityBridge: (params: {
+    groupId: string;
+    borrowerId: string;
+    shortfallAmount: number;
+    reason: string;
+  }) => { success: boolean; message: string };
 
   addBranch: (branch: Partial<Branch>) => void;
   updateBranch: (id: string, updates: Partial<Branch>) => void;
@@ -410,6 +454,36 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
+  // Solidarity Groups Master State
+  const [solidarityGroups, setSolidarityGroups] = useState<SolidarityGroup[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_solidarityGroups`);
+      return saved ? JSON.parse(saved) : INITIAL_SOLIDARITY_GROUPS;
+    } catch {
+      return INITIAL_SOLIDARITY_GROUPS;
+    }
+  });
+
+  // Group Loans Master State
+  const [groupLoans, setGroupLoans] = useState<GroupLoan[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_groupLoans`);
+      return saved ? JSON.parse(saved) : INITIAL_GROUP_LOANS;
+    } catch {
+      return INITIAL_GROUP_LOANS;
+    }
+  });
+
+  // Group Meeting Logs Master State
+  const [groupMeetingLogs, setGroupMeetingLogs] = useState<GroupMeetingLog[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_groupMeetings`);
+      return saved ? JSON.parse(saved) : INITIAL_GROUP_MEETING_LOGS;
+    } catch {
+      return INITIAL_GROUP_MEETING_LOGS;
+    }
+  });
+
   // Audit Logs
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => {
     try {
@@ -479,6 +553,9 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(`${STORAGE_KEY}_savingsTx`, JSON.stringify(savingsTransactions));
       localStorage.setItem(`${STORAGE_KEY}_withdrawals`, JSON.stringify(withdrawalRequests));
       localStorage.setItem(`${STORAGE_KEY}_interestLogs`, JSON.stringify(interestLogs));
+      localStorage.setItem(`${STORAGE_KEY}_solidarityGroups`, JSON.stringify(solidarityGroups));
+      localStorage.setItem(`${STORAGE_KEY}_groupLoans`, JSON.stringify(groupLoans));
+      localStorage.setItem(`${STORAGE_KEY}_groupMeetings`, JSON.stringify(groupMeetingLogs));
       localStorage.setItem(`${STORAGE_KEY}_logs`, JSON.stringify(auditLogs));
     } catch (e) {
       console.warn('Storage sync error:', e);
@@ -498,6 +575,9 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     savingsTransactions,
     withdrawalRequests,
     interestLogs,
+    solidarityGroups,
+    groupLoans,
+    groupMeetingLogs,
     auditLogs,
   ]);
 
@@ -538,6 +618,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
   const filteredPayments = activeBranchId === 'all' ? payments : payments.filter((p) => p.branchId === activeBranchId);
   const filteredMembershipApps = activeBranchId === 'all' ? membershipApplications : membershipApplications.filter((a) => a.branchId === activeBranchId);
   const filteredWithdrawals = activeBranchId === 'all' ? withdrawalRequests : withdrawalRequests.filter((w) => w.branchId === activeBranchId);
+  const filteredSolidarityGroups = activeBranchId === 'all' ? solidarityGroups : solidarityGroups.filter((g) => g.branchId === activeBranchId);
+  const filteredGroupLoans = activeBranchId === 'all' ? groupLoans : groupLoans.filter((g) => g.branchId === activeBranchId);
 
   // Computed Stats
   const totalDisbursed = filteredLoans.reduce((sum, l) => sum + (l.status !== 'Draft' && l.status !== 'Rejected' ? l.principalAmount : 0), 0);
@@ -2653,6 +2735,511 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     logAudit('LOAN_RESTRUCTURED', `Restructured loan ${loan.loanNumber} to ${newTenorMonths} months: ${reason}`, 'LOAN');
   };
 
+  // ==========================================
+  // 5. GROUP LENDING & SOLIDARITY MECHANISM
+  // ==========================================
+
+  const createSolidarityGroup = (groupData: Partial<SolidarityGroup>): SolidarityGroup => {
+    const nextGroupIndex = solidarityGroups.length + 1;
+    const year = new Date().getFullYear();
+    const groupCode = groupData.groupCode || `GRP-${year}-${String(nextGroupIndex).padStart(3, '0')}`;
+    const members = groupData.members || [];
+    const leaderMember = members.find((m) => m.role === 'Leader') || members[0];
+    const totalActiveLoans = members.reduce((acc, m) => acc + (m.activeLoanAmount || 0), 0);
+    const totalGroupSavings = members.reduce((acc, m) => acc + (m.savingsBalance || 0), 0);
+
+    const newGroup: SolidarityGroup = {
+      id: `grp-${Date.now()}`,
+      groupCode,
+      groupName: groupData.groupName || 'Solidarity Circle',
+      centerName: groupData.centerName || 'Center #1',
+      branchId: groupData.branchId || (activeBranchId === 'all' ? 'br-main' : activeBranchId),
+      formedDate: groupData.formedDate || new Date().toISOString().split('T')[0],
+      meetingDay: groupData.meetingDay || 'Wednesday',
+      meetingTime: groupData.meetingTime || '09:00 AM',
+      meetingLocation: groupData.meetingLocation || 'Barangay Multi-Purpose Center',
+      loanOfficerId: groupData.loanOfficerId || currentUser.id,
+      loanOfficerName: groupData.loanOfficerName || currentUser.name,
+      leaderBorrowerId: leaderMember?.borrowerId || '',
+      leaderName: leaderMember?.fullName || 'Group Leader',
+      leaderPhone: leaderMember?.phone || '0900-000-0000',
+      members,
+      totalActiveLoans,
+      totalGroupSavings,
+      repaymentRate: 100.0,
+      solidarityFundBalance: groupData.solidarityFundBalance || members.length * 1000,
+      jointLiabilityAgreed: true,
+      status: 'Active',
+      delinquencyStatus: 'Healthy',
+      parRate: 0.0,
+      totalMeetingsHeld: 0,
+    };
+
+    setSolidarityGroups((prev) => [newGroup, ...prev]);
+    logAudit(
+      'SOLIDARITY_GROUP_CREATED',
+      `Formed solidarity group ${newGroup.groupName} (${newGroup.groupCode}) with ${members.length} members & peer guarantee agreement`,
+      'SYSTEM',
+      { targetType: 'SolidarityGroup', targetId: newGroup.groupCode }
+    );
+    return newGroup;
+  };
+
+  const updateSolidarityGroup = (groupId: string, updates: Partial<SolidarityGroup>) => {
+    setSolidarityGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === groupId) {
+          const updated = { ...g, ...updates };
+          if (updates.members) {
+            updated.totalActiveLoans = updates.members.reduce((acc, m) => acc + (m.activeLoanAmount || 0), 0);
+            updated.totalGroupSavings = updates.members.reduce((acc, m) => acc + (m.savingsBalance || 0), 0);
+          }
+          return updated;
+        }
+        return g;
+      })
+    );
+    logAudit('SOLIDARITY_GROUP_UPDATED', `Updated solidarity group configuration for group ID ${groupId}`, 'SYSTEM');
+  };
+
+  const deleteSolidarityGroup = (groupId: string) => {
+    const grp = solidarityGroups.find((g) => g.id === groupId);
+    if (!grp) return;
+    setSolidarityGroups((prev) => prev.filter((g) => g.id !== groupId));
+    logAudit('SOLIDARITY_GROUP_DELETED', `Removed solidarity group ${grp.groupName} (${grp.groupCode})`, 'SYSTEM');
+  };
+
+  const addMemberToGroup = (groupId: string, member: SolidarityGroupMember) => {
+    setSolidarityGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === groupId) {
+          const exists = g.members.some((m) => m.borrowerId === member.borrowerId);
+          if (exists) return g;
+          const updatedMembers = [...g.members, member];
+          return {
+            ...g,
+            members: updatedMembers,
+            totalActiveLoans: updatedMembers.reduce((acc, m) => acc + (m.activeLoanAmount || 0), 0),
+            totalGroupSavings: updatedMembers.reduce((acc, m) => acc + (m.savingsBalance || 0), 0),
+          };
+        }
+        return g;
+      })
+    );
+    logAudit('SOLIDARITY_MEMBER_ADDED', `Added ${member.fullName} to solidarity group ${groupId}`, 'BORROWER');
+  };
+
+  const removeMemberFromGroup = (groupId: string, borrowerId: string) => {
+    setSolidarityGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === groupId) {
+          const updatedMembers = g.members.filter((m) => m.borrowerId !== borrowerId);
+          return {
+            ...g,
+            members: updatedMembers,
+            totalActiveLoans: updatedMembers.reduce((acc, m) => acc + (m.activeLoanAmount || 0), 0),
+            totalGroupSavings: updatedMembers.reduce((acc, m) => acc + (m.savingsBalance || 0), 0),
+          };
+        }
+        return g;
+      })
+    );
+    logAudit('SOLIDARITY_MEMBER_REMOVED', `Removed member ${borrowerId} from solidarity group ${groupId}`, 'BORROWER');
+  };
+
+  const assignGroupLeader = (groupId: string, leaderBorrowerId: string) => {
+    setSolidarityGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === groupId) {
+          const leaderMember = g.members.find((m) => m.borrowerId === leaderBorrowerId);
+          if (!leaderMember) return g;
+          const updatedMembers = g.members.map((m) => ({
+            ...m,
+            role: m.borrowerId === leaderBorrowerId ? ('Leader' as const) : m.role === 'Leader' ? ('Member' as const) : m.role,
+          }));
+          return {
+            ...g,
+            leaderBorrowerId,
+            leaderName: leaderMember.fullName,
+            leaderPhone: leaderMember.phone,
+            members: updatedMembers,
+          };
+        }
+        return g;
+      })
+    );
+    logAudit('SOLIDARITY_LEADER_ASSIGNED', `Assigned new Center Leader (${leaderBorrowerId}) for group ${groupId}`, 'SYSTEM');
+  };
+
+  const createGroupLoan = (loanData: Partial<GroupLoan>): GroupLoan => {
+    const year = new Date().getFullYear();
+    const groupLoanNumber = loanData.groupLoanNumber || `GLOAN-${year}-${String(groupLoans.length + 1).padStart(3, '0')}`;
+    const obligations = loanData.memberObligations || [];
+    const totalPrincipal = obligations.reduce((sum, o) => sum + o.allocatedPrincipal, 0) || loanData.totalPrincipalAmount || 100000;
+    const interestRate = loanData.interestRate || 2.5;
+    const termMonths = loanData.termMonths || 6;
+    const totalInterest = Math.round((totalPrincipal * (interestRate / 100) * termMonths));
+    const totalPayable = totalPrincipal + totalInterest;
+
+    const newGroupLoan: GroupLoan = {
+      id: `gloan-${Date.now()}`,
+      groupLoanNumber,
+      groupId: loanData.groupId || '',
+      groupCode: loanData.groupCode || 'GRP-2026-001',
+      groupName: loanData.groupName || 'Solidarity Group',
+      centerName: loanData.centerName || 'Center 1',
+      branchId: loanData.branchId || (activeBranchId === 'all' ? 'br-main' : activeBranchId),
+      productId: loanData.productId || 'lp-2',
+      productName: loanData.productName || 'Micro-Negosyo Group Loan',
+      totalPrincipalAmount: totalPrincipal,
+      interestRate,
+      termMonths,
+      repaymentFrequency: loanData.repaymentFrequency || 'Weekly',
+      totalInterest,
+      totalPayable,
+      totalPaid: 0,
+      remainingBalance: totalPayable,
+      status: 'Active',
+      applicationDate: new Date().toISOString().split('T')[0],
+      disbursedDate: new Date().toISOString().split('T')[0],
+      maturityDate: new Date(Date.now() + termMonths * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      loanOfficerId: currentUser.id,
+      loanOfficerName: currentUser.name,
+      purpose: loanData.purpose || 'Working capital and inventory replenishment for group members',
+      solidarityAgreementSigned: true,
+      repaymentRate: 100.0,
+      delinquentMembersCount: 0,
+      memberObligations: obligations.map((o) => ({
+        ...o,
+        totalPaid: 0,
+        remainingBalance: o.totalObligation,
+        status: 'Current',
+      })),
+    };
+
+    setGroupLoans((prev) => [newGroupLoan, ...prev]);
+
+    // Update group entity
+    if (newGroupLoan.groupId) {
+      setSolidarityGroups((prev) =>
+        prev.map((g) => {
+          if (g.id === newGroupLoan.groupId) {
+            const updatedMembers = g.members.map((m) => {
+              const matchedObligation = obligations.find((o) => o.borrowerId === m.borrowerId);
+              if (matchedObligation) {
+                return {
+                  ...m,
+                  activeLoanAmount: matchedObligation.allocatedPrincipal,
+                  remainingBalance: matchedObligation.totalObligation,
+                  weeklyDues: matchedObligation.periodicDues,
+                  status: 'Good Standing' as const,
+                };
+              }
+              return m;
+            });
+            return {
+              ...g,
+              activeGroupLoanId: newGroupLoan.id,
+              activeGroupLoanNumber: newGroupLoan.groupLoanNumber,
+              totalActiveLoans: totalPrincipal,
+              members: updatedMembers,
+            };
+          }
+          return g;
+        })
+      );
+    }
+
+    logAudit(
+      'GROUP_LOAN_DISBURSED',
+      `Originated & disbursed Group Loan ${newGroupLoan.groupLoanNumber} for ₱${totalPrincipal.toLocaleString()} across ${obligations.length} members with peer guarantee`,
+      'LOAN',
+      { targetType: 'GroupLoan', targetId: newGroupLoan.groupLoanNumber }
+    );
+
+    return newGroupLoan;
+  };
+
+  const approveGroupLoan = (groupLoanId: string) => {
+    setGroupLoans((prev) =>
+      prev.map((gl) => (gl.id === groupLoanId ? { ...gl, status: 'Approved', approvalDate: new Date().toISOString().split('T')[0] } : gl))
+    );
+    logAudit('GROUP_LOAN_APPROVED', `Credit committee approved group loan ${groupLoanId}`, 'LOAN');
+  };
+
+  const disburseGroupLoan = (groupLoanId: string) => {
+    setGroupLoans((prev) =>
+      prev.map((gl) => (gl.id === groupLoanId ? { ...gl, status: 'Disbursed', disbursedDate: new Date().toISOString().split('T')[0] } : gl))
+    );
+    logAudit('GROUP_LOAN_DISBURSED', `Disbursed funds for group loan ${groupLoanId}`, 'LOAN');
+  };
+
+  const recordCenterMeeting = (meetingData: Partial<GroupMeetingLog>): GroupMeetingLog => {
+    const year = new Date().getFullYear();
+    const meetingNumber = meetingData.meetingNumber || `MTG-${year}-${String(groupMeetingLogs.length + 1).padStart(3, '0')}`;
+    const collections = meetingData.collections || [];
+    const attendances = meetingData.attendances || [];
+    const totalActualCollections = collections.reduce((acc, c) => acc + c.amountPaid, 0);
+    const totalExpectedCollections = collections.reduce((acc, c) => acc + c.expectedDue, 0);
+    const totalSolidarityFundCollected = collections.reduce((acc, c) => acc + c.solidarityContribution, 0);
+    const totalSolidarityCoveredUsed = collections.reduce((acc, c) => acc + (c.solidarityAmountCovered || 0), 0);
+    const presentCount = attendances.filter((a) => a.status === 'Present').length;
+    const attendanceRate = attendances.length > 0 ? (presentCount / attendances.length) * 100 : 100;
+
+    const newLog: GroupMeetingLog = {
+      id: `mtg-${Date.now()}`,
+      meetingNumber,
+      groupId: meetingData.groupId || '',
+      groupCode: meetingData.groupCode || 'GRP-2026-001',
+      groupName: meetingData.groupName || 'Solidarity Group',
+      centerName: meetingData.centerName || 'Center',
+      meetingDate: meetingData.meetingDate || new Date().toISOString().split('T')[0],
+      meetingTime: meetingData.meetingTime || '09:00 AM',
+      meetingLocation: meetingData.meetingLocation || 'Barangay Hall',
+      presidedBy: currentUser.name,
+      presidedByRole: currentUser.title,
+      attendances,
+      collections,
+      totalExpectedCollections,
+      totalActualCollections,
+      totalSolidarityFundCollected,
+      totalSolidarityCoveredUsed,
+      attendanceRate,
+      meetingNotes: meetingData.meetingNotes || 'Weekly center collection & solidarity check-in completed.',
+      recordedAt: new Date().toISOString(),
+    };
+
+    setGroupMeetingLogs((prev) => [newLog, ...prev]);
+
+    // Update group solidarity fund balance and member loan obligations
+    if (newLog.groupId) {
+      setSolidarityGroups((prev) =>
+        prev.map((g) => {
+          if (g.id === newLog.groupId) {
+            const updatedFundBalance = Math.max(
+              0,
+              g.solidarityFundBalance + totalSolidarityFundCollected - totalSolidarityCoveredUsed
+            );
+            const updatedMembers = g.members.map((m) => {
+              const matchedCollection = collections.find((c) => c.borrowerId === m.borrowerId);
+              if (matchedCollection) {
+                const paid = matchedCollection.amountPaid + (matchedCollection.solidarityAmountCovered || 0);
+                const newBalance = Math.max(0, m.remainingBalance - paid);
+                const newStatus =
+                  matchedCollection.paymentStatus === 'Paid in Full'
+                    ? ('Good Standing' as const)
+                    : matchedCollection.paymentStatus === 'Covered by Solidarity'
+                    ? ('Solidarity Covered' as const)
+                    : ('Arrears' as const);
+
+                return {
+                  ...m,
+                  remainingBalance: newBalance,
+                  savingsBalance: m.savingsBalance + matchedCollection.solidarityContribution,
+                  status: newStatus,
+                  totalPaidToDate: (m.totalPaidToDate || 0) + paid,
+                  daysLate: newStatus === 'Arrears' ? 7 : 0,
+                };
+              }
+              return m;
+            });
+
+            const delinquentCount = updatedMembers.filter((m) => m.status === 'Arrears').length;
+            const hasCovered = updatedMembers.some((m) => m.status === 'Solidarity Covered');
+
+            return {
+              ...g,
+              solidarityFundBalance: updatedFundBalance,
+              totalMeetingsHeld: (g.totalMeetingsHeld || 0) + 1,
+              members: updatedMembers,
+              totalGroupSavings: updatedMembers.reduce((acc, m) => acc + m.savingsBalance, 0),
+              delinquencyStatus: delinquentCount > 0 ? ('At Risk' as const) : hasCovered ? ('Solidarity Covered' as const) : ('Healthy' as const),
+              repaymentRate: totalExpectedCollections > 0 ? (totalActualCollections / totalExpectedCollections) * 100 : 100,
+            };
+          }
+          return g;
+        })
+      );
+
+      // Update Group Loan remaining balance
+      setGroupLoans((prev) =>
+        prev.map((gl) => {
+          if (gl.groupId === newLog.groupId && gl.status === 'Active') {
+            const newTotalPaid = gl.totalPaid + totalActualCollections + totalSolidarityCoveredUsed;
+            const newRemaining = Math.max(0, gl.totalPayable - newTotalPaid);
+            const updatedObligations = gl.memberObligations.map((o) => {
+              const matchedCollection = collections.find((c) => c.borrowerId === o.borrowerId);
+              if (matchedCollection) {
+                const paid = matchedCollection.amountPaid + (matchedCollection.solidarityAmountCovered || 0);
+                const newOblRemaining = Math.max(0, o.remainingBalance - paid);
+                return {
+                  ...o,
+                  totalPaid: o.totalPaid + paid,
+                  remainingBalance: newOblRemaining,
+                  status:
+                    newOblRemaining <= 0
+                      ? ('Settled' as const)
+                      : matchedCollection.paymentStatus === 'Paid in Full'
+                      ? ('Current' as const)
+                      : matchedCollection.paymentStatus === 'Covered by Solidarity'
+                      ? ('Solidarity Covered' as const)
+                      : ('In Arrears' as const),
+                  solidarityCoveredAmount: (o.solidarityCoveredAmount || 0) + (matchedCollection.solidarityAmountCovered || 0),
+                };
+              }
+              return o;
+            });
+
+            return {
+              ...gl,
+              totalPaid: newTotalPaid,
+              remainingBalance: newRemaining,
+              status: newRemaining <= 0 ? 'Settled' : gl.status,
+              memberObligations: updatedObligations,
+              repaymentRate: Math.min(100, (newTotalPaid / gl.totalPayable) * 100),
+            };
+          }
+          return gl;
+        })
+      );
+    }
+
+    logAudit(
+      'CENTER_MEETING_RECORDED',
+      `Recorded Center Meeting ${newLog.meetingNumber} for group ${newLog.groupName}: Collected ₱${totalActualCollections.toLocaleString()} in dues and ₱${totalSolidarityFundCollected.toLocaleString()} into Solidarity Fund`,
+      'PAYMENT',
+      { targetType: 'GroupMeetingLog', targetId: newLog.meetingNumber }
+    );
+
+    return newLog;
+  };
+
+  const recordGroupRepayment = (params: {
+    groupLoanId: string;
+    borrowerId: string;
+    amount: number;
+    solidarityContribution?: number;
+    paymentMethod?: string;
+    notes?: string;
+  }) => {
+    const loan = groupLoans.find((gl) => gl.id === params.groupLoanId);
+    if (!loan) return { success: false, error: 'Group loan not found' };
+
+    setGroupLoans((prev) =>
+      prev.map((gl) => {
+        if (gl.id === params.groupLoanId) {
+          const updatedObligations = gl.memberObligations.map((o) => {
+            if (o.borrowerId === params.borrowerId) {
+              const newPaid = o.totalPaid + params.amount;
+              const newBal = Math.max(0, o.remainingBalance - params.amount);
+              return {
+                ...o,
+                totalPaid: newPaid,
+                remainingBalance: newBal,
+                status: newBal <= 0 ? ('Settled' as const) : ('Current' as const),
+                daysInArrears: 0,
+              };
+            }
+            return o;
+          });
+          const newTotalPaid = gl.totalPaid + params.amount;
+          return {
+            ...gl,
+            totalPaid: newTotalPaid,
+            remainingBalance: Math.max(0, gl.totalPayable - newTotalPaid),
+            memberObligations: updatedObligations,
+          };
+        }
+        return gl;
+      })
+    );
+
+    // Also update member in Solidarity Group
+    setSolidarityGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === loan.groupId) {
+          const updatedMembers = g.members.map((m) => {
+            if (m.borrowerId === params.borrowerId) {
+              return {
+                ...m,
+                remainingBalance: Math.max(0, m.remainingBalance - params.amount),
+                status: 'Good Standing' as const,
+                daysLate: 0,
+              };
+            }
+            return m;
+          });
+          return {
+            ...g,
+            members: updatedMembers,
+            delinquencyStatus: updatedMembers.some((m) => m.status === 'Arrears') ? ('At Risk' as const) : ('Healthy' as const),
+          };
+        }
+        return g;
+      })
+    );
+
+    logAudit(
+      'GROUP_MEMBER_PAYMENT_RECORDED',
+      `Recorded individual payment ₱${params.amount.toLocaleString()} for borrower ${params.borrowerId} on group loan ${loan.groupLoanNumber}`,
+      'PAYMENT'
+    );
+
+    return { success: true };
+  };
+
+  const activateSolidarityBridge = (params: {
+    groupId: string;
+    borrowerId: string;
+    shortfallAmount: number;
+    reason: string;
+  }) => {
+    const grp = solidarityGroups.find((g) => g.id === params.groupId);
+    if (!grp) return { success: false, message: 'Group not found' };
+    if (grp.solidarityFundBalance < params.shortfallAmount) {
+      return {
+        success: false,
+        message: `Insufficient Solidarity Reserve Fund balance (Available: ₱${grp.solidarityFundBalance.toLocaleString()})`,
+      };
+    }
+
+    setSolidarityGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === params.groupId) {
+          const updatedMembers = g.members.map((m) => {
+            if (m.borrowerId === params.borrowerId) {
+              return {
+                ...m,
+                status: 'Solidarity Covered' as const,
+                daysLate: 0,
+              };
+            }
+            return m;
+          });
+          return {
+            ...g,
+            solidarityFundBalance: g.solidarityFundBalance - params.shortfallAmount,
+            delinquencyStatus: 'Solidarity Covered' as const,
+            members: updatedMembers,
+          };
+        }
+        return g;
+      })
+    );
+
+    logAudit(
+      'SOLIDARITY_BRIDGE_ACTIVATED',
+      `Activated Solidarity Reserve Fund Bridge of ₱${params.shortfallAmount.toLocaleString()} for member ${params.borrowerId} in group ${grp.groupName}: ${params.reason}`,
+      'PAYMENT',
+      { targetType: 'SolidarityGroup', targetId: grp.groupCode }
+    );
+
+    return {
+      success: true,
+      message: `Solidarity Guarantee Bridge activated! ₱${params.shortfallAmount.toLocaleString()} bridged from Group Solidarity Reserve Fund to protect group rating.`,
+    };
+  };
+
   const resetToDefaults = () => {
     localStorage.removeItem(`${STORAGE_KEY}_branches`);
     localStorage.removeItem(`${STORAGE_KEY}_staff`);
@@ -2668,6 +3255,9 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(`${STORAGE_KEY}_savingsTx`);
     localStorage.removeItem(`${STORAGE_KEY}_withdrawals`);
     localStorage.removeItem(`${STORAGE_KEY}_interestLogs`);
+    localStorage.removeItem(`${STORAGE_KEY}_solidarityGroups`);
+    localStorage.removeItem(`${STORAGE_KEY}_groupLoans`);
+    localStorage.removeItem(`${STORAGE_KEY}_groupMeetings`);
     localStorage.removeItem(`${STORAGE_KEY}_logs`);
 
     setBranches(INITIAL_BRANCHES);
@@ -2684,6 +3274,9 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     setSavingsTransactions(INITIAL_SAVINGS_TRANSACTIONS);
     setWithdrawalRequests(INITIAL_WITHDRAWAL_REQUESTS);
     setInterestLogs(INITIAL_INTEREST_LOGS);
+    setSolidarityGroups(INITIAL_SOLIDARITY_GROUPS);
+    setGroupLoans(INITIAL_GROUP_LOANS);
+    setGroupMeetingLogs(INITIAL_GROUP_MEETING_LOGS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
   };
 
@@ -2713,11 +3306,30 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         withdrawalRequests,
         interestLogs,
 
+        solidarityGroups,
+        groupLoans,
+        groupMeetingLogs,
+        filteredSolidarityGroups,
+        filteredGroupLoans,
+
         openSavingsAccount,
         recordSavingsDeposit,
         recordSavingsWithdrawal,
         updateSavingsAccountStatus,
         creditMonthlySavingsInterest: runMonthlyInterestCrediting,
+
+        createSolidarityGroup,
+        updateSolidarityGroup,
+        deleteSolidarityGroup,
+        addMemberToGroup,
+        removeMemberFromGroup,
+        assignGroupLeader,
+        createGroupLoan,
+        approveGroupLoan,
+        disburseGroupLoan,
+        recordCenterMeeting,
+        recordGroupRepayment,
+        activateSolidarityBridge,
 
         filteredLoans,
         filteredBorrowers,

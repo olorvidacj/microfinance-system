@@ -641,16 +641,121 @@ export interface ReminderItem {
 
 export interface SolidarityGroupMember {
   borrowerId: string;
+  borrowerNumber?: string;
   fullName: string;
   phone: string;
   role: 'Leader' | 'Treasurer' | 'Secretary' | 'Member';
   activeLoanAmount: number;
   remainingBalance: number;
   savingsBalance: number;
-  status: 'Good Standing' | 'Due' | 'Arrears';
+  status: 'Good Standing' | 'Due' | 'Arrears' | 'Solidarity Covered';
   weeklyDues: number;
+  totalPaidToDate?: number;
+  daysLate?: number;
   isAttendingMeeting?: boolean;
   meetingPaymentPaid?: boolean;
+}
+
+export type GroupLoanStatus =
+  | 'Under Review'
+  | 'Approved'
+  | 'Disbursed'
+  | 'Active'
+  | 'Settled'
+  | 'In Arrears'
+  | 'Defaulted'
+  | 'Rejected';
+
+export interface GroupLoanMemberObligation {
+  borrowerId: string;
+  borrowerName: string;
+  borrowerNumber?: string;
+  phone?: string;
+  role: 'Leader' | 'Treasurer' | 'Secretary' | 'Member';
+  allocatedPrincipal: number;
+  allocatedInterest: number;
+  totalObligation: number;
+  periodicDues: number; // e.g. weekly dues amount
+  totalPaid: number;
+  remainingBalance: number;
+  status: 'Current' | 'Due' | 'In Arrears' | 'Settled' | 'Solidarity Covered';
+  daysInArrears?: number;
+  solidarityCoveredAmount?: number;
+}
+
+export interface GroupLoan {
+  id: string;
+  groupLoanNumber: string; // e.g. GLOAN-2026-0012
+  groupId: string;
+  groupCode: string;
+  groupName: string;
+  centerName: string;
+  branchId: string;
+  productId: string;
+  productName: string;
+  totalPrincipalAmount: number;
+  interestRate: number;
+  termMonths: number;
+  repaymentFrequency: RepaymentFrequency;
+  totalInterest: number;
+  totalPayable: number;
+  totalPaid: number;
+  remainingBalance: number;
+  status: GroupLoanStatus;
+  applicationDate: string;
+  approvalDate?: string;
+  disbursedDate?: string;
+  maturityDate: string;
+  loanOfficerId: string;
+  loanOfficerName: string;
+  purpose: string;
+  memberObligations: GroupLoanMemberObligation[];
+  solidarityAgreementSigned: boolean;
+  repaymentRate: number; // percentage
+  delinquentMembersCount: number;
+}
+
+export interface GroupMeetingAttendance {
+  borrowerId: string;
+  borrowerName: string;
+  role: string;
+  status: 'Present' | 'Absent' | 'Excused';
+  notes?: string;
+}
+
+export interface GroupMeetingCollection {
+  borrowerId: string;
+  borrowerName: string;
+  expectedDue: number;
+  amountPaid: number;
+  solidarityContribution: number; // mandatory savings/emergency fund e.g. ₱100
+  paymentStatus: 'Paid in Full' | 'Partial' | 'Unpaid' | 'Covered by Solidarity';
+  coveredBySolidarityFund?: boolean;
+  solidarityAmountCovered?: number;
+  notes?: string;
+}
+
+export interface GroupMeetingLog {
+  id: string;
+  meetingNumber: string; // e.g. MTG-2026-042
+  groupId: string;
+  groupCode: string;
+  groupName: string;
+  centerName: string;
+  meetingDate: string;
+  meetingTime: string;
+  meetingLocation: string;
+  presidedBy: string;
+  presidedByRole: string;
+  attendances: GroupMeetingAttendance[];
+  collections: GroupMeetingCollection[];
+  totalExpectedCollections: number;
+  totalActualCollections: number;
+  totalSolidarityFundCollected: number;
+  totalSolidarityCoveredUsed: number;
+  attendanceRate: number; // percentage
+  meetingNotes: string;
+  recordedAt: string;
 }
 
 export interface SolidarityGroup {
@@ -674,5 +779,11 @@ export interface SolidarityGroup {
   repaymentRate: number;
   solidarityFundBalance: number;
   jointLiabilityAgreed: boolean;
-  status: 'Active' | 'Under Review' | 'Graduated';
+  status: 'Active' | 'Under Review' | 'Graduated' | 'Delinquent';
+  activeGroupLoanId?: string;
+  activeGroupLoanNumber?: string;
+  delinquencyStatus: 'Healthy' | 'At Risk' | 'Delinquent' | 'Solidarity Covered';
+  parRate: number; // Portfolio at Risk percentage
+  totalMeetingsHeld: number;
 }
+
