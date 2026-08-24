@@ -31,6 +31,8 @@ interface LoansViewProps {
   onOpenNewLoan: () => void;
   onOpenRecordPaymentForLoan: (loan: Loan) => void;
   onOpenRestructureForLoan: (loan: Loan) => void;
+  onOpenApprovalDesk?: (loan: Loan) => void;
+  onOpenDisbursementDesk?: (loan: Loan) => void;
 }
 
 export const LoansView: React.FC<LoansViewProps> = ({
@@ -38,6 +40,8 @@ export const LoansView: React.FC<LoansViewProps> = ({
   onOpenNewLoan,
   onOpenRecordPaymentForLoan,
   onOpenRestructureForLoan,
+  onOpenApprovalDesk,
+  onOpenDisbursementDesk,
 }) => {
   const {
     filteredLoans,
@@ -298,11 +302,16 @@ export const LoansView: React.FC<LoansViewProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pt-1 no-scrollbar text-xs">
           {[
             { id: 'ALL', label: 'All Contracts' },
-            { id: 'ACTIVE', label: 'Active & In Service' },
-            { id: 'In Arrears', label: 'In Arrears (Overdue/Irregular)' },
-            { id: 'Underwriting', label: 'In Approval Pipeline' },
-            { id: 'Approved', label: 'Ready for Disbursement' },
-            { id: 'Settled', label: 'Fully Settled' },
+            { id: 'Draft', label: 'Drafts' },
+            { id: 'Submitted', label: 'Submitted' },
+            { id: 'Under Review', label: 'Under Review' },
+            { id: 'Approved', label: 'Approved (Ready to Disburse)' },
+            { id: 'Disbursed', label: 'Disbursed' },
+            { id: 'Active', label: 'Active & Current' },
+            { id: 'In Arrears', label: 'In Arrears' },
+            { id: 'Completed', label: 'Completed' },
+            { id: 'Defaulted', label: 'Defaulted' },
+            { id: 'Rejected', label: 'Rejected' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -431,67 +440,37 @@ export const LoansView: React.FC<LoansViewProps> = ({
 
                 {/* Pipeline Step Actions */}
                 <div className="flex items-center gap-2">
-                  {loan.coopStep === 'SUBMITTED' && (
+                  {loan.status === 'Draft' && (
                     <button
-                      onClick={() => loanProcessorVerifyLoan(loan.id, 'Eligibility and capacity to pay verified')}
-                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                      Step 2: Loan Processor Check
-                    </button>
-                  )}
-
-                  {loan.coopStep === 'PROCESSOR_VERIFIED' && (
-                    <button
-                      onClick={() => bookkeeperVerifyLoan(loan.id)}
-                      className="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+                      onClick={() => onSelectLoan(loan)}
+                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
                     >
                       <FileCheck className="w-3.5 h-3.5" />
-                      Step 3: Bookkeeper Verification
+                      Submit Application
                     </button>
                   )}
 
-                  {loan.coopStep === 'BOOKKEEPER_VERIFIED' && (
+                  {(loan.status === 'Submitted' || loan.status === 'Under Review') && onOpenApprovalDesk && (
                     <button
-                      onClick={() => handleOpenCreditCommModal(loan)}
-                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+                      onClick={() => onOpenApprovalDesk(loan)}
+                      className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      Step 4: Credit Comm. Interview
+                      Review & Approve / Reject
                     </button>
                   )}
 
-                  {loan.coopStep === 'CREDIT_COMM_INTERVIEW' && (
+                  {loan.status === 'Approved' && onOpenDisbursementDesk && (
                     <button
-                      onClick={() => handleOpenVoucherModal(loan)}
-                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+                      onClick={() => onOpenDisbursementDesk(loan)}
+                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
                     >
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
-                      Step 5: Prepare Disbursement Voucher
+                      <Receipt className="w-3.5 h-3.5" />
+                      Disburse Net Proceeds
                     </button>
                   )}
 
-                  {loan.coopStep === 'VOUCHER_PREPARED' && (
-                    <button
-                      onClick={() => managerApproveLoanVoucher(loan.id)}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Step 6: Manager Sign-Off Voucher
-                    </button>
-                  )}
-
-                  {loan.coopStep === 'MANAGER_APPROVED' && (
-                    <button
-                      onClick={() => disburseLoan(loan.id, loan.disbursementVoucher?.paymentMode || 'Bank Transfer')}
-                      className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md"
-                    >
-                      <DollarSign className="w-3.5 h-3.5" />
-                      Release Net Proceeds
-                    </button>
-                  )}
-
-                  {(loan.status === 'Disbursed' || loan.status === 'In Arrears') && (
+                  {(loan.status === 'Disbursed' || loan.status === 'In Arrears' || loan.status === 'Active') && (
                     <button
                       onClick={() => onOpenRecordPaymentForLoan(loan)}
                       className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
@@ -501,12 +480,12 @@ export const LoansView: React.FC<LoansViewProps> = ({
                     </button>
                   )}
 
-                  {loan.status !== 'Disbursed' && loan.status !== 'Settled' && loan.status !== 'Rejected' && (
+                  {loan.status !== 'Disbursed' && loan.status !== 'Active' && loan.status !== 'Completed' && loan.status !== 'Rejected' && onOpenApprovalDesk && (
                     <button
-                      onClick={() => rejectLoan(loan.id, 'Capacity evaluation below requirement')}
+                      onClick={() => onOpenApprovalDesk(loan)}
                       className="px-2.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-medium transition"
                     >
-                      Reject
+                      Decision Desk
                     </button>
                   )}
                 </div>

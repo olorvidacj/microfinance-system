@@ -415,12 +415,52 @@ export interface InstallmentScheduleItem {
 
 export type LoanStatus =
   | 'Draft'
-  | 'Underwriting'
+  | 'Submitted'
+  | 'Under Review'
   | 'Approved'
+  | 'Rejected'
   | 'Disbursed'
+  | 'Active'
+  | 'Completed'
+  | 'Defaulted'
+  | 'Underwriting'
   | 'In Arrears'
-  | 'Settled'
-  | 'Rejected';
+  | 'Settled';
+
+export interface LoanApprovalInfo {
+  approvedBy: string;
+  approvedByRole: string;
+  approvalDate: string;
+  approvedAmount: number;
+  approvedInterestRate: number;
+  approvedTermMonths: number;
+  resolutionNumber?: string;
+  conditions?: string[];
+  notes: string;
+}
+
+export interface LoanRejectionInfo {
+  rejectedBy: string;
+  rejectedByRole: string;
+  rejectionDate: string;
+  rejectionReason: string;
+  remarks?: string;
+}
+
+export interface LoanDisbursementInfo {
+  disbursedBy: string;
+  disbursedByRole: string;
+  disbursementDate: string;
+  disbursementMethod: string;
+  referenceNumber: string;
+  grossAmount: number;
+  processingFee: number;
+  insuranceFee: number;
+  capitalBuildUpDeduction: number;
+  otherDeductions: number;
+  netProceeds: number;
+  notes?: string;
+}
 
 export interface AIUnderwritingReport {
   recommendation: 'APPROVED' | 'APPROVED_WITH_CONDITIONS' | 'MANUAL_REVIEW' | 'REJECTED';
@@ -485,6 +525,12 @@ export interface Loan {
   disbursementMethod?: string;
   disbursementAccount?: string;
   officerInCharge?: string;
+  approvalInfo?: LoanApprovalInfo;
+  rejectionInfo?: LoanRejectionInfo;
+  disbursementInfo?: LoanDisbursementInfo;
+  approvedBy?: string;
+  disbursedBy?: string;
+  rejectionReason?: string;
 }
 
 // 4. PAYMENT SERVICES & OFFICIAL RECEIPTS

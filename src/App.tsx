@@ -24,6 +24,8 @@ import { Building2, Loader2, LogOut } from 'lucide-react';
 
 import { NewLoanModal } from './components/NewLoanModal';
 import { LoanDetailModal } from './components/LoanDetailModal';
+import { LoanApprovalModal } from './components/LoanApprovalModal';
+import { LoanDisbursementModal } from './components/LoanDisbursementModal';
 import { BorrowerModal } from './components/BorrowerModal';
 import { BorrowerDetailModal } from './components/BorrowerDetailModal';
 import { RecordPaymentModal } from './components/RecordPaymentModal';
@@ -107,6 +109,8 @@ const MainApp: React.FC = () => {
 
   const [activeReceipt, setActiveReceipt] = useState<PaymentRecord | null>(null);
   const [restructureTargetLoan, setRestructureTargetLoan] = useState<Loan | null>(null);
+  const [approvalTargetLoan, setApprovalTargetLoan] = useState<Loan | null>(null);
+  const [disbursementTargetLoan, setDisbursementTargetLoan] = useState<Loan | null>(null);
 
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [editBranch, setEditBranch] = useState<Branch | null>(null);
@@ -175,6 +179,8 @@ const MainApp: React.FC = () => {
             onOpenNewLoan={() => handleOpenNewLoan()}
             onOpenRecordPaymentForLoan={(loan) => handleOpenRecordPayment(loan)}
             onOpenRestructureForLoan={(loan) => setRestructureTargetLoan(loan)}
+            onOpenApprovalDesk={(loan) => setApprovalTargetLoan(loan)}
+            onOpenDisbursementDesk={(loan) => setDisbursementTargetLoan(loan)}
           />
         )}
 
@@ -240,6 +246,26 @@ const MainApp: React.FC = () => {
         onClose={() => setSelectedLoan(null)}
         onOpenRecordPayment={(loan) => handleOpenRecordPayment(loan)}
         onOpenRestructure={(loan) => setRestructureTargetLoan(loan)}
+        onOpenApprovalDesk={(loan) => setApprovalTargetLoan(loan)}
+        onOpenDisbursementDesk={(loan) => setDisbursementTargetLoan(loan)}
+      />
+
+      <LoanApprovalModal
+        loan={approvalTargetLoan}
+        isOpen={!!approvalTargetLoan}
+        onClose={() => setApprovalTargetLoan(null)}
+        onApproved={() => {
+          setApprovalTargetLoan(null);
+        }}
+      />
+
+      <LoanDisbursementModal
+        loan={disbursementTargetLoan}
+        isOpen={!!disbursementTargetLoan}
+        onClose={() => setDisbursementTargetLoan(null)}
+        onDisbursed={() => {
+          setDisbursementTargetLoan(null);
+        }}
       />
 
       <BorrowerModal

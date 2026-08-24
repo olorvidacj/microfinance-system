@@ -19,6 +19,10 @@ import {
   ShieldCheck,
   Tag,
   Clock,
+  Receipt,
+  XCircle,
+  ArrowRight,
+  Lock,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
 import { formatCurrency, formatDate } from '../utils/loanMath';
@@ -30,6 +34,8 @@ interface LoanDetailModalProps {
   onClose: () => void;
   onOpenRecordPayment: (loan: Loan) => void;
   onOpenRestructure: (loan: Loan) => void;
+  onOpenApprovalDesk?: (loan: Loan) => void;
+  onOpenDisbursementDesk?: (loan: Loan) => void;
 }
 
 export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
@@ -38,9 +44,11 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
   onClose,
   onOpenRecordPayment,
   onOpenRestructure,
+  onOpenApprovalDesk,
+  onOpenDisbursementDesk,
 }) => {
-  const { branches, currentUser } = useLoan();
-  const [activeTab, setActiveTab] = useState<'schedule' | 'pipeline' | 'voucher' | 'collateral'>('schedule');
+  const { branches, currentUser, submitLoanForApproval, startLoanReview } = useLoan();
+  const [activeTab, setActiveTab] = useState<'schedule' | 'approval' | 'voucher' | 'collateral'>('schedule');
 
   if (!isOpen || !loan) return null;
 
@@ -97,8 +105,32 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
     }
   };
 
+  const getLoanStatusBadge = (status: string) => {
+    switch (status) {
+      case 'Draft':
+        return 'bg-slate-100 text-slate-700 border-slate-300';
+      case 'Submitted':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'Under Review':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'Approved':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+      case 'Disbursed':
+      case 'Active':
+        return 'bg-teal-100 text-teal-800 border-teal-300';
+      case 'Completed':
+        return 'bg-gray-100 text-gray-800 border-gray-300';
+      case 'In Arrears':
+      case 'Defaulted':
+      case 'Rejected':
+        return 'bg-rose-100 text-rose-800 border-rose-300';
+      default:
+        return 'bg-slate-100 text-slate-800 border-slate-300';
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div id="loan-detail-modal" className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-4xl w-full my-8 shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Modal Top Header */}
         <div className="px-6 py-5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -115,148 +147,270 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                   {loan.loanNumber}
                 </span>
                 <span
-                  className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
-                    loan.status === 'In Arrears'
-                      ? 'bg-rose-100 text-rose-800'
-                      : loan.status === 'Disbursed'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-slate-100 text-slate-800'
-                  }`}
+                  className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${getLoanStatusBadge(loan.status)}`}
                 >
                   {loan.status}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                {loan.productName} • {branch?.name} • Frequency: {loan.repaymentFrequency}
+                {loan.productName} • {branch?.name || 'Main Branch'} • Repayment: {loan.repaymentFrequency}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {(loan.status === 'Disbursed' || loan.status === 'In Arrears') && (
+            {/* Dynamic Action Buttons based on Loan Lifecycle */}
+            {loan.status === 'Draft' && (
+              <button
+                onClick={() => submitLoanForApproval(loan.id, 'Submitted from loan detail')}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+              >
+                <FileCheck className="w-4 h-4" />
+                Submit for Approval
+              </button>
+            )}
+
+            {(loan.status === 'Submitted' || loan.status === 'Under Review') && onOpenApprovalDesk && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenApprovalDesk(loan);
+                }}
+                className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-purple-600/20"
+              >
+                <FileCheck className="w-4 h-4" />
+                Review & Decision Desk
+              </button>
+            )}
+
+            {loan.status === 'Approved' && onOpenDisbursementDesk && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenDisbursementDesk(loan);
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+              >
+                <Receipt className="w-4 h-4" />
+                Disburse Funds Now
+              </button>
+            )}
+
+            {(loan.status === 'Disbursed' || loan.status === 'In Arrears' || loan.status === 'Active') && (
               <button
                 onClick={() => {
                   onClose();
                   onOpenRecordPayment(loan);
                 }}
-                className="flex items-center gap-1 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow-xs"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
               >
-                <CreditCard className="w-3.5 h-3.5" />
-                <span>Record Payment (OR)</span>
+                <CreditCard className="w-4 h-4" />
+                Record Payment
               </button>
             )}
 
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-200 transition"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Financial KPI Summary Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-6 bg-white border-b border-slate-100">
-          <div>
-            <span className="text-xs text-slate-400">Principal Approved</span>
-            <div className="text-lg font-bold text-slate-900 mt-0.5">{formatCurrency(loan.principalAmount)}</div>
-            <span className="text-[11px] text-slate-500">Rate: {loan.interestRate}% ({loan.interestType})</span>
+        {/* Loan Lifecycle Stepper Progress */}
+        <div className="px-6 py-3 bg-slate-900 text-white border-b border-slate-800">
+          <div className="flex items-center justify-between text-[11px] font-semibold">
+            {[
+              { key: 'Draft', label: '1. Draft' },
+              { key: 'Submitted', label: '2. Submitted' },
+              { key: 'Under Review', label: '3. Under Review' },
+              { key: 'Approved', label: '4. Approved' },
+              { key: 'Disbursed', label: '5. Disbursed' },
+              { key: 'Completed', label: '6. Completed' },
+            ].map((step, idx) => {
+              const statusOrder = ['Draft', 'Submitted', 'Under Review', 'Approved', 'Disbursed', 'Completed'];
+              const currentIdx = statusOrder.indexOf(loan.status === 'Active' ? 'Disbursed' : loan.status);
+              const stepIdx = idx;
+              const isPast = currentIdx > stepIdx;
+              const isCurrent = currentIdx === stepIdx || (loan.status === 'In Arrears' && step.key === 'Disbursed');
+              const isRejected = loan.status === 'Rejected' && step.key === 'Approved';
+              const isDefaulted = loan.status === 'Defaulted' && step.key === 'Completed';
+
+              return (
+                <div key={step.key} className="flex items-center gap-1">
+                  <div
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] ${
+                      isCurrent
+                        ? 'bg-blue-500 text-white font-bold'
+                        : isPast
+                        ? 'bg-emerald-500/30 text-emerald-300 font-medium'
+                        : isRejected
+                        ? 'bg-rose-500 text-white font-bold'
+                        : isDefaulted
+                        ? 'bg-amber-500 text-white font-bold'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    {isPast ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : null}
+                    {isCurrent && <Clock className="w-3 h-3 text-blue-200" />}
+                    <span>{step.label}</span>
+                  </div>
+                  {idx < 5 && <ArrowRight className="w-3 h-3 text-slate-600 mx-0.5" />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Metric Cards Row */}
+        <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white border-b border-slate-100">
+          <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+            <span className="text-xs text-slate-500 block">Principal Amount</span>
+            <span className="text-base font-bold text-slate-900 block mt-0.5">
+              {formatCurrency(loan.principalAmount)}
+            </span>
+            <span className="text-[11px] text-slate-500 mt-1 block">Interest: {loan.interestRate}% ({loan.interestType})</span>
           </div>
 
-          <div>
-            <span className="text-xs text-slate-400">Total Payable</span>
-            <div className="text-lg font-bold text-slate-900 mt-0.5">{formatCurrency(loan.totalPayable)}</div>
-            <span className="text-[11px] text-slate-500">Interest: {formatCurrency(loan.totalInterest)}</span>
+          <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+            <span className="text-xs text-slate-500 block">Remaining Balance</span>
+            <span className="text-base font-bold text-blue-700 block mt-0.5">
+              {formatCurrency(loan.remainingBalance)}
+            </span>
+            <span className="text-[11px] text-slate-500 mt-1 block">Total Due: {formatCurrency(loan.totalPayable)}</span>
           </div>
 
-          <div>
-            <span className="text-xs text-slate-400">Total Paid ({percentPaid}%)</span>
-            <div className="text-lg font-bold text-emerald-700 mt-0.5">{formatCurrency(loan.totalPaid)}</div>
-            <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1 overflow-hidden">
-              <div className="bg-emerald-600 h-full rounded-full" style={{ width: `${percentPaid}%` }} />
+          <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+            <span className="text-xs text-slate-500 block">Total Repaid</span>
+            <span className="text-base font-bold text-emerald-700 block mt-0.5">
+              {formatCurrency(loan.totalPaid)}
+            </span>
+            <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${percentPaid}%` }} />
             </div>
           </div>
 
-          <div>
-            <span className="text-xs text-slate-400">Remaining Balance</span>
-            <div className="text-lg font-bold text-blue-700 mt-0.5">{formatCurrency(loan.remainingBalance)}</div>
-            <span className="text-[11px] text-slate-500">
-              Next Due: {loan.nextPaymentDate ? formatDate(loan.nextPaymentDate) : 'N/A'}
+          <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
+            <span className="text-xs text-slate-500 block">Next Due Date</span>
+            <span className="text-base font-bold text-amber-700 block mt-0.5">
+              {loan.nextPaymentDate ? formatDate(loan.nextPaymentDate) : 'N/A (Pending)'}
             </span>
+            <span className="text-[11px] text-slate-500 mt-1 block">Maturity: {formatDate(loan.maturityDate)}</span>
           </div>
         </div>
 
-        {/* Modal Sub-Tabs */}
-        <div className="flex border-b border-slate-200 px-6 gap-6 bg-slate-50/60 text-xs font-semibold">
+        {/* Tab Controls */}
+        <div className="flex border-b border-slate-200 px-6 gap-6 bg-slate-50/50 text-xs font-semibold">
           <button
             onClick={() => setActiveTab('schedule')}
-            className={`py-3 border-b-2 transition ${
-              activeTab === 'schedule' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-900'
+            className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
+              activeTab === 'schedule'
+                ? 'border-blue-600 text-blue-600 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            Amortization Schedule ({loan.schedule.length} Installments)
+            <FileSpreadsheet className="w-4 h-4" />
+            Amortization Schedule ({loan.schedule.length})
           </button>
           <button
-            onClick={() => setActiveTab('pipeline')}
-            className={`py-3 border-b-2 transition ${
-              activeTab === 'pipeline' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-900'
+            onClick={() => setActiveTab('approval')}
+            className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
+              activeTab === 'approval'
+                ? 'border-blue-600 text-blue-600 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            6-Step Cooperative Approval Log
+            <FileCheck className="w-4 h-4" />
+            Approval & Governance
+            {loan.approvalInfo && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
           </button>
           <button
             onClick={() => setActiveTab('voucher')}
-            className={`py-3 border-b-2 transition ${
-              activeTab === 'voucher' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-900'
+            className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
+              activeTab === 'voucher'
+                ? 'border-blue-600 text-blue-600 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            Disbursement Voucher & Deductions
+            <Receipt className="w-4 h-4" />
+            Disbursement Voucher
+            {loan.disbursementVoucher && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+          </button>
+          <button
+            onClick={() => setActiveTab('collateral')}
+            className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
+              activeTab === 'collateral'
+                ? 'border-blue-600 text-blue-600 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Guarantors & Security
           </button>
         </div>
 
-        {/* Sub-Tab Content */}
-        <div className="p-6 max-h-[420px] overflow-y-auto text-xs">
+        {/* Tab Content Body */}
+        <div className="p-6 max-h-[55vh] overflow-y-auto space-y-4 text-xs">
           {activeTab === 'schedule' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700">
-                  {loan.repaymentFrequency} Installment Breakdown
-                </span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Installment Repayment Schedule</h3>
+                  <p className="text-xs text-slate-500">
+                    {loan.totalInstallments} total installments • {loan.repaymentFrequency} repayment schedule
+                  </p>
+                </div>
                 <button
                   onClick={exportScheduleToCSV}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition"
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Export CSV</span>
+                  Export Schedule CSV
                 </button>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
                     <tr>
-                      <th className="py-2.5 px-3">#</th>
-                      <th className="py-2.5 px-3">Due Date</th>
-                      <th className="py-2.5 px-3">Principal</th>
-                      <th className="py-2.5 px-3">Interest</th>
-                      <th className="py-2.5 px-3">Total Due</th>
-                      <th className="py-2.5 px-3">Amount Paid</th>
-                      <th className="py-2.5 px-3">Balance After</th>
-                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3.5">#</th>
+                      <th className="py-2.5 px-3.5">Due Date</th>
+                      <th className="py-2.5 px-3.5">Principal</th>
+                      <th className="py-2.5 px-3.5">Interest</th>
+                      <th className="py-2.5 px-3.5">Total Installment</th>
+                      <th className="py-2.5 px-3.5">Amount Paid</th>
+                      <th className="py-2.5 px-3.5">Remaining Balance</th>
+                      <th className="py-2.5 px-3.5 text-center">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
                     {loan.schedule.map((item) => (
-                      <tr key={item.installmentNumber} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-3 font-mono text-slate-500">{item.installmentNumber}</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-700">{formatDate(item.dueDate)}</td>
-                        <td className="py-2.5 px-3">{formatCurrency(item.principal)}</td>
-                        <td className="py-2.5 px-3">{formatCurrency(item.interest)}</td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900">{formatCurrency(item.totalDue)}</td>
-                        <td className="py-2.5 px-3 font-semibold text-emerald-700">{formatCurrency(item.amountPaid)}</td>
-                        <td className="py-2.5 px-3 text-slate-600">{formatCurrency(item.remainingBalance)}</td>
-                        <td className="py-2.5 px-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] ${getStatusBadge(item.status)}`}>
+                      <tr
+                        key={item.installmentNumber}
+                        className={`hover:bg-slate-50/80 transition ${
+                          item.status === 'Paid' ? 'bg-emerald-50/20' : ''
+                        }`}
+                      >
+                        <td className="py-2 px-3.5 font-bold text-slate-900">{item.installmentNumber}</td>
+                        <td className="py-2 px-3.5 font-medium">{formatDate(item.dueDate)}</td>
+                        <td className="py-2 px-3.5 font-mono">{formatCurrency(item.principal)}</td>
+                        <td className="py-2 px-3.5 font-mono text-slate-500">{formatCurrency(item.interest)}</td>
+                        <td className="py-2 px-3.5 font-mono font-bold text-slate-900">
+                          {formatCurrency(item.totalDue)}
+                        </td>
+                        <td className="py-2 px-3.5 font-mono text-emerald-700 font-semibold">
+                          {item.amountPaid > 0 ? formatCurrency(item.amountPaid) : '-'}
+                        </td>
+                        <td className="py-2 px-3.5 font-mono font-medium">
+                          {formatCurrency(item.remainingBalance)}
+                        </td>
+                        <td className="py-2 px-3.5 text-center">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-[10px] ${getStatusBadge(
+                              item.status
+                            )}`}
+                          >
                             {item.status}
                           </span>
                         </td>
@@ -268,142 +422,263 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'pipeline' && (
+          {activeTab === 'approval' && (
             <div className="space-y-4">
-              <div className="bg-blue-50/70 border border-blue-200/80 p-4 rounded-2xl text-blue-900">
-                <span className="font-bold">6-Stage Cooperative Governance Chain:</span>
-                <p className="mt-0.5 text-xs text-blue-800">
-                  Every cooperative loan undergoes strict segregation of duties between Loan Processor, Bookkeeper, Credit Committee, and Manager.
-                </p>
-              </div>
+              {loan.approvalInfo ? (
+                <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-emerald-200 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                        <FileCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-950 text-sm">Credit Committee Official Approval Record</h4>
+                        <p className="text-xs text-emerald-700">Resolution #{loan.approvalInfo.resolutionNumber || 'CRECOM-STANDARD'}</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-full text-xs border border-emerald-300">
+                      APPROVED
+                    </span>
+                  </div>
 
-              <div className="space-y-3">
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs">1</span>
-                  <div>
-                    <span className="font-bold text-slate-900">Loan Origination & Application</span>
-                    <p className="text-slate-500 mt-0.5">Submitted on {loan.applicationDate} for purpose: {loan.purpose}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-emerald-700 block font-medium">Approved Principal</span>
+                      <span className="font-bold text-emerald-950 text-sm">{formatCurrency(loan.approvalInfo.approvedAmount)}</span>
+                    </div>
+                    <div>
+                      <span className="text-emerald-700 block font-medium">Approved Interest Rate</span>
+                      <span className="font-bold text-emerald-950">{loan.approvalInfo.approvedInterestRate}% p.a.</span>
+                    </div>
+                    <div>
+                      <span className="text-emerald-700 block font-medium">Approved Tenor</span>
+                      <span className="font-bold text-emerald-950">{loan.approvalInfo.approvedTermMonths} Months</span>
+                    </div>
+                    <div>
+                      <span className="text-emerald-700 block font-medium">Approval Date</span>
+                      <span className="font-bold text-emerald-950">{formatDate(loan.approvalInfo.approvalDate)}</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-emerald-200/80 pt-3 text-xs">
+                    <span className="text-emerald-800 font-semibold block mb-1">Approving Authority:</span>
+                    <p className="text-emerald-950">{loan.approvalInfo.approvedBy} — <span className="text-emerald-700">{loan.approvalInfo.approvedByRole}</span></p>
+                  </div>
+
+                  {loan.approvalInfo.conditions && loan.approvalInfo.conditions.length > 0 && (
+                    <div className="border-t border-emerald-200/80 pt-3 text-xs space-y-1.5">
+                      <span className="text-emerald-800 font-semibold block">Prerequisite Approval Conditions:</span>
+                      {loan.approvalInfo.conditions.map((cond, i) => (
+                        <div key={i} className="flex items-center gap-2 text-emerald-900 bg-white/80 p-2 rounded-lg border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>{cond}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {loan.approvalInfo.notes && (
+                    <div className="border-t border-emerald-200/80 pt-3 text-xs">
+                      <span className="text-emerald-800 font-semibold block mb-1">Committee Justification Notes:</span>
+                      <p className="text-emerald-900 bg-white/70 p-2.5 rounded-lg italic border border-emerald-100">{loan.approvalInfo.notes}</p>
+                    </div>
+                  )}
+                </div>
+              ) : loan.rejectionInfo ? (
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-rose-200 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center">
+                        <XCircle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-rose-950 text-sm">Loan Application Rejection Record</h4>
+                        <p className="text-xs text-rose-700">Recorded on {formatDate(loan.rejectionInfo.rejectionDate)}</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-rose-100 text-rose-800 font-bold rounded-full text-xs border border-rose-300">
+                      REJECTED
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div>
+                      <span className="text-rose-700 font-medium block">Reason for Rejection:</span>
+                      <p className="font-bold text-rose-900">{loan.rejectionInfo.rejectionReason}</p>
+                    </div>
+                    {loan.rejectionInfo.remarks && (
+                      <div>
+                        <span className="text-rose-700 font-medium block">Remarks:</span>
+                        <p className="text-rose-900 italic bg-white/80 p-2.5 rounded-lg border border-rose-200">{loan.rejectionInfo.remarks}</p>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-rose-700 font-medium block">Decided By:</span>
+                      <p className="text-rose-900">{loan.rejectionInfo.rejectedBy} ({loan.rejectionInfo.rejectedByRole})</p>
+                    </div>
                   </div>
                 </div>
-
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">2</span>
-                  <div>
-                    <span className="font-bold text-slate-900">Loan Processor Check</span>
-                    <p className="text-slate-500 mt-0.5">Verified member documents and basic repayment capacity.</p>
-                  </div>
+              ) : (
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <Clock className="w-10 h-10 text-slate-400 mx-auto" />
+                  <h4 className="font-bold text-slate-800">Pending Credit Committee Decision</h4>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    This loan application is currently in <strong>{loan.status}</strong> status. Open the Review Desk to record formal approval or rejection.
+                  </p>
+                  {onOpenApprovalDesk && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenApprovalDesk(loan);
+                      }}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                    >
+                      Open Credit Approval Desk
+                    </button>
+                  )}
                 </div>
-
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-full bg-cyan-600 text-white flex items-center justify-center font-bold text-xs">3</span>
-                  <div>
-                    <span className="font-bold text-slate-900">Bookkeeper / Accounting Check</span>
-                    <p className="text-slate-500 mt-0.5">Confirmed member share capital equity and verified no conflicting records.</p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-xs">4</span>
-                  <div>
-                    <span className="font-bold text-slate-900">Credit Committee Interview & Evaluation</span>
-                    <p className="text-slate-500 mt-0.5">
-                      {loan.creditCommitteeEval
-                        ? `Interviewed on ${loan.creditCommitteeEval.interviewDate}. Verdict: ${loan.creditCommitteeEval.approvalVerdict}. Notes: ${loan.creditCommitteeEval.committeeNotes}`
-                        : 'Credit Committee evaluation logged and approved.'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center font-bold text-xs">5</span>
-                  <div>
-                    <span className="font-bold text-slate-900">Loan Disbursement Voucher Prepared</span>
-                    <p className="text-slate-500 mt-0.5">
-                      {loan.disbursementVoucher
-                        ? `Voucher ${loan.disbursementVoucher.voucherNumber} prepared by ${loan.disbursementVoucher.preparedByBookkeeper}`
-                        : 'Voucher ready.'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
-                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">6</span>
-                  <div>
-                    <span className="font-bold text-slate-900">Manager Approval & Fund Release</span>
-                    <p className="text-slate-500 mt-0.5">
-                      {loan.disbursementVoucher?.approvedByManager
-                        ? `Authorized by ${loan.disbursementVoucher.approvedByManager} on ${loan.disbursementVoucher.approvedDate}`
-                        : 'Manager authorization verified.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
           {activeTab === 'voucher' && (
             <div className="space-y-4">
-              {loan.disbursementVoucher ? (
-                <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                    <div>
-                      <span className="text-xs text-slate-400">Cooperative Voucher Number</span>
-                      <div className="font-mono font-bold text-slate-900 text-sm">{loan.disbursementVoucher.voucherNumber}</div>
+              {loan.disbursementVoucher || loan.disbursementInfo ? (
+                <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-blue-200 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+                        <Receipt className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-blue-950 text-sm">Disbursement Check Voucher</h4>
+                        <p className="text-xs text-blue-700">Voucher #: {loan.disbursementVoucher?.voucherNumber || loan.loanNumber}</p>
+                      </div>
                     </div>
-                    <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-xs">
-                      {loan.disbursementVoucher.paymentMode} Payout
+                    <span className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-full text-xs">
+                      RELEASED
                     </span>
                   </div>
 
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between py-1 border-b border-slate-200/60">
-                      <span className="text-slate-600">Gross Principal Amount</span>
-                      <span className="font-bold text-slate-900">{formatCurrency(loan.disbursementVoucher.grossAmount)}</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs bg-white p-3.5 rounded-xl border border-blue-100">
+                    <div>
+                      <span className="text-slate-500 block">Gross Loan Amount</span>
+                      <span className="font-bold text-slate-900 font-mono text-sm">{formatCurrency(loan.principalAmount)}</span>
                     </div>
-                    <div className="flex justify-between py-1 text-rose-700">
-                      <span>Less: Processing Fee</span>
-                      <span>- {formatCurrency(loan.disbursementVoucher.processingFee)}</span>
+                    <div>
+                      <span className="text-slate-500 block">Processing & Deductions</span>
+                      <span className="font-bold text-rose-600 font-mono">
+                        - {formatCurrency(loan.processingFee + (loan.disbursementVoucher?.insuranceFee || 300) + (loan.disbursementVoucher?.capitalBuildUpDeduction || 0))}
+                      </span>
                     </div>
-                    <div className="flex justify-between py-1 text-rose-700">
-                      <span>Less: Service / Admin Fee</span>
-                      <span>- {formatCurrency(loan.disbursementVoucher.serviceFee)}</span>
+                    <div>
+                      <span className="text-slate-500 block">Net Proceeds Released</span>
+                      <span className="font-extrabold text-emerald-700 font-mono text-sm">
+                        {formatCurrency(loan.disbursementVoucher?.netProceeds || loan.principalAmount - loan.processingFee)}
+                      </span>
                     </div>
-                    <div className="flex justify-between py-1 text-rose-700">
-                      <span>Less: Capital Build-Up (CBU Contribution)</span>
-                      <span>- {formatCurrency(loan.disbursementVoucher.capitalBuildUpDeduction)}</span>
+                    <div>
+                      <span className="text-slate-500 block">Payment Mode</span>
+                      <span className="font-semibold text-slate-900">{loan.disbursementVoucher?.paymentMode || loan.disbursementMethod || 'Bank Transfer'}</span>
                     </div>
-                    <div className="flex justify-between py-1 text-rose-700">
-                      <span>Less: Credit Life Insurance</span>
-                      <span>- {formatCurrency(loan.disbursementVoucher.insuranceFee)}</span>
+                    <div>
+                      <span className="text-slate-500 block">Reference / Check #</span>
+                      <span className="font-mono font-bold text-blue-800">{loan.disbursementVoucher?.checkNumberOrRef || loan.disbursementInfo?.referenceNumber || 'N/A'}</span>
                     </div>
-                    <div className="flex justify-between py-2 border-t-2 border-slate-300 text-sm font-black text-emerald-800">
-                      <span>Net Proceeds Released to Member</span>
-                      <span>{formatCurrency(loan.disbursementVoucher.netProceeds)}</span>
+                    <div>
+                      <span className="text-slate-500 block">Disbursed Date</span>
+                      <span className="font-semibold text-slate-900">{loan.disbursedDate ? formatDate(loan.disbursedDate) : 'N/A'}</span>
                     </div>
-                  </div>
-
-                  <div className="pt-2 text-[11px] text-slate-400">
-                    Prepared by: {loan.disbursementVoucher.preparedByBookkeeper} • Approved by: {loan.disbursementVoucher.approvedByManager || 'Pending Sign'}
                   </div>
                 </div>
               ) : (
-                <div className="p-8 text-center text-slate-400">
-                  <FileSpreadsheet className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <span>Disbursement voucher will be generated during Stage 5 of the pipeline.</span>
+                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <Lock className="w-10 h-10 text-slate-400 mx-auto" />
+                  <h4 className="font-bold text-slate-800">No Disbursement Voucher Generated</h4>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    {loan.status === 'Approved'
+                      ? 'This loan is approved and ready for disbursement voucher generation and release.'
+                      : `Disbursement is prohibited while loan is in "${loan.status}" status. Approval is required.`}
+                  </p>
+                  {loan.status === 'Approved' && onOpenDisbursementDesk && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenDisbursementDesk(loan);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                    >
+                      Open Disbursement Desk
+                    </button>
+                  )}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'collateral' && (
+            <div className="space-y-4">
+              <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-2">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-blue-600" />
+                  Co-Makers & Guarantors
+                </h4>
+                {loan.guarantors && loan.guarantors.length > 0 ? (
+                  <div className="space-y-2 pt-1">
+                    {loan.guarantors.map((g) => (
+                      <div key={g.id} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                        <div>
+                          <p className="font-bold text-slate-900">{g.fullName}</p>
+                          <p className="text-[11px] text-slate-500">{g.relationship} • Phone: {g.phone}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-500 block text-[10px]">Monthly Income</span>
+                          <span className="font-bold text-emerald-700 font-mono">{formatCurrency(g.monthlyIncome)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 py-2 italic">No secondary guarantor required for this loan product tier.</p>
+                )}
+              </div>
+
+              <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-2">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  Pledged Collateral & Assets
+                </h4>
+                {loan.collaterals && loan.collaterals.length > 0 ? (
+                  <div className="space-y-2 pt-1">
+                    {loan.collaterals.map((c) => (
+                      <div key={c.id} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                        <div>
+                          <p className="font-bold text-slate-900">{c.type}: {c.description}</p>
+                          <p className="text-[11px] text-slate-500">Reg/Serial: {c.registrationNumber || 'N/A'}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-500 block text-[10px]">Estimated Value</span>
+                          <span className="font-bold text-blue-700 font-mono">{formatCurrency(c.estimatedValue)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 py-2 italic">Clean loan facility (uncollateralized / chattel mortgage not registered).</p>
+                )}
+              </div>
             </div>
           )}
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <div className="text-xs text-slate-400 font-mono">
-            Originated by {loan.loanOfficerName} • Loan ID: {loan.id}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+          <div className="text-slate-500">
+            Originated by: <strong className="text-slate-800">{loan.loanOfficerName || 'Loan Officer'}</strong> on {formatDate(loan.applicationDate)}
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition"
+            className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition"
           >
             Close
           </button>

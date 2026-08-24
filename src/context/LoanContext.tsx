@@ -13,8 +13,12 @@ import {
   KycReviewLog,
   KycStatus,
   Loan,
+  LoanApprovalInfo,
+  LoanDisbursementInfo,
   LoanDisbursementVoucher,
   LoanProduct,
+  LoanRejectionInfo,
+  LoanStatus,
   MemberFollowUpLog,
   MembershipApplication,
   MemberUpdateRequest,
@@ -162,7 +166,14 @@ interface LoanContextType {
   createBorrower: (borrower: Partial<Borrower>) => Borrower;
   updateBorrower: (id: string, updates: Partial<Borrower>) => void;
   deleteBorrower: (id: string) => void;
-  createLoanApplication: (loanData: any, autoApproveAndDisburse?: boolean) => Loan;
+  createLoanApplication: (loanData: any, initialStatus?: LoanStatus | boolean) => Loan;
+  submitLoanForApproval: (loanId: string, notes?: string) => void;
+  startLoanReview: (loanId: string, notes?: string) => void;
+  approveLoanApplication: (loanId: string, approvalData: LoanApprovalInfo) => void;
+  rejectLoanApplication: (loanId: string, rejectionData: LoanRejectionInfo) => void;
+  disburseLoanRecord: (loanId: string, disbursementData: LoanDisbursementInfo) => { success: boolean; message?: string };
+  markLoanCompleted: (loanId: string) => void;
+  markLoanDefaulted: (loanId: string, reason?: string) => void;
   
   // Coop Loan Steps
   loanProcessorVerifyLoan: (loanId: string, notes?: string) => void;
@@ -1315,8 +1326,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     logAudit('BORROWER_DELETED', `Deleted member record ${id}`, 'BORROWER');
   };
 
-  // Step 1: Member submits loan application
-  const createLoanApplication = (loanData: any, autoApproveAndDisburse?: boolean): Loan => {
+  // Step 1: Create loan application (Draft, Submitted, or Approved)
+  const createLoanApplication = (loanData: any, initialStatusParam?: LoanStatus | boolean): Loan => {
     const product = loanProducts.find((p) => p.id === loanData.productId) || loanProducts[0];
     const borrower = borrowers.find((b) => b.id === loanData.borrowerId);
     const startDateStr = loanData.startDate || new Date().toISOString().split('T')[0];
@@ -1331,14 +1342,24 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       startDate: startDateStr,
     });
 
+    let targetStatus: LoanStatus = 'Submitted';
+    if (typeof initialStatusParam === 'boolean') {
+      targetStatus = initialStatusParam ? 'Disbursed' : 'Submitted';
+    } else if (initialStatusParam) {
+      targetStatus = initialStatusParam;
+    }
+
+    const nextIdNumber = loans.length + 101;
+    const generatedLoanNumber = `LN-${new Date().getFullYear()}-${String(nextIdNumber).padStart(4, '0')}`;
+
     const newLoan: Loan = {
       id: `loan-${Date.now()}`,
-      loanNumber: `LN-${new Date().getFullYear()}-${String(loans.length + 101).padStart(4, '0')}`,
+      loanNumber: loanData.loanNumber || generatedLoanNumber,
       borrowerId: loanData.borrowerId,
-      borrowerName: borrower?.fullName || 'Unknown Member',
-      borrowerPhone: borrower?.phone || '',
+      borrowerName: borrower?.fullName || loanData.borrowerName || 'Unknown Member',
+      borrowerPhone: borrower?.phone || loanData.borrowerPhone || '',
       borrowerAvatar: borrower?.avatar,
-      branchId: borrower?.branchId || (activeBranchId === 'all' ? 'br-main' : activeBranchId),
+      branchId: borrower?.branchId || loanData.branchId || (activeBranchId === 'all' ? 'br-main' : activeBranchId),
       productId: product.id,
       productName: product.name,
       principalAmount: loanData.principalAmount || product.minAmount,
@@ -1350,18 +1371,18 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       processingFee: calc.processingFee,
       totalInterest: calc.totalInterest,
       totalPayable: calc.totalPayable,
-      totalPaid: 0,
+      totalPaid: targetStatus === 'Disbursed' ? 0 : 0,
       remainingBalance: calc.totalPayable,
-      status: autoApproveAndDisburse ? 'Disbursed' : 'Underwriting',
-      coopStep: autoApproveAndDisburse ? 'DISBURSED' : 'SUBMITTED', // Step 1 or Disbursed
+      status: targetStatus,
+      coopStep: targetStatus === 'Disbursed' ? 'DISBURSED' : targetStatus === 'Approved' ? 'MANAGER_APPROVED' : 'SUBMITTED',
       applicationDate: startDateStr,
       startDate: startDateStr,
-      disbursedDate: autoApproveAndDisburse ? startDateStr : undefined,
-      approvalDate: autoApproveAndDisburse ? startDateStr : undefined,
+      disbursedDate: targetStatus === 'Disbursed' ? startDateStr : undefined,
+      approvalDate: targetStatus === 'Approved' || targetStatus === 'Disbursed' ? startDateStr : undefined,
       maturityDate: calc.schedule[calc.schedule.length - 1]?.dueDate || '',
       loanOfficerId: currentUser.id,
       loanOfficerName: currentUser.name,
-      purpose: loanData.purpose || 'Cooperative Business / Personal financing',
+      purpose: loanData.purpose || 'Business Capital & Inventory Financing',
       collateral: loanData.collateral || loanData.collaterals || [],
       collaterals: loanData.collateral || loanData.collaterals || [],
       guarantors: loanData.guarantors || [],
@@ -1369,16 +1390,18 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       isIrregularAccount: false,
       totalLatePenaltiesCharged: 0,
       totalRebatesAwarded: 0,
+      disbursementMethod: loanData.disbursementMethod || 'Bank Transfer',
+      disbursementAccount: loanData.disbursementAccount,
     };
 
-    if (autoApproveAndDisburse && borrower) {
+    if (targetStatus === 'Disbursed' && borrower) {
       setBorrowers((prev) =>
         prev.map((b) =>
           b.id === borrower.id
             ? {
                 ...b,
-                activeLoansCount: b.activeLoansCount + 1,
-                totalBorrowed: b.totalBorrowed + newLoan.principalAmount,
+                activeLoansCount: (b.activeLoansCount || 0) + 1,
+                totalBorrowed: (b.totalBorrowed || 0) + newLoan.principalAmount,
                 lastActivityDate: startDateStr,
               }
             : b
@@ -1387,8 +1410,246 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     }
 
     setLoans((prev) => [newLoan, ...prev]);
-    logAudit('LOAN_APPLICATION_SUBMITTED', `Originated loan application ${newLoan.loanNumber} for ₱${newLoan.principalAmount.toLocaleString()}`, 'LOAN');
+    logAudit('LOAN_APPLICATION_CREATED', `Created loan application ${newLoan.loanNumber} (${newLoan.status}) for ${newLoan.borrowerName} for ₱${newLoan.principalAmount.toLocaleString()}`, 'LOAN');
     return newLoan;
+  };
+
+  // Submit Draft Loan for Approval
+  const submitLoanForApproval = (loanId: string, notes?: string) => {
+    setLoans((prev) =>
+      prev.map((l) => {
+        if (l.id === loanId) {
+          return {
+            ...l,
+            status: 'Submitted',
+            coopStep: 'SUBMITTED',
+            notes: notes ? `${l.purpose} | Note: ${notes}` : l.purpose,
+          };
+        }
+        return l;
+      })
+    );
+    logAudit('LOAN_SUBMITTED_FOR_APPROVAL', `Submitted loan ${loanId} for credit approval`, 'LOAN');
+  };
+
+  // Move Loan to Under Review
+  const startLoanReview = (loanId: string, notes?: string) => {
+    setLoans((prev) =>
+      prev.map((l) => {
+        if (l.id === loanId) {
+          return {
+            ...l,
+            status: 'Under Review',
+            coopStep: 'PROCESSOR_VERIFIED',
+          };
+        }
+        return l;
+      })
+    );
+    logAudit('LOAN_REVIEW_STARTED', `Credit officer started review on loan ${loanId}`, 'LOAN');
+  };
+
+  // Formal Loan Approval
+  const approveLoanApplication = (loanId: string, approvalData: LoanApprovalInfo) => {
+    setLoans((prev) =>
+      prev.map((l) => {
+        if (l.id === loanId) {
+          const isTermsChanged =
+            approvalData.approvedAmount !== l.principalAmount ||
+            approvalData.approvedInterestRate !== l.interestRate ||
+            approvalData.approvedTermMonths !== l.termMonths;
+
+          let newSchedule = l.schedule;
+          let newTotalInterest = l.totalInterest;
+          let newTotalPayable = l.totalPayable;
+          let newInstallments = l.totalInstallments;
+          let newProcFee = l.processingFee;
+
+          if (isTermsChanged) {
+            const product = loanProducts.find((p) => p.id === l.productId) || loanProducts[0];
+            const reCalc = calculateLoanSchedule({
+              principal: approvalData.approvedAmount,
+              annualInterestRate: approvalData.approvedInterestRate,
+              termMonths: approvalData.approvedTermMonths,
+              interestType: l.interestType,
+              repaymentFrequency: l.repaymentFrequency,
+              processingFeePercentage: product.processingFeePercentage,
+              startDate: l.startDate || l.applicationDate,
+            });
+            newSchedule = reCalc.schedule;
+            newTotalInterest = reCalc.totalInterest;
+            newTotalPayable = reCalc.totalPayable;
+            newInstallments = reCalc.totalInstallments;
+            newProcFee = reCalc.processingFee;
+          }
+
+          return {
+            ...l,
+            status: 'Approved',
+            coopStep: 'MANAGER_APPROVED',
+            approvalDate: approvalData.approvalDate || new Date().toISOString().split('T')[0],
+            approvedBy: approvalData.approvedBy,
+            principalAmount: approvalData.approvedAmount,
+            interestRate: approvalData.approvedInterestRate,
+            termMonths: approvalData.approvedTermMonths,
+            totalInstallments: newInstallments,
+            processingFee: newProcFee,
+            totalInterest: newTotalInterest,
+            totalPayable: newTotalPayable,
+            remainingBalance: newTotalPayable,
+            schedule: newSchedule,
+            approvalInfo: approvalData,
+          };
+        }
+        return l;
+      })
+    );
+
+    logAudit(
+      'LOAN_APPLICATION_APPROVED',
+      `Approved loan ${loanId} for ₱${approvalData.approvedAmount.toLocaleString()} at ${approvalData.approvedInterestRate}% by ${approvalData.approvedBy} (${approvalData.approvedByRole})`,
+      'LOAN'
+    );
+  };
+
+  // Formal Loan Rejection
+  const rejectLoanApplication = (loanId: string, rejectionData: LoanRejectionInfo) => {
+    setLoans((prev) =>
+      prev.map((l) => {
+        if (l.id === loanId) {
+          return {
+            ...l,
+            status: 'Rejected',
+            coopStep: 'REJECTED',
+            rejectionReason: rejectionData.rejectionReason,
+            rejectionInfo: rejectionData,
+          };
+        }
+        return l;
+      })
+    );
+
+    logAudit(
+      'LOAN_APPLICATION_REJECTED',
+      `Rejected loan ${loanId} by ${rejectionData.rejectedBy}. Reason: ${rejectionData.rejectionReason}`,
+      'LOAN'
+    );
+  };
+
+  // Comprehensive Loan Disbursement Record with strict approval enforcement
+  const disburseLoanRecord = (loanId: string, disbursementData: LoanDisbursementInfo) => {
+    const loan = loans.find((l) => l.id === loanId);
+    if (!loan) {
+      return { success: false, message: 'Loan application not found.' };
+    }
+
+    // STRICT RULE: Prevent disbursement unless loan has been officially APPROVED
+    if (loan.status !== 'Approved') {
+      const msg = `Disbursement Blocked: Loan #${loan.loanNumber} is currently in "${loan.status}" status. The system prohibits disbursement until the application is officially Approved.`;
+      logAudit('LOAN_DISBURSEMENT_BLOCKED', msg, 'LOAN');
+      return { success: false, message: msg };
+    }
+
+    const releaseDate = disbursementData.disbursementDate || new Date().toISOString().split('T')[0];
+
+    const voucher: LoanDisbursementVoucher = {
+      voucherNumber: `CV-${new Date().getFullYear()}-${String(loans.length + 200).padStart(4, '0')}`,
+      preparedByBookkeeper: `${currentUser.name} (Accounting & Disbursing Officer)`,
+      preparedDate: releaseDate,
+      grossAmount: disbursementData.grossAmount || loan.principalAmount,
+      processingFee: disbursementData.processingFee || loan.processingFee || 0,
+      serviceFee: 500,
+      capitalBuildUpDeduction: disbursementData.capitalBuildUpDeduction || 0,
+      insuranceFee: disbursementData.insuranceFee || 0,
+      netProceeds: disbursementData.netProceeds,
+      paymentMode: (disbursementData.disbursementMethod as any) || 'Bank Transfer',
+      checkNumberOrRef: disbursementData.referenceNumber,
+      approvedByManager: disbursementData.disbursedBy,
+      approvedDate: releaseDate,
+    };
+
+    setLoans((prev) =>
+      prev.map((l) => {
+        if (l.id === loanId) {
+          return {
+            ...l,
+            status: 'Disbursed',
+            coopStep: 'DISBURSED',
+            disbursedDate: releaseDate,
+            disbursedBy: disbursementData.disbursedBy,
+            disbursementMethod: disbursementData.disbursementMethod,
+            disbursementInfo: disbursementData,
+            disbursementVoucher: voucher,
+            nextPaymentDate: l.schedule[0]?.dueDate || '',
+          };
+        }
+        return l;
+      })
+    );
+
+    // Update borrower profile
+    setBorrowers((prev) =>
+      prev.map((b) =>
+        b.id === loan.borrowerId
+          ? {
+              ...b,
+              activeLoansCount: (b.activeLoansCount || 0) + 1,
+              totalBorrowed: (b.totalBorrowed || 0) + loan.principalAmount,
+              lastActivityDate: releaseDate,
+            }
+          : b
+      )
+    );
+
+    logAudit(
+      'LOAN_DISBURSED_RELEASED',
+      `Disbursed net proceeds ₱${disbursementData.netProceeds.toLocaleString()} for loan ${loan.loanNumber} via ${disbursementData.disbursementMethod} (Ref: ${disbursementData.referenceNumber})`,
+      'LOAN'
+    );
+
+    return { success: true };
+  };
+
+  // Mark loan as completed / fully repaid
+  const markLoanCompleted = (loanId: string) => {
+    const loan = loans.find((l) => l.id === loanId);
+    if (!loan) return;
+
+    setLoans((prev) =>
+      prev.map((l) =>
+        l.id === loanId
+          ? {
+              ...l,
+              status: 'Completed',
+              remainingBalance: 0,
+            }
+          : l
+      )
+    );
+
+    if (loan.borrowerId) {
+      setBorrowers((prev) =>
+        prev.map((b) =>
+          b.id === loan.borrowerId
+            ? {
+                ...b,
+                activeLoansCount: Math.max(0, (b.activeLoansCount || 1) - 1),
+                totalRepaid: (b.totalRepaid || 0) + loan.remainingBalance,
+              }
+            : b
+        )
+      );
+    }
+
+    logAudit('LOAN_COMPLETED', `Marked loan ${loan.loanNumber} as fully Completed and settled`, 'LOAN');
+  };
+
+  // Mark loan as defaulted
+  const markLoanDefaulted = (loanId: string, reason: string = 'Critical non-repayment default') => {
+    setLoans((prev) =>
+      prev.map((l) => (l.id === loanId ? { ...l, status: 'Defaulted', isIrregularAccount: true } : l))
+    );
+    logAudit('LOAN_DEFAULTED', `Marked loan ${loanId} as Defaulted. Reason: ${reason}`, 'LOAN');
   };
 
   // Step 2: Loan Processor Check
@@ -1398,6 +1659,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         l.id === loanId
           ? {
               ...l,
+              status: 'Under Review',
               coopStep: 'PROCESSOR_VERIFIED',
               notes: notes ? `${l.purpose} | Processor Note: ${notes}` : l.purpose,
             }
@@ -1488,6 +1750,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
             status: 'Approved',
             coopStep: 'MANAGER_APPROVED',
             approvalDate: new Date().toISOString().split('T')[0],
+            approvedBy: currentUser.name,
             disbursementVoucher: updatedVoucher,
           };
         }
@@ -1497,10 +1760,17 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     logAudit('LOAN_MANAGER_APPROVED', `Manager signed off loan voucher for loan ${loanId}`, 'LOAN');
   };
 
-  // Step 7: Loan Released / Disbursed
+  // Step 7: Loan Released / Disbursed (Guarded)
   const disburseLoan = (loanId: string, method: string = 'Bank Transfer') => {
     const loan = loans.find((l) => l.id === loanId);
     if (!loan) return;
+
+    // PREVENT DISBURSEMENT UNLESS APPROVED
+    if (loan.status !== 'Approved') {
+      alert(`Cannot disburse loan #${loan.loanNumber}: Current status is "${loan.status}". The loan must be Approved before funds can be released.`);
+      logAudit('LOAN_DISBURSEMENT_ATTEMPT_DENIED', `Denied disbursement attempt on unapproved loan ${loan.loanNumber} (status: ${loan.status})`, 'LOAN');
+      return;
+    }
 
     setLoans((prev) =>
       prev.map((l) => {
@@ -1510,6 +1780,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
             status: 'Disbursed',
             coopStep: 'DISBURSED',
             disbursedDate: new Date().toISOString().split('T')[0],
+            disbursedBy: currentUser.name,
             nextPaymentDate: l.schedule[0]?.dueDate || '',
             disbursementMethod: method,
           };
@@ -1524,8 +1795,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         b.id === loan.borrowerId
           ? {
               ...b,
-              activeLoansCount: b.activeLoansCount + 1,
-              totalBorrowed: b.totalBorrowed + loan.principalAmount,
+              activeLoansCount: (b.activeLoansCount || 0) + 1,
+              totalBorrowed: (b.totalBorrowed || 0) + loan.principalAmount,
               lastActivityDate: new Date().toISOString().split('T')[0],
             }
           : b
@@ -1537,7 +1808,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
 
   const rejectLoan = (loanId: string, reason: string = 'Did not meet credit criteria') => {
     setLoans((prev) =>
-      prev.map((l) => (l.id === loanId ? { ...l, status: 'Rejected', coopStep: 'REJECTED' } : l))
+      prev.map((l) => (l.id === loanId ? { ...l, status: 'Rejected', coopStep: 'REJECTED', rejectionReason: reason } : l))
     );
     logAudit('LOAN_REJECTED', `Rejected loan application ${loanId}: ${reason}`, 'LOAN');
   };
@@ -1980,6 +2251,13 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         updateBorrower,
         deleteBorrower,
         createLoanApplication,
+        submitLoanForApproval,
+        startLoanReview,
+        approveLoanApplication,
+        rejectLoanApplication,
+        disburseLoanRecord,
+        markLoanCompleted,
+        markLoanDefaulted,
 
         loanProcessorVerifyLoan,
         bookkeeperVerifyLoan,
