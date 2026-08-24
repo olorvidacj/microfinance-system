@@ -28,7 +28,14 @@ import {
   Info,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
-import { MembershipApplication, MemberUpdateRequest, Borrower, MemberFollowUpLog } from '../types';
+import {
+  MembershipApplication,
+  MemberUpdateRequest,
+  Borrower,
+  MemberFollowUpLog,
+  BackgroundInvestigation,
+  UpdateChannel,
+} from '../types';
 import { formatCurrency } from '../utils/loanMath';
 
 export const MembershipView: React.FC = () => {
@@ -85,35 +92,46 @@ export const MembershipView: React.FC = () => {
   });
 
   // Background Investigation Form State
-  const [biForm, setBiForm] = useState({
+  const [biForm, setBiForm] = useState<BackgroundInvestigation>({
     investigatorName: 'Prof. Teresa Santos (Education Committee)',
     investigationDate: new Date().toISOString().split('T')[0],
-    characterReferenceChecked: true,
-    pmesSeminarCompleted: true,
-    pmesDate: new Date().toISOString().split('T')[0],
-    residenceCheckRemarks: 'Confirmed permanent resident for over 4 years. Good standing in community.',
-    communityReputation: 'Excellent' as 'Excellent' | 'Satisfactory' | 'Poor',
-    recommendation: 'Recommended for Full Approval' as
-      | 'Recommended for Full Approval'
-      | 'Conditional Approval'
-      | 'Not Recommended',
+    communityReputation: 'Excellent',
+    residenceConfirmed: true,
+    incomeSourceVerified: true,
+    pmesSeminarAttended: true,
+    recommendation: 'RECOMMEND_APPROVAL',
+    findingsNotes: 'Confirmed permanent resident for over 4 years. Good standing in community. Satisfactory PMES seminar engagement.',
   });
 
   // New Member Update Request Form State
-  const [updateForm, setUpdateForm] = useState({
+  const [updateForm, setUpdateForm] = useState<{
+    memberId: string;
+    channel: UpdateChannel;
+    fieldToUpdate: 'Civil Status' | 'Address' | 'Contact Number' | 'Employment' | 'Beneficiary';
+    newValue: string;
+    reason: string;
+    supportingDocType: 'Marriage Contract' | 'Barangay Certificate' | 'Valid ID' | 'Proof of Billing' | 'Other';
+    supportingDocFileName: string;
+  }>({
     memberId: '',
-    channel: 'Office Visit' as 'Office Visit' | 'Mobile' | 'Facebook',
-    fieldToUpdate: 'Civil Status' as 'Civil Status' | 'Address' | 'Contact Number' | 'Employment',
+    channel: 'Office Visit',
+    fieldToUpdate: 'Civil Status',
     newValue: 'Married (Spouse: Roberto Santos)',
     reason: 'Recent marriage on Oct 12, 2025. Requesting update in cooperative records.',
-    supportingDocType: 'Marriage Contract' as 'Marriage Contract' | 'Barangay Certificate' | 'Valid Government ID' | 'Proof of Billing' | 'Other',
+    supportingDocType: 'Marriage Contract',
     supportingDocFileName: 'Official_Marriage_Certificate_PSA.pdf',
   });
 
   // Follow-up Form State
-  const [followUpForm, setFollowUpForm] = useState({
-    contactChannel: 'Facebook' as 'Facebook' | 'SMS' | 'Phone Call' | 'Home Visit (Education Comm)',
-    purpose: 'Inactivity & Loan Reminder',
+  const [followUpForm, setFollowUpForm] = useState<{
+    contactChannel: 'Facebook' | 'SMS' | 'Phone Call' | 'Education Committee Field Visit';
+    purpose: 'Inactivity Check' | 'Loan Follow-up' | 'Savings Reactivation' | 'General Welfare';
+    memberResponse: string;
+    actionTaken: 'Payment Promised' | 'Restructuring Requested' | 'Contact Updated' | 'No Answer' | 'Reactivated';
+    nextFollowUpDate: string;
+  }>({
+    contactChannel: 'Facebook',
+    purpose: 'Loan Follow-up',
     memberResponse: 'Member replied on FB Messenger promising to visit branch to deposit and settle balance on Friday.',
     actionTaken: 'Payment Promised',
     nextFollowUpDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -1015,7 +1033,7 @@ export const MembershipView: React.FC = () => {
 
             <form onSubmit={handleSaveBI} className="mt-6 space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Assigned Investigator</label>
+                <label className="block font-semibold text-slate-700 mb-1">Assigned Investigator / Committee Member</label>
                 <input
                   type="text"
                   required
@@ -1025,25 +1043,35 @@ export const MembershipView: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={biForm.pmesSeminarCompleted}
-                    onChange={(e) => setBiForm({ ...biForm, pmesSeminarCompleted: e.target.checked })}
+                    checked={biForm.pmesSeminarAttended}
+                    onChange={(e) => setBiForm({ ...biForm, pmesSeminarAttended: e.target.checked })}
                     className="rounded text-purple-600"
                   />
-                  <span className="font-semibold text-slate-800">PMES Seminar Completed</span>
+                  <span className="font-semibold text-slate-800">PMES Attended</span>
                 </label>
 
                 <label className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={biForm.characterReferenceChecked}
-                    onChange={(e) => setBiForm({ ...biForm, characterReferenceChecked: e.target.checked })}
+                    checked={biForm.residenceConfirmed}
+                    onChange={(e) => setBiForm({ ...biForm, residenceConfirmed: e.target.checked })}
                     className="rounded text-purple-600"
                   />
-                  <span className="font-semibold text-slate-800">Character References Checked</span>
+                  <span className="font-semibold text-slate-800">Residence Confirmed</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={biForm.incomeSourceVerified}
+                    onChange={(e) => setBiForm({ ...biForm, incomeSourceVerified: e.target.checked })}
+                    className="rounded text-purple-600"
+                  />
+                  <span className="font-semibold text-slate-800">Income Verified</span>
                 </label>
               </div>
 
@@ -1055,17 +1083,18 @@ export const MembershipView: React.FC = () => {
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                 >
                   <option value="Excellent">Excellent - Highly respected in neighborhood & parish</option>
+                  <option value="Good">Good - Well-regarded, steady employment</option>
                   <option value="Satisfactory">Satisfactory - No disputes or criminal background</option>
-                  <option value="Poor">Poor - Negative records or disputes</option>
+                  <option value="Poor">Poor - Negative records or community disputes</option>
                 </select>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Residence Check & Neighborhood Remarks</label>
+                <label className="block font-semibold text-slate-700 mb-1">Investigation Findings & Remarks</label>
                 <textarea
                   rows={2}
-                  value={biForm.residenceCheckRemarks}
-                  onChange={(e) => setBiForm({ ...biForm, residenceCheckRemarks: e.target.value })}
+                  value={biForm.findingsNotes}
+                  onChange={(e) => setBiForm({ ...biForm, findingsNotes: e.target.value })}
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                 />
               </div>
@@ -1077,9 +1106,10 @@ export const MembershipView: React.FC = () => {
                   onChange={(e) => setBiForm({ ...biForm, recommendation: e.target.value as any })}
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-purple-900"
                 >
-                  <option value="Recommended for Full Approval">Recommended for Full Approval</option>
-                  <option value="Conditional Approval">Conditional Approval</option>
-                  <option value="Not Recommended">Not Recommended</option>
+                  <option value="RECOMMEND_APPROVAL">Recommend for Full Approval</option>
+                  <option value="CONDITIONAL">Conditional Approval</option>
+                  <option value="DEFER">Defer for Further Background Checking</option>
+                  <option value="REJECT">Reject Application</option>
                 </select>
               </div>
 

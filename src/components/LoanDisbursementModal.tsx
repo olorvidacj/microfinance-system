@@ -23,12 +23,14 @@ interface LoanDisbursementModalProps {
   isOpen: boolean;
   onClose: () => void;
   loan: Loan | null;
+  onDisbursed?: () => void;
 }
 
 export const LoanDisbursementModal: React.FC<LoanDisbursementModalProps> = ({
   isOpen,
   onClose,
   loan,
+  onDisbursed,
 }) => {
   const { disburseLoanRecord, currentUser } = useLoan();
 

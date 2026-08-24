@@ -238,3 +238,181 @@ export function calculateLatePenalty(
   return Math.round(overdueAmount * dailyRate * daysOverdue * 100) / 100;
 }
 
+/**
+ * 5. INSTALLMENT STATUS EVALUATOR
+ * Dynamically computes installment status based on payment progress and due date.
+ * Accepts either an InstallmentScheduleItem object or (dueDate, totalDue, amountPaid, referenceDateStr).
+ */
+export function getComputedInstallmentStatus(
+  itemOrDueDate: { dueDate: string; totalDue: number; amountPaid?: number } | string,
+  totalDue?: number,
+  amountPaid?: number,
+  referenceDateStr?: string
+): 'Upcoming' | 'Due' | 'Partially Paid' | 'Paid' | 'Overdue' {
+  let due = '';
+  let dueAmt = 0;
+  let paidAmt = 0;
+  let refDate = referenceDateStr;
+
+  if (typeof itemOrDueDate === 'object' && itemOrDueDate !== null) {
+    due = itemOrDueDate.dueDate;
+    dueAmt = itemOrDueDate.totalDue;
+    paidAmt = itemOrDueDate.amountPaid || 0;
+  } else if (typeof itemOrDueDate === 'string') {
+    due = itemOrDueDate;
+    dueAmt = totalDue || 0;
+    paidAmt = amountPaid || 0;
+  }
+
+  if (paidAmt >= dueAmt - 0.001 && dueAmt > 0) {
+    return 'Paid';
+  }
+
+  const today = refDate || new Date().toISOString().split('T')[0];
+  const dueDay = due ? due.split('T')[0] : today;
+
+  if (paidAmt > 0) {
+    return 'Partially Paid';
+  }
+
+  if (dueDay < today) {
+    return 'Overdue';
+  }
+  if (dueDay === today) {
+    return 'Due';
+  }
+  return 'Upcoming';
+}
+
+/**
+ * 6. ALLOCATE PAYMENT ACROSS INSTALLMENT SCHEDULE
+ * Applies a payment sequentially to outstanding installments and calculates principal, interest, and remaining balance.
+ */
+export function allocatePaymentToSchedule(
+  schedule: InstallmentScheduleItem[],
+  paymentAmount: number,
+  paymentDateStr?: string
+): {
+  updatedSchedule: InstallmentScheduleItem[];
+  principalPaid: number;
+  interestPaid: number;
+  remainingUnallocated: number;
+} {
+  let unallocated = paymentAmount;
+  let totalPrincipalPaid = 0;
+  let totalInterestPaid = 0;
+  const dateStr = paymentDateStr || new Date().toISOString().split('T')[0];
+
+  const updatedSchedule = schedule.map((item) => {
+    const currentPaid = item.amountPaid || 0;
+    const unpaidAmount = Math.max(0, item.totalDue - currentPaid);
+
+    if (unpaidAmount <= 0.001) {
+      return {
+        ...item,
+        status: 'Paid' as const,
+        amountPaid: item.totalDue,
+      };
+    }
+
+    if (unallocated > 0) {
+      const payToThis = Math.min(unallocated, unpaidAmount);
+      const newPaid = Math.round((currentPaid + payToThis) * 100) / 100;
+      unallocated = Math.max(0, Math.round((unallocated - payToThis) * 100) / 100);
+
+      // Apportion principal vs interest for this installment
+      const principalRatio = item.totalDue > 0 ? item.principal / item.totalDue : 1;
+      const interestRatio = item.totalDue > 0 ? item.interest / item.totalDue : 0;
+
+      const pPaid = Math.round(payToThis * principalRatio * 100) / 100;
+      const iPaid = Math.round((payToThis - pPaid) * 100) / 100;
+
+      totalPrincipalPaid += pPaid;
+      totalInterestPaid += iPaid;
+
+      const isFullyPaid = newPaid >= item.totalDue - 0.001;
+
+      return {
+        ...item,
+        amountPaid: isFullyPaid ? item.totalDue : newPaid,
+        status: isFullyPaid ? ('Paid' as const) : ('Partially Paid' as const),
+        paidDate: isFullyPaid ? dateStr : item.paidDate || dateStr,
+      };
+    }
+
+    // Unpaid installment with no payment applied in this run
+    return {
+      ...item,
+      status: getComputedInstallmentStatus(item.dueDate, item.totalDue, item.amountPaid, dateStr),
+    };
+  });
+
+  return {
+    updatedSchedule,
+    principalPaid: Math.round(totalPrincipalPaid * 100) / 100,
+    interestPaid: Math.round(totalInterestPaid * 100) / 100,
+    remainingUnallocated: unallocated,
+  };
+}
+
+/**
+ * 7. NUMBER TO WORDS CONVERTER (PHILIPPINE PESO RECEIPT CONVENTION)
+ */
+export function numberToWords(num: number): string {
+  if (num === 0) return 'Zero Pesos Only';
+  if (isNaN(num) || num < 0) return '';
+
+  const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const scales = ['', 'Thousand', 'Million', 'Billion'];
+
+  function convertGroup(n: number): string {
+    let groupStr = '';
+    const hundred = Math.floor(n / 100);
+    const remainder = n % 100;
+
+    if (hundred > 0) {
+      groupStr += units[hundred] + ' Hundred ';
+    }
+
+    if (remainder >= 10 && remainder < 20) {
+      groupStr += teens[remainder - 10] + ' ';
+    } else {
+      const ten = Math.floor(remainder / 10);
+      const unit = remainder % 10;
+      if (ten > 0) groupStr += tens[ten] + ' ';
+      if (unit > 0) groupStr += units[unit] + ' ';
+    }
+
+    return groupStr.trim();
+  }
+
+  const integerPart = Math.floor(num);
+  const centsPart = Math.round((num - integerPart) * 100);
+
+  let currentNum = integerPart;
+  let scaleIndex = 0;
+  let words = '';
+
+  while (currentNum > 0) {
+    const group = currentNum % 1000;
+    if (group > 0) {
+      const groupText = convertGroup(group);
+      words = groupText + (scales[scaleIndex] ? ' ' + scales[scaleIndex] : '') + ' ' + words;
+    }
+    currentNum = Math.floor(currentNum / 1000);
+    scaleIndex++;
+  }
+
+  words = words.trim();
+  if (!words) words = 'Zero';
+
+  let result = words + ' Pesos';
+  if (centsPart > 0) {
+    result += ` and ${centsPart}/100`;
+  }
+  return result + ' Only';
+}
+
+

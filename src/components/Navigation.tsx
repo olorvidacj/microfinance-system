@@ -24,6 +24,7 @@ export type NavTab =
   | 'groupLending'
   | 'clientPortal'
   | 'brochure'
+  | 'reminders'
   | 'calculator'
   | 'branches'
   | 'products'

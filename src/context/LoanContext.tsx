@@ -49,6 +49,8 @@ import {
   calculateLatePenalty,
   calculateLoanSchedule,
   calculateMonthlySavingsInterest,
+  allocatePaymentToSchedule,
+  getComputedInstallmentStatus,
 } from '../utils/loanMath';
 
 interface LoanContextType {
@@ -1899,37 +1901,25 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       rebate = calculateAdvancePaymentRebate(loan.remainingBalance, unpaidInterest, product?.earlySettlementRebateRate || 20);
     }
 
-    const effectivePaymentAmount = paymentData.amount + rebate;
+    const penaltyPortion = Math.min(paymentData.amount, latePenalty);
+    const amountForSchedule = (paymentData.amount - penaltyPortion) + rebate;
 
-    // Allocate breakdown: Penalty -> Interest -> Principal
-    let penaltyPortion = Math.min(paymentData.amount, latePenalty);
-    let rem = paymentData.amount - penaltyPortion;
-    let interestPortion = Math.min(rem, Math.round(loan.totalInterest * 0.15));
-    let principalPortion = rem - interestPortion;
+    // Apply sequential allocation across installment schedule (supports partial payments & multiple installments)
+    const { updatedSchedule, principalPaid, interestPaid } = allocatePaymentToSchedule(
+      loan.schedule || [],
+      amountForSchedule,
+      dateStr
+    );
 
-    const newTotalPaid = loan.totalPaid + paymentData.amount;
-    const newRemainingBalance = Math.max(0, loan.remainingBalance - effectivePaymentAmount);
+    const effectivePaymentDeduction = paymentData.amount - penaltyPortion + rebate;
+    const newTotalPaid = Math.round((loan.totalPaid + paymentData.amount) * 100) / 100;
+    const newRemainingBalance = Math.max(0, Math.round((loan.remainingBalance - effectivePaymentDeduction) * 100) / 100);
 
-    const isSettled = newRemainingBalance <= 0;
+    const isSettled = newRemainingBalance <= 0.01;
 
-    // Update Installment Schedule
-    const updatedSchedule = loan.schedule.map((item) => {
-      if (item.status === 'Pending' || item.status === 'Overdue') {
-        if (effectivePaymentAmount >= item.totalDue) {
-          return {
-            ...item,
-            status: 'Paid' as const,
-            amountPaid: item.totalDue,
-            paidDate: dateStr,
-            lateFeeApplied: latePenalty > 0 ? latePenalty : undefined,
-            earlyRebateApplied: rebate > 0 ? rebate : undefined,
-          };
-        }
-      }
-      return item;
-    });
-
-    const nextPending = updatedSchedule.find((item) => item.status === 'Pending');
+    // Find next unpaid installment
+    const nextPending = updatedSchedule.find((item) => item.status !== 'Paid');
+    const remainingOverdueCount = updatedSchedule.filter((item) => item.status === 'Overdue').length;
 
     const orNumber = `OR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -1946,8 +1936,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       paymentMethod: paymentData.paymentMethod,
       transactionReference: paymentData.transactionReference || `TRX-${Date.now().toString().slice(-6)}`,
       collectedBy: `${currentUser.name} (${currentUser.title})`,
-      principalPortion,
-      interestPortion,
+      principalPortion: principalPaid,
+      interestPortion: interestPaid,
       penaltyPortion,
       rebateDiscount: rebate,
       paymentScheduleType: loan.repaymentFrequency,
@@ -1961,16 +1951,22 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     setLoans((prev) =>
       prev.map((l) => {
         if (l.id === loan.id) {
+          const newStatus: LoanStatus = isSettled
+            ? 'Completed'
+            : remainingOverdueCount > 0
+            ? 'In Arrears' as any
+            : 'Active';
+
           return {
             ...l,
             totalPaid: newTotalPaid,
             remainingBalance: newRemainingBalance,
-            status: isSettled ? ('Settled' as const) : ('Disbursed' as const),
+            status: newStatus,
             schedule: updatedSchedule,
             nextPaymentDate: nextPending?.dueDate,
             lastPaymentDate: dateStr,
-            daysInArrears: 0,
-            isIrregularAccount: false,
+            daysInArrears: remainingOverdueCount > 0 ? l.daysInArrears : 0,
+            isIrregularAccount: remainingOverdueCount > 0,
             totalLatePenaltiesCharged: (l.totalLatePenaltiesCharged || 0) + latePenalty,
             totalRebatesAwarded: (l.totalRebatesAwarded || 0) + rebate,
           };
@@ -1985,8 +1981,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         if (b.id === loan.borrowerId) {
           return {
             ...b,
-            totalRepaid: b.totalRepaid + paymentData.amount,
-            activeLoansCount: isSettled ? Math.max(0, b.activeLoansCount - 1) : b.activeLoansCount,
+            totalRepaid: (b.totalRepaid || 0) + paymentData.amount,
+            activeLoansCount: isSettled ? Math.max(0, (b.activeLoansCount || 1) - 1) : b.activeLoansCount,
             memberStatus: 'Active',
             lastActivityDate: dateStr,
           };
@@ -2002,7 +1998,11 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       );
     }
 
-    logAudit('PAYMENT_RECEIVED_OFFICIAL_RECEIPT', `Collected ₱${paymentData.amount.toLocaleString()} on loan ${loan.loanNumber} via ${paymentData.paymentMethod} (OR ${orNumber})`, 'PAYMENT');
+    logAudit(
+      'PAYMENT_RECEIVED_OFFICIAL_RECEIPT',
+      `Collected ₱${paymentData.amount.toLocaleString()} (Principal: ₱${principalPaid.toLocaleString()}, Interest: ₱${interestPaid.toLocaleString()}) on loan ${loan.loanNumber} via ${paymentData.paymentMethod} (OR ${orNumber})`,
+      'PAYMENT'
+    );
 
     return newPayment;
   };

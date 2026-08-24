@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   BellRing,
   Sparkles,
@@ -60,7 +60,7 @@ export const RemindersView: React.FC = () => {
 
   // Selected item for AI reminder generator
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
-  const [channel, setChannel] = useState<'SMS' | 'Email' | 'WhatsApp'>('SMS');
+  const [channel, setChannel] = useState<'SMS' | 'Facebook' | 'Phone Call' | 'Field Visit'>('SMS');
   const [urgency, setUrgency] = useState<string>('Friendly Reminder');
   const [loadingAi, setLoadingAi] = useState(false);
   const [generatedMessage, setGeneratedMessage] = useState<string>('');
@@ -307,9 +307,10 @@ export const RemindersView: React.FC = () => {
                   }}
                   className="w-full p-2 bg-gray-50 border border-gray-200 rounded-xl"
                 >
-                  <option value="SMS">SMS (Text Message)</option>
-                  <option value="WhatsApp">WhatsApp Message</option>
-                  <option value="Email">Email Letter</option>
+                  <option value="SMS">SMS (Cellular Text Message)</option>
+                  <option value="Facebook">Facebook Messenger</option>
+                  <option value="Phone Call">Telephone / Direct Voice Call</option>
+                  <option value="Field Visit">Field Officer Visit (Barangay)</option>
                 </select>
               </div>
 

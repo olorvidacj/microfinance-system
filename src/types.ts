@@ -396,7 +396,7 @@ export interface GuarantorItem {
 
 export type Guarantor = GuarantorItem;
 
-export type InstallmentStatus = 'Paid' | 'Pending' | 'Due Today' | 'Overdue' | 'Partial' | 'Partially Paid';
+export type InstallmentStatus = 'Upcoming' | 'Due' | 'Partially Paid' | 'Paid' | 'Overdue' | 'Due Today' | 'Pending' | 'Partial';
 
 export interface InstallmentScheduleItem {
   installmentNumber: number;

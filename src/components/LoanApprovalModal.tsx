@@ -22,12 +22,14 @@ interface LoanApprovalModalProps {
   isOpen: boolean;
   onClose: () => void;
   loan: Loan | null;
+  onApproved?: () => void;
 }
 
 export const LoanApprovalModal: React.FC<LoanApprovalModalProps> = ({
   isOpen,
   onClose,
   loan,
+  onApproved,
 }) => {
   const { approveLoanApplication, rejectLoanApplication, currentUser, borrowers } = useLoan();
 

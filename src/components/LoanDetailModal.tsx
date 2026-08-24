@@ -23,9 +23,10 @@ import {
   XCircle,
   ArrowRight,
   Lock,
+  Filter,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
-import { formatCurrency, formatDate } from '../utils/loanMath';
+import { formatCurrency, formatDate, getComputedInstallmentStatus } from '../utils/loanMath';
 import { Loan } from '../types';
 
 interface LoanDetailModalProps {
@@ -49,6 +50,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
 }) => {
   const { branches, currentUser, submitLoanForApproval, startLoanReview } = useLoan();
   const [activeTab, setActiveTab] = useState<'schedule' | 'approval' | 'voucher' | 'collateral'>('schedule');
+  const [scheduleFilter, setScheduleFilter] = useState<'ALL' | 'OVERDUE' | 'UPCOMING' | 'PAID' | 'PARTIAL'>('ALL');
 
   if (!isOpen || !loan) return null;
 
@@ -75,7 +77,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
       s.totalDue,
       s.amountPaid,
       s.remainingBalance,
-      s.status,
+      getComputedInstallmentStatus(s),
     ]);
 
     const csvContent =
@@ -93,15 +95,19 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'Paid':
-        return 'bg-emerald-100 text-emerald-800 font-semibold';
+        return 'bg-emerald-100 text-emerald-800 font-bold border border-emerald-200';
       case 'Overdue':
-        return 'bg-rose-100 text-rose-800 font-bold';
+        return 'bg-rose-100 text-rose-800 font-bold border border-rose-200 animate-pulse';
       case 'Due Today':
-        return 'bg-amber-100 text-amber-800 font-bold';
+      case 'Due':
+        return 'bg-amber-100 text-amber-800 font-bold border border-amber-200';
       case 'Partially Paid':
-        return 'bg-blue-100 text-blue-800';
+      case 'Partial':
+        return 'bg-blue-100 text-blue-800 font-bold border border-blue-200';
+      case 'Upcoming':
+      case 'Pending':
       default:
-        return 'bg-slate-100 text-slate-700';
+        return 'bg-slate-100 text-slate-700 border border-slate-200 font-medium';
     }
   };
 
@@ -128,6 +134,23 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
         return 'bg-slate-100 text-slate-800 border-slate-300';
     }
   };
+
+  const filteredSchedule = loan.schedule.filter((item) => {
+    const computed = getComputedInstallmentStatus(item);
+    if (scheduleFilter === 'OVERDUE') return computed === 'Overdue';
+    if (scheduleFilter === 'UPCOMING') return computed === 'Upcoming' || computed === 'Due';
+    if (scheduleFilter === 'PAID') return computed === 'Paid';
+    if (scheduleFilter === 'PARTIAL') return computed === 'Partially Paid';
+    return true;
+  });
+
+  const paidCount = loan.schedule.filter((s) => getComputedInstallmentStatus(s) === 'Paid').length;
+  const overdueCount = loan.schedule.filter((s) => getComputedInstallmentStatus(s) === 'Overdue').length;
+  const upcomingCount = loan.schedule.filter((s) => {
+    const comp = getComputedInstallmentStatus(s);
+    return comp === 'Upcoming' || comp === 'Due';
+  }).length;
+
 
   return (
     <div id="loan-detail-modal" className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -354,19 +377,63 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
         <div className="p-6 max-h-[55vh] overflow-y-auto space-y-4 text-xs">
           {activeTab === 'schedule' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">Installment Repayment Schedule</h3>
                   <p className="text-xs text-slate-500">
-                    {loan.totalInstallments} total installments • {loan.repaymentFrequency} repayment schedule
+                    {loan.totalInstallments} total installments • {loan.repaymentFrequency} schedule • {paidCount} paid, {upcomingCount} upcoming, {overdueCount} overdue
                   </p>
                 </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={exportScheduleToCSV}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Installment Filter Chips */}
+              <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl w-fit">
                 <button
-                  onClick={exportScheduleToCSV}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition"
+                  type="button"
+                  onClick={() => setScheduleFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    scheduleFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  Export Schedule CSV
+                  All ({loan.schedule.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilter('UPCOMING')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    scheduleFilter === 'UPCOMING' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Upcoming ({upcomingCount})
+                </button>
+                {overdueCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setScheduleFilter('OVERDUE')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      scheduleFilter === 'OVERDUE' ? 'bg-rose-600 text-white shadow-xs' : 'text-rose-600 hover:bg-rose-100'
+                    }`}
+                  >
+                    Overdue ({overdueCount})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilter('PAID')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                    scheduleFilter === 'PAID' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Paid ({paidCount})
                 </button>
               </div>
 
@@ -378,44 +445,59 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                       <th className="py-2.5 px-3.5">Due Date</th>
                       <th className="py-2.5 px-3.5">Principal</th>
                       <th className="py-2.5 px-3.5">Interest</th>
-                      <th className="py-2.5 px-3.5">Total Installment</th>
+                      <th className="py-2.5 px-3.5">Total Due</th>
                       <th className="py-2.5 px-3.5">Amount Paid</th>
-                      <th className="py-2.5 px-3.5">Remaining Balance</th>
+                      <th className="py-2.5 px-3.5">Remaining Bal</th>
                       <th className="py-2.5 px-3.5 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {loan.schedule.map((item) => (
-                      <tr
-                        key={item.installmentNumber}
-                        className={`hover:bg-slate-50/80 transition ${
-                          item.status === 'Paid' ? 'bg-emerald-50/20' : ''
-                        }`}
-                      >
-                        <td className="py-2 px-3.5 font-bold text-slate-900">{item.installmentNumber}</td>
-                        <td className="py-2 px-3.5 font-medium">{formatDate(item.dueDate)}</td>
-                        <td className="py-2 px-3.5 font-mono">{formatCurrency(item.principal)}</td>
-                        <td className="py-2 px-3.5 font-mono text-slate-500">{formatCurrency(item.interest)}</td>
-                        <td className="py-2 px-3.5 font-mono font-bold text-slate-900">
-                          {formatCurrency(item.totalDue)}
-                        </td>
-                        <td className="py-2 px-3.5 font-mono text-emerald-700 font-semibold">
-                          {item.amountPaid > 0 ? formatCurrency(item.amountPaid) : '-'}
-                        </td>
-                        <td className="py-2 px-3.5 font-mono font-medium">
-                          {formatCurrency(item.remainingBalance)}
-                        </td>
-                        <td className="py-2 px-3.5 text-center">
-                          <span
-                            className={`inline-flex px-2 py-0.5 rounded-full text-[10px] ${getStatusBadge(
-                              item.status
-                            )}`}
-                          >
-                            {item.status}
-                          </span>
+                    {filteredSchedule.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-slate-400">
+                          No installments match the selected filter.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredSchedule.map((item) => {
+                        const computedStatus = getComputedInstallmentStatus(item);
+                        return (
+                          <tr
+                            key={item.installmentNumber}
+                            className={`hover:bg-slate-50/80 transition ${
+                              computedStatus === 'Paid'
+                                ? 'bg-emerald-50/20'
+                                : computedStatus === 'Overdue'
+                                ? 'bg-rose-50/30'
+                                : ''
+                            }`}
+                          >
+                            <td className="py-2.5 px-3.5 font-bold text-slate-900">{item.installmentNumber}</td>
+                            <td className="py-2.5 px-3.5 font-medium">{formatDate(item.dueDate)}</td>
+                            <td className="py-2.5 px-3.5 font-mono">{formatCurrency(item.principal)}</td>
+                            <td className="py-2.5 px-3.5 font-mono text-slate-500">{formatCurrency(item.interest)}</td>
+                            <td className="py-2.5 px-3.5 font-mono font-bold text-slate-900">
+                              {formatCurrency(item.totalDue)}
+                            </td>
+                            <td className="py-2.5 px-3.5 font-mono text-emerald-700 font-semibold">
+                              {item.amountPaid > 0 ? formatCurrency(item.amountPaid) : '-'}
+                            </td>
+                            <td className="py-2.5 px-3.5 font-mono font-medium">
+                              {formatCurrency(item.remainingBalance)}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-center">
+                              <span
+                                className={`inline-flex px-2 py-0.5 rounded-full text-[10px] ${getStatusBadge(
+                                  computedStatus
+                                )}`}
+                              >
+                                {computedStatus}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

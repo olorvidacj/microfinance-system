@@ -39,11 +39,11 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [latePenaltyRate, setLatePenaltyRate] = useState(
     editProduct?.latePenaltyRate || 5.0
   );
-  const [requiresCollateral, setRequiresCollateral] = useState(
-    editProduct?.requiresCollateral || false
+  const [requiresCollateral, setRequiresCollateral] = useState<boolean>(
+    Boolean(editProduct?.requiresCollateral ?? false)
   );
-  const [requiresGuarantor, setRequiresGuarantor] = useState(
-    editProduct?.requiresGuarantor || true
+  const [requiresGuarantor, setRequiresGuarantor] = useState<boolean>(
+    Boolean(editProduct?.requiresGuarantor ?? true)
   );
 
   if (!isOpen) return null;
