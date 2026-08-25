@@ -8,6 +8,24 @@ let dbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null;
 let poolInstance: pg.Pool | null = null;
 let activeConnectionString: string = '';
 
+export function getPool(overrideUrl?: string): pg.Pool | null {
+  const connectionString = overrideUrl ||
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.CLOUD_SQL_DATABASE_URL ||
+    '';
+
+  if (!connectionString) {
+    return null;
+  }
+
+  if (!poolInstance || activeConnectionString !== connectionString) {
+    getDb(overrideUrl);
+  }
+
+  return poolInstance;
+}
+
 export function getDb(overrideUrl?: string) {
   const connectionString = overrideUrl ||
     process.env.SUPABASE_DATABASE_URL ||

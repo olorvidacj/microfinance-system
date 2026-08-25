@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getDb, schema } from '../db/index';
+import { initDbSchema } from '../db/initDb';
 import { eq } from 'drizzle-orm';
 
 export interface AuthUserRecord {
@@ -97,7 +98,15 @@ class AuthStore {
         if (rows.length > 0) return rows[0] as unknown as AuthUserRecord;
         return null;
       } catch (err: any) {
-        console.warn('[Auth] DB user lookup failed, falling back to memory store:', err.message);
+        // If relation doesn't exist yet, attempt table initialization and retry once
+        try {
+          await initDbSchema();
+          const retryRows = await db.select().from(schema.users).where(eq(schema.users.email, normalized)).limit(1);
+          if (retryRows.length > 0) return retryRows[0] as unknown as AuthUserRecord;
+          return null;
+        } catch (innerErr: any) {
+          console.warn('[Auth] DB user lookup failed, falling back to memory store:', innerErr.message);
+        }
       }
     }
     return this.memoryUsers.get(normalized) || null;
@@ -126,7 +135,13 @@ class AuthStore {
         await db.insert(schema.users).values(user as any);
         return user;
       } catch (err: any) {
-        console.warn('[Auth] DB insert failed, using memory store:', err.message);
+        try {
+          await initDbSchema();
+          await db.insert(schema.users).values(user as any);
+          return user;
+        } catch (innerErr: any) {
+          console.warn('[Auth] DB insert failed, using memory store:', innerErr.message);
+        }
       }
     }
     this.memoryUsers.set(user.email.toLowerCase(), { ...user, createdAt: new Date() });
@@ -188,6 +203,7 @@ let defaultsReady = false;
 export async function ensureDefaultUsers(): Promise<void> {
   if (defaultsReady) return;
   defaultsReady = true;
+  await initDbSchema().catch(() => {});
   for (const def of DEFAULT_USERS) {
     const existing = await authStore.findByEmail(def.email);
     if (existing) continue;

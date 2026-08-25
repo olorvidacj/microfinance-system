@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import type { Request, Response, NextFunction } from 'express';
 import { getDb, schema, testDbConnection } from './src/db/index';
+import { initDbSchema } from './src/db/initDb';
 import { seedDatabaseIfEmpty } from './src/db/seed';
 import {
   signToken,
@@ -683,8 +684,14 @@ Return JSON:
 
 // Setup Vite development middleware or static file serving
 async function initServer() {
-  // Attempt auto-seed if connected
-  seedDatabaseIfEmpty().catch((err) => console.log('Seed check:', err.message));
+  // Initialize database schema, seed if empty, and ensure default users
+  try {
+    await initDbSchema();
+    await seedDatabaseIfEmpty();
+    await ensureDefaultUsers();
+  } catch (err: any) {
+    console.log('[Server Startup] DB init/seed:', err.message);
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

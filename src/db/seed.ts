@@ -1,4 +1,5 @@
 import { getDb, schema } from './index';
+import { initDbSchema } from './initDb';
 import {
   INITIAL_BRANCHES,
   INITIAL_STAFF,
@@ -17,14 +18,17 @@ import {
 export async function seedDatabaseIfEmpty() {
   const db = getDb();
   if (!db) {
-    console.warn('[Cloud SQL] Database connection unavailable. Skipping seed.');
+    console.warn('[Database] Connection unavailable. Skipping seed.');
     return;
   }
 
   try {
+    // Ensure all tables are created before checking/inserting
+    await initDbSchema();
+
     const existingBranches = await db.select().from(schema.branches).limit(1);
     if (existingBranches.length === 0) {
-      console.log('[Cloud SQL] Seeding initial cooperative database records...');
+      console.log('[Database] Seeding initial cooperative database records...');
 
       // 1. Branches
       if (INITIAL_BRANCHES.length > 0) {
