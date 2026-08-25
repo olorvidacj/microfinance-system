@@ -349,3 +349,27 @@ export const solidarityGroups = pgTable("solidarity_groups", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const financialTransactions = pgTable("financial_transactions", {
+  id: text("id").primaryKey(),
+  referenceNumber: text("reference_number").notNull(),
+  clientId: text("client_id").notNull(),
+  clientName: text("client_name"),
+  accountOrLoanId: text("account_or_loan_id").notNull(),
+  accountOrLoanType: text("account_or_loan_type").default("General"),
+  branchId: text("branch_id"),
+  transactionType: text("transaction_type").notNull(),
+  amount: doublePrecision("amount").notNull(),
+  transactionDate: text("transaction_date").notNull(),
+  paymentMethod: text("payment_method").notNull(),
+  processedBy: text("processed_by").notNull(),
+  processedByRole: text("processed_by_role"),
+  status: text("status").notNull(),
+  notes: text("notes"),
+  reversalOfTxnId: text("reversal_of_txn_id"),
+  reversedByTxnId: text("reversed_by_txn_id"),
+  metadata: jsonb("metadata"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+

@@ -365,6 +365,29 @@ export async function initDbSchema(): Promise<boolean> {
         status TEXT NOT NULL DEFAULT 'Active',
         created_at TIMESTAMP DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS financial_transactions (
+        id TEXT PRIMARY KEY,
+        reference_number TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        client_name TEXT,
+        account_or_loan_id TEXT NOT NULL,
+        account_or_loan_type TEXT DEFAULT 'General',
+        branch_id TEXT,
+        transaction_type TEXT NOT NULL,
+        amount DOUBLE PRECISION NOT NULL,
+        transaction_date TEXT NOT NULL,
+        payment_method TEXT NOT NULL,
+        processed_by TEXT NOT NULL,
+        processed_by_role TEXT,
+        status TEXT NOT NULL,
+        notes TEXT,
+        reversal_of_txn_id TEXT,
+        reversed_by_txn_id TEXT,
+        metadata JSONB,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
 
     console.log('[Database] Schema verified and all tables ensured.');

@@ -787,8 +787,59 @@ export interface SolidarityGroup {
   totalMeetingsHeld: number;
 }
 
-// 6. CLIENT PORTAL NOTIFICATIONS
-export type ClientNotificationCategory = 'ALL' | 'LOANS' | 'PAYMENTS' | 'SAVINGS' | 'GROUP';
+// 7. FINANCIAL TRANSACTION CORE
+export type FinancialTransactionType =
+  | 'Loan Disbursement'
+  | 'Loan Repayment'
+  | 'Savings Deposit'
+  | 'Savings Withdrawal'
+  | 'Fee'
+  | 'Penalty'
+  | 'Adjustment';
+
+export type FinancialTransactionStatus =
+  | 'Pending'
+  | 'Completed'
+  | 'Failed'
+  | 'Cancelled'
+  | 'Reversed';
+
+export interface FinancialTransaction {
+  id: string; // Transaction ID
+  referenceNumber: string; // Reference number (OR #, Voucher #, Slip #, Ref #)
+  clientId: string; // Client ID / Member ID
+  clientName?: string;
+  accountOrLoanId: string; // Account ID or Loan ID
+  accountOrLoanType?: 'Loan' | 'Savings' | 'Share Capital' | 'Membership' | 'General';
+  branchId?: string;
+  transactionType: FinancialTransactionType;
+  amount: number;
+  transactionDate: string; // YYYY-MM-DD
+  paymentMethod: string; // Cash, Bank Transfer, GCash, Check, Maya, Deduction, Adjustment
+  processedBy: string; // Staff name & role
+  processedByRole?: string;
+  status: FinancialTransactionStatus;
+  notes?: string;
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+  reversalOfTxnId?: string; // ID of the transaction this is reversing, if applicable
+  reversedByTxnId?: string; // ID of the adjustment that reversed this transaction, if applicable
+  metadata?: {
+    principalPortion?: number;
+    interestPortion?: number;
+    penaltyPortion?: number;
+    rebateDiscount?: number;
+    voucherNumber?: string;
+    feeType?: string;
+    penaltyReason?: string;
+    adjustmentReason?: string;
+    reversedAt?: string;
+    reversedBy?: string;
+    [key: string]: any;
+  };
+}
+
+export type ClientNotificationCategory = 'ALL' | 'LOANS' | 'PAYMENTS' | 'SAVINGS' | 'GROUP' | 'TRANSACTIONS';
 
 export type ClientNotificationType =
   | 'LOAN_APPROVAL'

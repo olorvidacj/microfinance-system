@@ -21,7 +21,7 @@ import { eq, desc } from 'drizzle-orm';
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3003;
+const PORT = 3000;
 
 app.use(express.json());
 
@@ -308,6 +308,7 @@ app.get('/api/db/all', requireAuth(['STAFF']), async (req: AuthedRequest, res) =
       withdrawalsList,
       auditLogsList,
       solidarityList,
+      financialTxList,
     ] = await Promise.all([
       db.select().from(schema.branches),
       db.select().from(schema.staff),
@@ -323,6 +324,7 @@ app.get('/api/db/all', requireAuth(['STAFF']), async (req: AuthedRequest, res) =
       db.select().from(schema.savingsWithdrawalRequests).orderBy(desc(schema.savingsWithdrawalRequests.createdAt)),
       db.select().from(schema.auditLogs).orderBy(desc(schema.auditLogs.createdAt)).limit(100),
       db.select().from(schema.solidarityGroups),
+      db.select().from(schema.financialTransactions).orderBy(desc(schema.financialTransactions.createdAt)),
     ]);
 
     res.json({
@@ -342,6 +344,7 @@ app.get('/api/db/all', requireAuth(['STAFF']), async (req: AuthedRequest, res) =
         savingsWithdrawalRequests: withdrawalsList,
         auditLogs: auditLogsList,
         solidarityGroups: solidarityList,
+        financialTransactions: financialTxList,
       },
     });
   } catch (error: any) {
@@ -434,6 +437,158 @@ app.post('/api/payments', requireAuth(['STAFF']), async (req: AuthedRequest, res
     res.status(500).json({ error: err.message });
   }
 });
+
+// 7. Financial Transactions Core API
+app.get('/api/financial-transactions', async (req: AuthedRequest, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ error: 'DB unavailable' });
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    const user = token ? verifyToken(token) : null;
+
+    let list;
+    if (user && user.role === 'CLIENT' && user.borrowerId) {
+      list = await db
+        .select()
+        .from(schema.financialTransactions)
+        .where(eq(schema.financialTransactions.clientId, user.borrowerId))
+        .orderBy(desc(schema.financialTransactions.createdAt));
+    } else {
+      list = await db
+        .select()
+        .from(schema.financialTransactions)
+        .orderBy(desc(schema.financialTransactions.createdAt));
+    }
+    res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/financial-transactions', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ error: 'DB unavailable' });
+    const txn = req.body;
+    const now = new Date().toISOString();
+    const record = {
+      ...txn,
+      createdAt: txn.createdAt || now,
+      updatedAt: txn.updatedAt || now,
+    };
+    await db.insert(schema.financialTransactions).values(record);
+    res.json({ success: true, data: record });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reversal & Adjustment: Never permanently delete completed financial transactions
+app.post('/api/financial-transactions/:id/reverse', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ error: 'DB unavailable' });
+    const { id } = req.params;
+    const { reason, reversedBy } = req.body;
+
+    const existing = await db
+      .select()
+      .from(schema.financialTransactions)
+      .where(eq(schema.financialTransactions.id, id))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    const orig = existing[0];
+    const now = new Date().toISOString();
+    const reversalTxnId = `TXN-REV-${Date.now().toString().slice(-6)}`;
+    const adjustmentRef = `REV-ADJ-${Date.now().toString().slice(-4)}`;
+
+    // Create adjustment transaction record linked to the reversed one
+    const adjustmentTxn = {
+      id: reversalTxnId,
+      referenceNumber: adjustmentRef,
+      clientId: orig.clientId,
+      clientName: orig.clientName,
+      accountOrLoanId: orig.accountOrLoanId,
+      accountOrLoanType: orig.accountOrLoanType,
+      branchId: orig.branchId,
+      transactionType: 'Adjustment',
+      amount: -Math.abs(orig.amount),
+      transactionDate: now.split('T')[0],
+      paymentMethod: 'Adjustment',
+      processedBy: reversedBy || 'Audit Officer / General Manager',
+      status: 'Completed',
+      notes: `Reversal & Adjustment of transaction ${orig.referenceNumber} (${orig.id}). Reason: ${reason || 'Correction of entry'}`,
+      reversalOfTxnId: orig.id,
+      metadata: {
+        reversedTxnId: orig.id,
+        reversedTxnRef: orig.referenceNumber,
+        originalType: orig.transactionType,
+        reason: reason || 'Correction of entry',
+        reversedAt: now,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.insert(schema.financialTransactions).values(adjustmentTxn);
+
+    // Update original transaction status to 'Reversed'
+    await db
+      .update(schema.financialTransactions)
+      .set({
+        status: 'Reversed',
+        reversedByTxnId: reversalTxnId,
+        updatedAt: now,
+      })
+      .where(eq(schema.financialTransactions.id, id));
+
+    res.json({
+      success: true,
+      reversedTransactionId: id,
+      adjustmentTransaction: adjustmentTxn,
+      message: `Transaction ${orig.referenceNumber} successfully reversed. Linked adjustment record ${adjustmentRef} generated.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update status
+app.put('/api/financial-transactions/:id/status', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ error: 'DB unavailable' });
+    const { id } = req.params;
+    const { status, notes } = req.body;
+    const now = new Date().toISOString();
+
+    await db
+      .update(schema.financialTransactions)
+      .set({
+        status,
+        ...(notes ? { notes } : {}),
+        updatedAt: now,
+      })
+      .where(eq(schema.financialTransactions.id, id));
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete endpoint strictly rejects deletion per financial core compliance rule
+app.delete('/api/financial-transactions/:id', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  return res.status(400).json({
+    error: 'Strict Compliance Rule: Financial transaction records cannot be permanently deleted. Use reversal and adjustment records instead to maintain complete audit integrity.',
+  });
+});
+
 
 // Solidarity Groups API [Staff only]
 app.get('/api/solidarity-groups', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {

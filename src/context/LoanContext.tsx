@@ -39,6 +39,9 @@ import {
   GroupMeetingLog,
   GroupMeetingAttendance,
   GroupMeetingCollection,
+  FinancialTransaction,
+  FinancialTransactionStatus,
+  FinancialTransactionType,
 } from '../types';
 import {
   INITIAL_AUDIT_LOGS,
@@ -58,6 +61,7 @@ import {
   INITIAL_SOLIDARITY_GROUPS,
   INITIAL_GROUP_LOANS,
   INITIAL_GROUP_MEETING_LOGS,
+  INITIAL_FINANCIAL_TRANSACTIONS,
 } from '../data/initialData';
 import { authFetch } from './AuthContext';
 import {
@@ -100,6 +104,33 @@ interface LoanContextType {
   groupMeetingLogs: GroupMeetingLog[];
   filteredSolidarityGroups: SolidarityGroup[];
   filteredGroupLoans: GroupLoan[];
+
+  // 7. Financial Transactions Core State & Actions
+  financialTransactions: FinancialTransaction[];
+  filteredFinancialTransactions: FinancialTransaction[];
+  createFinancialTransaction: (
+    data: Omit<FinancialTransaction, 'id' | 'createdAt' | 'updatedAt'> & {
+      id?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    }
+  ) => FinancialTransaction;
+  reverseFinancialTransaction: (
+    transactionId: string,
+    reason: string,
+    reversedBy?: string
+  ) => {
+    success: boolean;
+    reversedTransaction?: FinancialTransaction;
+    adjustmentTransaction?: FinancialTransaction;
+    error?: string;
+    message?: string;
+  };
+  updateFinancialTransactionStatus: (
+    transactionId: string,
+    newStatus: FinancialTransactionStatus,
+    notes?: string
+  ) => { success: boolean; error?: string };
 
   // Filtered views based on activeBranchId
   filteredLoans: Loan[];
@@ -484,6 +515,16 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
+  // Financial Transactions Core Ledger Master State
+  const [financialTransactions, setFinancialTransactions] = useState<FinancialTransaction[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_financialTx`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_TRANSACTIONS;
+    } catch {
+      return INITIAL_FINANCIAL_TRANSACTIONS;
+    }
+  });
+
   // Audit Logs
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(() => {
     try {
@@ -520,6 +561,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
           if (json.data.memberFollowUpLogs && json.data.memberFollowUpLogs.length > 0) setMemberFollowUpLogs(json.data.memberFollowUpLogs);
           if (json.data.savingsTransactions && json.data.savingsTransactions.length > 0) setSavingsTransactions(json.data.savingsTransactions);
           if (json.data.savingsWithdrawalRequests && json.data.savingsWithdrawalRequests.length > 0) setWithdrawalRequests(json.data.savingsWithdrawalRequests);
+          if (json.data.financialTransactions && json.data.financialTransactions.length > 0) setFinancialTransactions(json.data.financialTransactions);
           if (json.data.auditLogs && json.data.auditLogs.length > 0) setAuditLogs(json.data.auditLogs);
           if (json.data.branches && json.data.branches.length > 0) setBranches(json.data.branches);
           if (json.data.loanProducts && json.data.loanProducts.length > 0) setLoanProducts(json.data.loanProducts);
@@ -556,6 +598,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(`${STORAGE_KEY}_solidarityGroups`, JSON.stringify(solidarityGroups));
       localStorage.setItem(`${STORAGE_KEY}_groupLoans`, JSON.stringify(groupLoans));
       localStorage.setItem(`${STORAGE_KEY}_groupMeetings`, JSON.stringify(groupMeetingLogs));
+      localStorage.setItem(`${STORAGE_KEY}_financialTx`, JSON.stringify(financialTransactions));
       localStorage.setItem(`${STORAGE_KEY}_logs`, JSON.stringify(auditLogs));
     } catch (e) {
       console.warn('Storage sync error:', e);
@@ -578,6 +621,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     solidarityGroups,
     groupLoans,
     groupMeetingLogs,
+    financialTransactions,
     auditLogs,
   ]);
 
@@ -620,6 +664,258 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
   const filteredWithdrawals = activeBranchId === 'all' ? withdrawalRequests : withdrawalRequests.filter((w) => w.branchId === activeBranchId);
   const filteredSolidarityGroups = activeBranchId === 'all' ? solidarityGroups : solidarityGroups.filter((g) => g.branchId === activeBranchId);
   const filteredGroupLoans = activeBranchId === 'all' ? groupLoans : groupLoans.filter((g) => g.branchId === activeBranchId);
+  const filteredFinancialTransactions = activeBranchId === 'all'
+    ? financialTransactions
+    : financialTransactions.filter((t) => !t.branchId || t.branchId === activeBranchId);
+
+  // ==========================================
+  // 7. FINANCIAL TRANSACTION CORE ACTIONS
+  // ==========================================
+
+  const createFinancialTransaction = (
+    data: Omit<FinancialTransaction, 'id' | 'createdAt' | 'updatedAt'> & {
+      id?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    }
+  ): FinancialTransaction => {
+    const now = new Date().toISOString();
+    const dateStr = data.transactionDate || now.split('T')[0];
+    const newTxn: FinancialTransaction = {
+      id: data.id || `TXN-${dateStr.replace(/-/g, '')}-${Date.now().toString().slice(-4)}`,
+      referenceNumber: data.referenceNumber || `REF-${Date.now().toString().slice(-6)}`,
+      clientId: data.clientId,
+      clientName: data.clientName,
+      accountOrLoanId: data.accountOrLoanId,
+      accountOrLoanType: data.accountOrLoanType || 'General',
+      branchId: data.branchId || (activeBranchId === 'all' ? 'br-main' : activeBranchId),
+      transactionType: data.transactionType,
+      amount: data.amount,
+      transactionDate: dateStr,
+      paymentMethod: data.paymentMethod || 'Cash',
+      processedBy: data.processedBy || `${currentUser.name} (${currentUser.title})`,
+      processedByRole: data.processedByRole || currentUser.title || 'Staff',
+      status: data.status || 'Completed',
+      notes: data.notes,
+      reversalOfTxnId: data.reversalOfTxnId,
+      reversedByTxnId: data.reversedByTxnId,
+      metadata: data.metadata,
+      createdAt: data.createdAt || now,
+      updatedAt: data.updatedAt || now,
+    };
+
+    setFinancialTransactions((prev) => [newTxn, ...prev]);
+
+    // Async persist to server backend
+    authFetch('/api/financial-transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTxn),
+    }).catch((e) => console.log('Txn API sync:', e.message));
+
+    return newTxn;
+  };
+
+  const reverseFinancialTransaction = (
+    transactionId: string,
+    reason: string,
+    reversedBy?: string
+  ): {
+    success: boolean;
+    reversedTransaction?: FinancialTransaction;
+    adjustmentTransaction?: FinancialTransaction;
+    error?: string;
+    message?: string;
+  } => {
+    const orig = financialTransactions.find((t) => t.id === transactionId);
+    if (!orig) {
+      return { success: false, error: 'Transaction record not found in ledger.' };
+    }
+    if (orig.status === 'Reversed') {
+      return { success: false, error: 'This transaction is already reversed.' };
+    }
+    if (orig.status === 'Cancelled' || orig.status === 'Failed') {
+      return { success: false, error: `Cannot reverse a transaction in "${orig.status}" status.` };
+    }
+
+    const now = new Date().toISOString();
+    const dateStr = now.split('T')[0];
+    const reversalTxnId = `TXN-REV-${Date.now().toString().slice(-6)}`;
+    const adjustmentRef = `REV-ADJ-${Date.now().toString().slice(-4)}`;
+    const staffName = reversedBy || `${currentUser.name} (${currentUser.title})`;
+
+    // Create adjustment transaction record linked to the reversed one
+    const adjustmentTxn: FinancialTransaction = {
+      id: reversalTxnId,
+      referenceNumber: adjustmentRef,
+      clientId: orig.clientId,
+      clientName: orig.clientName,
+      accountOrLoanId: orig.accountOrLoanId,
+      accountOrLoanType: orig.accountOrLoanType,
+      branchId: orig.branchId,
+      transactionType: 'Adjustment',
+      amount: -Math.abs(orig.amount),
+      transactionDate: dateStr,
+      paymentMethod: 'Adjustment',
+      processedBy: staffName,
+      processedByRole: currentUser.title || 'General Manager / Auditor',
+      status: 'Completed',
+      notes: `Reversal & Adjustment of transaction ${orig.referenceNumber} (${orig.id}). Reason: ${reason || 'Correction of entry'}`,
+      reversalOfTxnId: orig.id,
+      metadata: {
+        reversedTxnId: orig.id,
+        reversedTxnRef: orig.referenceNumber,
+        originalType: orig.transactionType,
+        reason: reason || 'Correction of entry',
+        reversedAt: now,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Update original transaction status to 'Reversed'
+    const updatedOrig: FinancialTransaction = {
+      ...orig,
+      status: 'Reversed',
+      reversedByTxnId: reversalTxnId,
+      updatedAt: now,
+    };
+
+    setFinancialTransactions((prev) => [
+      adjustmentTxn,
+      ...prev.map((t) => (t.id === transactionId ? updatedOrig : t)),
+    ]);
+
+    // Handle financial balance reversions
+    if (orig.transactionType === 'Loan Repayment') {
+      // Revert repayment on loan
+      setLoans((prev) =>
+        prev.map((l) => {
+          if (l.id === orig.accountOrLoanId || l.loanNumber === orig.accountOrLoanId) {
+            const newBal = l.remainingBalance + orig.amount;
+            const newPaid = Math.max(0, l.totalPaid - orig.amount);
+            return {
+              ...l,
+              remainingBalance: newBal,
+              totalPaid: newPaid,
+              status: newBal > 0 && l.status === 'Completed' ? 'Active' : l.status,
+            };
+          }
+          return l;
+        })
+      );
+      setBorrowers((prev) =>
+        prev.map((b) =>
+          b.id === orig.clientId
+            ? { ...b, totalRepaid: Math.max(0, (b.totalRepaid || 0) - orig.amount) }
+            : b
+        )
+      );
+    } else if (orig.transactionType === 'Savings Deposit') {
+      setSavingsAccounts((prev) =>
+        prev.map((a) => {
+          if (a.id === orig.accountOrLoanId || a.accountNumber === orig.accountOrLoanId || a.clientId === orig.clientId) {
+            const newBal = Math.max(0, a.balance - orig.amount);
+            return {
+              ...a,
+              balance: newBal,
+              availableBalance: Math.max(0, newBal - a.maintainingBalance),
+              totalDeposited: Math.max(0, a.totalDeposited - orig.amount),
+            };
+          }
+          return a;
+        })
+      );
+      setBorrowers((prev) =>
+        prev.map((b) =>
+          b.id === orig.clientId
+            ? { ...b, savingsBalance: Math.max(0, (b.savingsBalance || 0) - orig.amount) }
+            : b
+        )
+      );
+    } else if (orig.transactionType === 'Savings Withdrawal') {
+      setSavingsAccounts((prev) =>
+        prev.map((a) => {
+          if (a.id === orig.accountOrLoanId || a.accountNumber === orig.accountOrLoanId || a.clientId === orig.clientId) {
+            const newBal = a.balance + orig.amount;
+            return {
+              ...a,
+              balance: newBal,
+              availableBalance: Math.max(0, newBal - a.maintainingBalance),
+              totalWithdrawn: Math.max(0, a.totalWithdrawn - orig.amount),
+            };
+          }
+          return a;
+        })
+      );
+      setBorrowers((prev) =>
+        prev.map((b) =>
+          b.id === orig.clientId
+            ? { ...b, savingsBalance: (b.savingsBalance || 0) + orig.amount }
+            : b
+        )
+      );
+    }
+
+    logAudit(
+      'FINANCIAL_TRANSACTION_REVERSED',
+      `Reversed financial transaction ${orig.referenceNumber} (${orig.transactionType}, ₱${orig.amount.toLocaleString()}). Linked adjustment record ${adjustmentRef} generated. Reason: ${reason}`,
+      'PAYMENT',
+      { targetType: 'FinancialTransaction', targetId: orig.id }
+    );
+
+    // Call server API in background
+    authFetch(`/api/financial-transactions/${transactionId}/reverse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason, reversedBy: staffName }),
+    }).catch((e) => console.log('Reversal API sync:', e.message));
+
+    return {
+      success: true,
+      reversedTransaction: updatedOrig,
+      adjustmentTransaction: adjustmentTxn,
+      message: `Transaction ${orig.referenceNumber} reversed. Linked adjustment ${adjustmentRef} recorded.`,
+    };
+  };
+
+  const updateFinancialTransactionStatus = (
+    transactionId: string,
+    newStatus: FinancialTransactionStatus,
+    notes?: string
+  ): { success: boolean; error?: string } => {
+    const orig = financialTransactions.find((t) => t.id === transactionId);
+    if (!orig) return { success: false, error: 'Transaction not found.' };
+
+    const now = new Date().toISOString();
+    setFinancialTransactions((prev) =>
+      prev.map((t) =>
+        t.id === transactionId
+          ? {
+              ...t,
+              status: newStatus,
+              notes: notes ? `${t.notes ? t.notes + ' | ' : ''}${notes}` : t.notes,
+              updatedAt: now,
+            }
+          : t
+      )
+    );
+
+    logAudit(
+      'FINANCIAL_TRANSACTION_STATUS_UPDATED',
+      `Updated transaction ${orig.referenceNumber} status from ${orig.status} to ${newStatus}`,
+      'PAYMENT',
+      { targetType: 'FinancialTransaction', targetId: orig.id }
+    );
+
+    authFetch(`/api/financial-transactions/${transactionId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus, notes }),
+    }).catch((e) => console.log('Status API sync:', e.message));
+
+    return { success: true };
+  };
 
   // Computed Stats
   const totalDisbursed = filteredLoans.reduce((sum, l) => sum + (l.status !== 'Draft' && l.status !== 'Rejected' ? l.principalAmount : 0), 0);
@@ -1053,6 +1349,25 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       { targetType: 'SavingsAccount', targetId: accountId }
     );
 
+    if (params.initialDeposit > 0) {
+      createFinancialTransaction({
+        referenceNumber: refNo,
+        clientId: client.id,
+        clientName: client.fullName,
+        accountOrLoanId: accountNumber,
+        accountOrLoanType: 'Savings',
+        branchId: newAccount.branchId,
+        transactionType: 'Savings Deposit',
+        amount: params.initialDeposit,
+        transactionDate: dateStr,
+        paymentMethod: params.paymentMethod || 'Cash',
+        processedBy: `${currentUser.name} (${currentUser.title})`,
+        processedByRole: currentUser.title || 'Teller',
+        status: 'Completed',
+        notes: `Initial opening deposit for savings account ${accountNumber}`,
+      });
+    }
+
     return { success: true, account: newAccount, transaction: initialTx };
   };
 
@@ -1178,6 +1493,24 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       { targetType: 'SavingsAccount', targetId: account.id }
     );
 
+    // Auto-generate Financial Transaction
+    createFinancialTransaction({
+      referenceNumber: refNo,
+      clientId: account.clientId,
+      clientName: account.clientName,
+      accountOrLoanId: account.accountNumber,
+      accountOrLoanType: 'Savings',
+      branchId: account.branchId,
+      transactionType: 'Savings Deposit',
+      amount: params.amount,
+      transactionDate: dateStr,
+      paymentMethod: params.paymentMethod || 'Cash',
+      processedBy: `${currentUser.name} (${currentUser.title})`,
+      processedByRole: currentUser.title || 'Teller',
+      status: 'Completed',
+      notes: params.notes || `Over-the-counter deposit on account ${account.accountNumber}`,
+    });
+
     return { success: true, transaction: tx };
   };
 
@@ -1301,6 +1634,24 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       'SAVINGS',
       { targetType: 'SavingsAccount', targetId: account.id }
     );
+
+    // Auto-generate Financial Transaction
+    createFinancialTransaction({
+      referenceNumber: refNo,
+      clientId: account.clientId,
+      clientName: account.clientName,
+      accountOrLoanId: account.accountNumber,
+      accountOrLoanType: 'Savings',
+      branchId: account.branchId,
+      transactionType: 'Savings Withdrawal',
+      amount: params.amount,
+      transactionDate: dateStr,
+      paymentMethod: params.paymentMethod || 'Cash',
+      processedBy: `${currentUser.name} (${currentUser.title})`,
+      processedByRole: currentUser.title || 'Teller / Cashier',
+      status: 'Completed',
+      notes: params.reason || `Savings withdrawal from account ${account.accountNumber}`,
+    });
 
     return { success: true, transaction: tx };
   };
@@ -2216,6 +2567,51 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       'LOAN'
     );
 
+    // Auto-record Financial Transaction for disbursement
+    const refNo = disbursementData.referenceNumber || `DISB-${loan.loanNumber}`;
+    createFinancialTransaction({
+      referenceNumber: refNo,
+      clientId: loan.borrowerId,
+      clientName: loan.borrowerName,
+      accountOrLoanId: loan.loanNumber || loan.id,
+      accountOrLoanType: 'Loan',
+      branchId: loan.branchId,
+      transactionType: 'Loan Disbursement',
+      amount: disbursementData.grossAmount || loan.principalAmount,
+      transactionDate: releaseDate,
+      paymentMethod: disbursementData.disbursementMethod || 'Bank Transfer',
+      processedBy: disbursementData.disbursedBy || `${currentUser.name} (${currentUser.title})`,
+      processedByRole: 'Disbursing Officer / Manager',
+      status: 'Completed',
+      notes: `Loan proceeds disbursed for ${loan.loanNumber}. Net released: ₱${disbursementData.netProceeds.toLocaleString()}`,
+      metadata: {
+        loanId: loan.id,
+        loanNumber: loan.loanNumber,
+        netProceeds: disbursementData.netProceeds,
+        processingFee: disbursementData.processingFee,
+        capitalBuildUp: disbursementData.capitalBuildUpDeduction,
+      },
+    });
+
+    if (disbursementData.processingFee && disbursementData.processingFee > 0) {
+      createFinancialTransaction({
+        referenceNumber: `FEE-${refNo}`,
+        clientId: loan.borrowerId,
+        clientName: loan.borrowerName,
+        accountOrLoanId: loan.loanNumber || loan.id,
+        accountOrLoanType: 'Loan',
+        branchId: loan.branchId,
+        transactionType: 'Fee',
+        amount: disbursementData.processingFee,
+        transactionDate: releaseDate,
+        paymentMethod: 'Deducted from Proceeds',
+        processedBy: disbursementData.disbursedBy || `${currentUser.name} (${currentUser.title})`,
+        processedByRole: 'Disbursing Officer',
+        status: 'Completed',
+        notes: `Loan processing fee for ${loan.loanNumber}`,
+      });
+    }
+
     return { success: true };
   };
 
@@ -2413,6 +2809,30 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     );
 
     logAudit('LOAN_RELEASED_DISBURSED', `Released loan ${loan.loanNumber} proceeds of ₱${loan.principalAmount.toLocaleString()} via ${method}`, 'LOAN');
+
+    // Auto-record Financial Transaction for disbursement
+    const refNo = `DISB-${loan.loanNumber}`;
+    createFinancialTransaction({
+      referenceNumber: refNo,
+      clientId: loan.borrowerId,
+      clientName: loan.borrowerName,
+      accountOrLoanId: loan.loanNumber || loan.id,
+      accountOrLoanType: 'Loan',
+      branchId: loan.branchId,
+      transactionType: 'Loan Disbursement',
+      amount: loan.principalAmount,
+      transactionDate: new Date().toISOString().split('T')[0],
+      paymentMethod: method,
+      processedBy: `${currentUser.name} (${currentUser.title})`,
+      processedByRole: currentUser.title || 'Disbursing Officer',
+      status: 'Completed',
+      notes: `Loan proceeds released for ${loan.loanNumber} via ${method}`,
+      metadata: {
+        loanId: loan.id,
+        loanNumber: loan.loanNumber,
+        principalAmount: loan.principalAmount,
+      },
+    });
   };
 
   const rejectLoan = (loanId: string, reason: string = 'Did not meet credit criteria') => {
@@ -2610,6 +3030,33 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       `Collected ₱${paymentData.amount.toLocaleString()} (Principal: ₱${principalPaid.toLocaleString()}, Interest: ₱${interestPaid.toLocaleString()}) on loan ${loan.loanNumber} via ${paymentData.paymentMethod} (OR ${orNumber})`,
       'PAYMENT'
     );
+
+    // Auto-generate Financial Transaction Record
+    createFinancialTransaction({
+      referenceNumber: orNumber,
+      clientId: loan.borrowerId,
+      clientName: loan.borrowerName,
+      accountOrLoanId: loan.loanNumber || loan.id,
+      accountOrLoanType: 'Loan',
+      branchId: loan.branchId,
+      transactionType: 'Loan Repayment',
+      amount: paymentData.amount,
+      transactionDate: dateStr,
+      paymentMethod: paymentData.paymentMethod,
+      processedBy: `${currentUser.name} (${currentUser.title})`,
+      processedByRole: currentUser.title || 'Cashier / Teller',
+      status: 'Completed',
+      notes: paymentData.notes || `Installment payment for ${loan.loanNumber}. Principal: ₱${principalPaid.toLocaleString()}, Interest: ₱${interestPaid.toLocaleString()}${penaltyPortion > 0 ? `, Penalty: ₱${penaltyPortion.toLocaleString()}` : ''}`,
+      metadata: {
+        receiptNumber: orNumber,
+        loanId: loan.id,
+        loanNumber: loan.loanNumber,
+        principalPaid,
+        interestPaid,
+        penaltyPortion,
+        rebateDiscount: rebate,
+      },
+    });
 
     return newPayment;
   };
@@ -3258,6 +3705,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(`${STORAGE_KEY}_solidarityGroups`);
     localStorage.removeItem(`${STORAGE_KEY}_groupLoans`);
     localStorage.removeItem(`${STORAGE_KEY}_groupMeetings`);
+    localStorage.removeItem(`${STORAGE_KEY}_financialTx`);
     localStorage.removeItem(`${STORAGE_KEY}_logs`);
 
     setBranches(INITIAL_BRANCHES);
@@ -3277,6 +3725,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     setSolidarityGroups(INITIAL_SOLIDARITY_GROUPS);
     setGroupLoans(INITIAL_GROUP_LOANS);
     setGroupMeetingLogs(INITIAL_GROUP_MEETING_LOGS);
+    setFinancialTransactions(INITIAL_FINANCIAL_TRANSACTIONS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
   };
 
@@ -3294,6 +3743,11 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         borrowers,
         loans,
         payments,
+        financialTransactions,
+        filteredFinancialTransactions,
+        createFinancialTransaction,
+        reverseFinancialTransaction,
+        updateFinancialTransactionStatus,
         auditLogs,
         reminders,
 

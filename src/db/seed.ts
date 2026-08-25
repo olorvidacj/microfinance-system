@@ -13,6 +13,7 @@ import {
   INITIAL_SAVINGS_TRANSACTIONS,
   INITIAL_WITHDRAWAL_REQUESTS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_FINANCIAL_TRANSACTIONS,
 } from '../data/initialData';
 
 export async function seedDatabaseIfEmpty() {
@@ -151,6 +152,16 @@ export async function seedDatabaseIfEmpty() {
       ];
 
       await db.insert(schema.solidarityGroups).values(initialSolidarityGroups as any);
+
+      // 14. Financial Transactions Core Ledger
+      if (INITIAL_FINANCIAL_TRANSACTIONS.length > 0) {
+        await db.insert(schema.financialTransactions).values(
+          INITIAL_FINANCIAL_TRANSACTIONS.map((tx) => ({
+            ...tx,
+            metadata: tx.metadata || {},
+          })) as any
+        );
+      }
 
       console.log('[Database] Database successfully seeded with full HOSCOMO cooperative dataset!');
     }
