@@ -787,3 +787,39 @@ export interface SolidarityGroup {
   totalMeetingsHeld: number;
 }
 
+// 6. CLIENT PORTAL NOTIFICATIONS
+export type ClientNotificationCategory = 'ALL' | 'LOANS' | 'PAYMENTS' | 'SAVINGS' | 'GROUP';
+
+export type ClientNotificationType =
+  | 'LOAN_APPROVAL'
+  | 'LOAN_REJECTED'
+  | 'LOAN_DISBURSED'
+  | 'UPCOMING_PAYMENT'
+  | 'OVERDUE_PAYMENT'
+  | 'PAYMENT_CONFIRMATION'
+  | 'SAVINGS_TRANSACTION'
+  | 'GROUP_LENDING_ALERT'
+  | 'KYC_STATUS';
+
+export interface ClientNotification {
+  id: string;
+  borrowerId: string;
+  type: ClientNotificationType;
+  category: 'LOANS' | 'PAYMENTS' | 'SAVINGS' | 'GROUP';
+  title: string;
+  message: string;
+  timestamp: string;
+  isRead: boolean;
+  actionTab?: 'home' | 'loans' | 'savings' | 'pay' | 'apply' | 'group' | 'profile' | 'kyc' | 'repayments' | 'schedule';
+  metadata?: {
+    loanId?: string;
+    loanNumber?: string;
+    receiptNumber?: string;
+    amount?: number;
+    dueDate?: string;
+    savingsAccountId?: string;
+    groupCode?: string;
+  };
+}
+
+
