@@ -873,4 +873,562 @@ export interface ClientNotification {
   };
 }
 
+// ==========================================
+// 8. FINANCIAL SUBMODULE TYPES (financial.*)
+// ==========================================
+
+export interface FinancialRole {
+  id: string;
+  name: string;
+  displayName: string;
+  description?: string;
+  status: 'active' | 'inactive';
+  permissions: Record<string, any>;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinancialAccount {
+  id: string;
+  code: string;
+  name: string;
+  type: 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+  normalBalance: 'Debit' | 'Credit';
+  status: 'Active' | 'Inactive';
+}
+
+export interface FinancialBorrower {
+  id: string;
+  borrowerCode: string;
+  name: string;
+  loanAmount: number;
+  outstanding: number;
+  nextDue?: string;
+  status: 'Current' | 'Overdue' | 'Defaulted' | 'Settled';
+  archived: boolean;
+}
+
+export interface FinancialSupplier {
+  id: string;
+  supplierCode: string;
+  name: string;
+  contact?: string;
+  status: 'Active' | 'Inactive';
+}
+
+export interface FinancialDisbursement {
+  id: string;
+  disbursementCode: string;
+  borrowerName?: string;
+  amount: number;
+  disbursementDate: string;
+  officer?: string;
+  status: 'For Approval' | 'Approved' | 'Disbursed' | 'Cancelled';
+  archived: boolean;
+}
+
+export interface FinancialCollection {
+  id: string;
+  collectionCode: string;
+  borrowerId: string;
+  collectionType: 'Loan Repayment' | 'Savings Deposit' | 'Membership Fee' | 'Share Capital' | 'Penalty' | 'Other';
+  amount: number;
+  principalAmount: number;
+  interestAmount: number;
+  collectionDate: string;
+  paymentMode: 'Cash' | 'GCash' | 'Bank Transfer' | 'Maya' | 'Cheque';
+  orNumber?: string;
+  status: 'Completed' | 'Pending' | 'Reversed' | 'Cancelled';
+  previousBalance?: number;
+  remainingBalance?: number;
+  notes?: string;
+  archived: boolean;
+}
+
+export interface FinancialSupplierBill {
+  id: string;
+  billCode: string;
+  supplierId: string;
+  supplierName?: string;
+  dueDate: string;
+  amount: number;
+  status: 'Unpaid' | 'Partially Paid' | 'Paid' | 'Overdue';
+  paidAmount: number;
+  archived: boolean;
+}
+
+export interface FinancialBillPayment {
+  id: string;
+  billId: string;
+  amount: number;
+  paymentDate: string;
+  paymentMethod: 'Cash' | 'Bank Transfer' | 'Cheque' | 'GCash';
+  referenceNumber?: string;
+  createdAt: string;
+}
+
+export interface FinancialTaxRecord {
+  id: string;
+  period: string; // e.g. "Q3 2026", "Aug 2026"
+  taxType: 'Withholding Tax' | 'VAT / Percentage Tax' | 'Corporate Income Tax' | 'Documentary Stamp Tax';
+  taxableAmount: number;
+  rate: number; // percentage
+  taxDue: number;
+  status: 'Draft' | 'Filed' | 'Paid';
+}
+
+export interface FinancialBudget {
+  id: string;
+  department: string;
+  allocated: number;
+  used: number;
+  remaining: number;
+}
+
+export interface FinancialJournalEntry {
+  id: string;
+  ref: string;
+  entryDate: string;
+  description: string;
+  totalDebit: number;
+  totalCredit: number;
+  sourceModule?: string;
+  sourceId?: string;
+  status: 'Draft' | 'Posted' | 'Reversed';
+  lines?: FinancialJournalEntryLine[];
+}
+
+export interface FinancialJournalEntryLine {
+  id: string;
+  journalEntryId: string;
+  accountId: string;
+  accountCode?: string;
+  accountName?: string;
+  debit: number;
+  credit: number;
+}
+
+export interface FinancialCashTransaction {
+  id: string;
+  transactionCode: string;
+  transactionDate: string;
+  description: string;
+  transactionType: 'Cash In' | 'Cash Out';
+  amount: number;
+  sourceModule?: string;
+  sourceId?: string;
+}
+
+export interface FinancialReceipt {
+  id: string;
+  receiptCode: string;
+  collectionId: string;
+  borrowerId: string;
+  amount: number;
+  principalAmount: number;
+  interestAmount: number;
+  issuedDate: string;
+  issuedBy?: string;
+}
+
+export interface FinancialMonthlyDisbursement {
+  id: number | string;
+  month: string;
+  year: number;
+  amount: number;
+}
+
+export interface FinancialMonthlyCollection {
+  id: number | string;
+  month: string;
+  year: number;
+  collected: number;
+  target: number;
+}
+
+export interface FinancialMonthlyCashFlow {
+  id: number | string;
+  month: string;
+  year: number;
+  inflow: number;
+  outflow: number;
+}
+
+export interface FinancialAuditLog {
+  id: string;
+  userId?: string;
+  userName?: string;
+  userRole?: string;
+  branch?: string;
+  action: string;
+  module: string;
+  description?: string;
+  entityType?: string;
+  entityId?: string;
+  referenceNo?: string;
+  oldValues?: Record<string, any>;
+  newValues?: Record<string, any>;
+  reason?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  status: 'success' | 'failed' | 'warning';
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  createdAt: string;
+}
+
+export interface FinancialAuditTrail {
+  id: string;
+  transactionId?: string;
+  referenceNo?: string;
+  module: string;
+  transactionType?: string;
+  action: string;
+  entityType?: string;
+  entityId?: string;
+  userId?: string;
+  userName?: string;
+  roleId?: number;
+  roleName?: string;
+  branch?: string;
+  previousStatus?: string;
+  newStatus?: string;
+  oldValues?: Record<string, any>;
+  newValues?: Record<string, any>;
+  amount?: number;
+  currency: string;
+  reason?: string;
+  remarks?: string;
+  relatedTransactionId?: string;
+  relatedReferenceNo?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  status: string;
+  severity: string;
+  auditLogId?: string;
+  createdAt: string;
+}
+
+export interface FinancialNotification {
+  id: string;
+  userId?: string;
+  title: string;
+  body?: string;
+  type?: string;
+  module?: string;
+  referenceId?: string;
+  referenceNo?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface FinancialAdmin {
+  id: string;
+  name: string;
+  username?: string;
+  email: string;
+  contactNumber?: string;
+  role: string;
+  status: string;
+  profilePictureUrl?: string;
+  passwordChangedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  otpCode?: string;
+  otpExpiresAt?: string;
+  twoFactorEnabled: boolean;
+}
+
+// ==========================================
+// 9. OVERSIGHT SUBMODULE TYPES (oversight.*)
+// KALASAG Institutional Oversight & Control
+// ==========================================
+
+export type RiskRating = 'low' | 'medium' | 'high' | 'critical';
+export type ReviewOutcome = 'approved' | 'revised' | 'revoked';
+export type RemittanceStatus = 'remitted' | 'partial' | 'unremitted';
+export type TrackingStatus = 'pending' | 'released' | 'utilized' | 'closed';
+export type AuditEngagementStatus = 'planned' | 'ongoing' | 'completed' | 'closed';
+export type FindingStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type CorrectiveActionStatus = 'open' | 'in_progress' | 'completed' | 'verified';
+export type ComplianceFrequency = 'monthly' | 'quarterly' | 'annual' | 'ad_hoc';
+export type ComplianceReviewStatus = 'compliant' | 'non_compliant' | 'partially_compliant';
+export type ReportApprovalStatus = 'draft' | 'for_review' | 'approved' | 'rejected' | 'published' | 'archived';
+export type ConfidentialityLevel = 'public' | 'internal' | 'confidential' | 'restricted';
+
+export interface OversightAccessReview {
+  accessReviewId: string;
+  userRoleId: string;
+  reviewerId: string;
+  reviewerName?: string;
+  reviewDate: string;
+  reviewOutcome: ReviewOutcome;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightLoanPortfolioSnapshot {
+  snapshotId: string;
+  clientReference: string;
+  clientName?: string;
+  clientSource: string; // 'client_services.clients'
+  legacyBranchReference?: string;
+  branchName?: string;
+  snapshotDate: string;
+  outstandingBalance: number;
+  daysPastDue: number;
+  portfolioAtRiskFlag: boolean;
+  likelihoodRating: RiskRating;
+  impactRating: RiskRating;
+  residualRiskRating: RiskRating;
+  recordedBy: string;
+  recordedByName?: string;
+  status: 'active' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+  serviceAreaReference?: string;
+  activeLoanCount: number;
+  overdueLoanCount: number;
+  scheduledRepaymentAmount: number;
+  receivedRepaymentAmount: number;
+  missedPaymentCount: number;
+  dataClassification: 'external' | 'manual' | 'synthetic';
+}
+
+export interface OversightCollectionMonitoring {
+  monitoringId: string;
+  collectionReference: string;
+  collectionCode?: string;
+  collectionSource: string; // 'financial.collections'
+  clientReference?: string;
+  clientName?: string;
+  legacyBranchReference?: string;
+  branchName?: string;
+  monitoringDate: string;
+  remittanceStatus: RemittanceStatus;
+  unremittedFlag: boolean;
+  varianceAmount: number;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+  serviceAreaReference?: string;
+}
+
+export interface OversightDisbursementTracker {
+  trackerId: string;
+  disbursementReference: string;
+  disbursementCode?: string;
+  disbursementSource: string; // 'financial.disbursements'
+  budgetReference?: string;
+  budgetDepartment?: string;
+  legacyBranchReference?: string;
+  branchName?: string;
+  amount: number;
+  fundSource: string; // e.g. "Revolving Loan Fund", "CBU Capital", "External Credit Facility"
+  trackingStatus: TrackingStatus;
+  verifiedBy?: string;
+  verifiedByName?: string;
+  verifiedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  serviceAreaReference?: string;
+}
+
+export interface OversightAuditEngagement {
+  engagementId: string;
+  auditArea: string; // e.g. "Branch Vault & Cash Equivalents", "Loan Underwriting Compliance"
+  scopeDescription: string;
+  startDate: string;
+  endDate?: string;
+  leadAuditor: string;
+  leadAuditorName?: string;
+  status: AuditEngagementStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightAuditFinding {
+  findingId: string;
+  engagementId: string;
+  engagementArea?: string;
+  controlObjective: string;
+  conditionObserved: string;
+  expectedRequirement: string;
+  riskOrImpactRating: RiskRating;
+  rootCause?: string;
+  recommendation: string;
+  managementResponse?: string;
+  responsibleOwner: string;
+  responsibleOwnerName?: string;
+  targetDate: string;
+  status: FindingStatus;
+  closureEvidence?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightCorrectiveAction {
+  correctiveActionId: string;
+  findingId: string;
+  actionDescription: string;
+  ownerId: string;
+  ownerName?: string;
+  deadline: string;
+  completionEvidence?: string;
+  status: CorrectiveActionStatus;
+  completedAt?: string;
+  verifiedBy?: string;
+  verifiedByName?: string;
+  verifiedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightComplianceRequirement {
+  requirementId: string;
+  requirementDescription: string;
+  sourcePolicy: string; // e.g. "BSP Circular No. 948", "CDA Standard Chart of Accounts"
+  responsibleDepartment: string;
+  reviewFrequency: ComplianceFrequency;
+  status: 'active' | 'inactive' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightComplianceReview {
+  reviewId: string;
+  requirementId: string;
+  requirementDescription?: string;
+  sourcePolicy?: string;
+  reviewerId: string;
+  reviewerName?: string;
+  reviewDate: string;
+  complianceStatus: ComplianceReviewStatus;
+  exceptionsNoted?: string;
+  nextReviewDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightControlException {
+  exceptionId: string;
+  sourceArea: string;
+  description: string;
+  requirementId?: string;
+  findingId?: string;
+  externalRecordType?: string;
+  externalRecordId?: string;
+  identifiedBy: string;
+  identifiedByName?: string;
+  identifiedAt: string;
+  severity: RiskRating;
+  status: 'open' | 'acknowledged' | 'resolved' | 'closed';
+  escalatedTo?: string;
+  escalatedToName?: string;
+  resolutionDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightAuditLog {
+  auditLogId: string;
+  recordType: string;
+  recordId?: string;
+  actionPerformed: 'INSERT' | 'UPDATE' | 'DELETE' | 'VIEW' | 'LOGIN' | 'LOGIN_FAILED' | 'LOGOUT' | 'ACCESS_DENIED' | 'EXPORT' | 'APPROVE' | 'REJECT' | 'OTHER';
+  previousValue?: Record<string, any>;
+  newValue?: Record<string, any>;
+  profileId?: string;
+  profileName?: string;
+  userRole?: string;
+  reasonForChange?: string;
+  approvalReference?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  createdAt: string;
+}
+
+export interface OversightReport {
+  reportId: string;
+  reportType: 'audit' | 'compliance' | 'risk' | 'summary' | 'performance' | 'other';
+  reportName: string;
+  dataSource: string;
+  reportingPeriodStart: string;
+  reportingPeriodEnd: string;
+  generatedBy: string;
+  generatedByName?: string;
+  generatedAt: string;
+  approvalStatus: ReportApprovalStatus;
+  approvedBy?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  confidentialityLevel: ConfidentialityLevel;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightDashboardMetric {
+  metricId: string;
+  reportId?: string;
+  metricName: string;
+  metricValue: number;
+  metricUnit?: string;
+  targetValue?: number;
+  asOfDate: string;
+  sourceTable?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OversightNotificationReceipt {
+  receiptId: string;
+  profileId: string;
+  notificationKey: string;
+  readAt: string;
+  createdAt: string;
+}
+
+export interface OversightEvidenceAttachment {
+  attachmentId: string;
+  entityType: 'audit_engagement' | 'audit_finding' | 'corrective_action' | 'compliance_review' | 'control_exception' | 'oversight_report';
+  entityId: string;
+  bucketName: string;
+  objectPath: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  uploadedBy: string;
+  status: 'active' | 'removed';
+  createdAt: string;
+}
+
+export interface OversightSystemSettings {
+  settingsId: string;
+  settingsKey: string;
+  platformName: string;
+  platformSubtitle: string;
+  themeColor: string;
+  parWarningThreshold: number; // e.g. 5.00%
+  parHighThreshold: number; // e.g. 8.00%
+  collectionVarianceThreshold: number; // e.g. 5000.00
+  fundReviewThreshold: number; // e.g. 50000.00
+  accessReviewCycleDays: number; // e.g. 90
+  complianceReminderDays: number; // e.g. 14
+  reportingFrequency: 'monthly' | 'quarterly' | 'annual';
+  notificationsEnabled: boolean;
+  overdueAlertsEnabled: boolean;
+  approvalAlertsEnabled: boolean;
+  evidenceMaxFileMb: number;
+  evidenceRetentionDays: number;
+  auditRetentionDays: number;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 

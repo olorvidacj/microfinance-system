@@ -42,6 +42,33 @@ import {
   FinancialTransaction,
   FinancialTransactionStatus,
   FinancialTransactionType,
+  FinancialAccount,
+  FinancialSupplier,
+  FinancialSupplierBill,
+  FinancialBillPayment,
+  FinancialBudget,
+  FinancialTaxRecord,
+  FinancialJournalEntry,
+  FinancialJournalEntryLine,
+  FinancialCashTransaction,
+  FinancialMonthlyCashFlow,
+  FinancialMonthlyDisbursement,
+  FinancialMonthlyCollection,
+  OversightLoanPortfolioSnapshot,
+  OversightCollectionMonitoring,
+  OversightDisbursementTracker,
+  OversightAuditEngagement,
+  OversightAuditFinding,
+  OversightCorrectiveAction,
+  OversightComplianceRequirement,
+  OversightComplianceReview,
+  OversightControlException,
+  OversightReport,
+  OversightDashboardMetric,
+  OversightSystemSettings,
+  FindingStatus,
+  CorrectiveActionStatus,
+  TrackingStatus,
 } from '../types';
 import {
   INITIAL_AUDIT_LOGS,
@@ -62,6 +89,29 @@ import {
   INITIAL_GROUP_LOANS,
   INITIAL_GROUP_MEETING_LOGS,
   INITIAL_FINANCIAL_TRANSACTIONS,
+  INITIAL_FINANCIAL_ACCOUNTS,
+  INITIAL_FINANCIAL_SUPPLIERS,
+  INITIAL_FINANCIAL_SUPPLIER_BILLS,
+  INITIAL_FINANCIAL_BILL_PAYMENTS,
+  INITIAL_FINANCIAL_BUDGETS,
+  INITIAL_FINANCIAL_TAX_RECORDS,
+  INITIAL_FINANCIAL_JOURNAL_ENTRIES,
+  INITIAL_FINANCIAL_CASH_TRANSACTIONS,
+  INITIAL_FINANCIAL_MONTHLY_CASH_FLOW,
+  INITIAL_FINANCIAL_MONTHLY_DISBURSEMENTS,
+  INITIAL_FINANCIAL_MONTHLY_COLLECTIONS,
+  INITIAL_OVERSIGHT_SNAPSHOTS,
+  INITIAL_OVERSIGHT_COLLECTION_MONITORING,
+  INITIAL_OVERSIGHT_DISBURSEMENT_TRACKER,
+  INITIAL_OVERSIGHT_AUDIT_ENGAGEMENTS,
+  INITIAL_OVERSIGHT_AUDIT_FINDINGS,
+  INITIAL_OVERSIGHT_CORRECTIVE_ACTIONS,
+  INITIAL_OVERSIGHT_COMPLIANCE_REQUIREMENTS,
+  INITIAL_OVERSIGHT_COMPLIANCE_REVIEWS,
+  INITIAL_OVERSIGHT_CONTROL_EXCEPTIONS,
+  INITIAL_OVERSIGHT_REPORTS,
+  INITIAL_OVERSIGHT_METRICS,
+  INITIAL_OVERSIGHT_SETTINGS,
 } from '../data/initialData';
 import { authFetch } from './AuthContext';
 import {
@@ -131,6 +181,52 @@ interface LoanContextType {
     newStatus: FinancialTransactionStatus,
     notes?: string
   ) => { success: boolean; error?: string };
+
+  // 8. Financial Submodule State & Actions (financial.*)
+  financialAccounts: FinancialAccount[];
+  financialSuppliers: FinancialSupplier[];
+  financialSupplierBills: FinancialSupplierBill[];
+  financialBillPayments: FinancialBillPayment[];
+  financialBudgets: FinancialBudget[];
+  financialTaxRecords: FinancialTaxRecord[];
+  financialJournalEntries: FinancialJournalEntry[];
+  financialCashTransactions: FinancialCashTransaction[];
+  financialMonthlyCashFlow: FinancialMonthlyCashFlow[];
+  financialMonthlyDisbursements: FinancialMonthlyDisbursement[];
+  financialMonthlyCollections: FinancialMonthlyCollection[];
+  addFinancialAccount: (acc: Omit<FinancialAccount, 'id'>) => FinancialAccount;
+  addFinancialJournalEntry: (entry: Omit<FinancialJournalEntry, 'id'>) => FinancialJournalEntry;
+  addSupplierBill: (bill: Omit<FinancialSupplierBill, 'id' | 'billCode' | 'paidAmount' | 'archived'>) => FinancialSupplierBill;
+  paySupplierBill: (billId: string, amount: number, paymentMethod: 'Cash' | 'Bank Transfer' | 'Cheque' | 'GCash', referenceNumber?: string) => { success: boolean; error?: string };
+  addFinancialTaxRecord: (rec: Omit<FinancialTaxRecord, 'id'>) => FinancialTaxRecord;
+  updateFinancialBudget: (department: string, allocated: number, used: number) => void;
+  addCashTransaction: (tx: Omit<FinancialCashTransaction, 'id' | 'transactionCode'>) => FinancialCashTransaction;
+
+  // 9. Oversight Submodule State & Actions (oversight.* KALASAG)
+  oversightSnapshots: OversightLoanPortfolioSnapshot[];
+  oversightCollectionMonitoring: OversightCollectionMonitoring[];
+  oversightDisbursementTracker: OversightDisbursementTracker[];
+  oversightAuditEngagements: OversightAuditEngagement[];
+  oversightAuditFindings: OversightAuditFinding[];
+  oversightCorrectiveActions: OversightCorrectiveAction[];
+  oversightComplianceRequirements: OversightComplianceRequirement[];
+  oversightComplianceReviews: OversightComplianceReview[];
+  oversightControlExceptions: OversightControlException[];
+  oversightReports: OversightReport[];
+  oversightMetrics: OversightDashboardMetric[];
+  oversightSettings: OversightSystemSettings;
+  addAuditFinding: (finding: Omit<OversightAuditFinding, 'findingId' | 'createdAt' | 'updatedAt'>) => OversightAuditFinding;
+  updateAuditFindingStatus: (findingId: string, status: FindingStatus, closureEvidence?: string) => void;
+  addCorrectiveAction: (cap: Omit<OversightCorrectiveAction, 'correctiveActionId' | 'createdAt' | 'updatedAt'>) => OversightCorrectiveAction;
+  verifyCorrectiveAction: (capId: string, verifiedBy: string) => void;
+  addComplianceReview: (rev: Omit<OversightComplianceReview, 'reviewId' | 'createdAt' | 'updatedAt'>) => OversightComplianceReview;
+  addControlException: (exc: Omit<OversightControlException, 'exceptionId' | 'identifiedAt' | 'createdAt' | 'updatedAt'>) => OversightControlException;
+  resolveControlException: (excId: string, resolutionDate?: string) => void;
+  generateOversightReport: (report: Omit<OversightReport, 'reportId' | 'generatedAt' | 'createdAt' | 'updatedAt'>) => OversightReport;
+  approveOversightReport: (reportId: string, approvedBy: string, remarks?: string) => void;
+  updateOversightSettings: (newSettings: Partial<OversightSystemSettings>) => void;
+  updateCollectionMonitoring: (monitoringId: string, data: Partial<OversightCollectionMonitoring>) => void;
+  updateDisbursementTracking: (trackerId: string, status: TrackingStatus, verifiedBy?: string) => void;
 
   // Filtered views based on activeBranchId
   filteredLoans: Loan[];
@@ -522,6 +618,192 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_TRANSACTIONS;
     } catch {
       return INITIAL_FINANCIAL_TRANSACTIONS;
+    }
+  });
+
+  // 8. Financial Submodule States (financial.*)
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finAccounts`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_ACCOUNTS;
+    } catch {
+      return INITIAL_FINANCIAL_ACCOUNTS;
+    }
+  });
+
+  const [financialSuppliers, setFinancialSuppliers] = useState<FinancialSupplier[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finSuppliers`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_SUPPLIERS;
+    } catch {
+      return INITIAL_FINANCIAL_SUPPLIERS;
+    }
+  });
+
+  const [financialSupplierBills, setFinancialSupplierBills] = useState<FinancialSupplierBill[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finSupplierBills`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_SUPPLIER_BILLS;
+    } catch {
+      return INITIAL_FINANCIAL_SUPPLIER_BILLS;
+    }
+  });
+
+  const [financialBillPayments, setFinancialBillPayments] = useState<FinancialBillPayment[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finBillPayments`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_BILL_PAYMENTS;
+    } catch {
+      return INITIAL_FINANCIAL_BILL_PAYMENTS;
+    }
+  });
+
+  const [financialBudgets, setFinancialBudgets] = useState<FinancialBudget[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finBudgets`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_BUDGETS;
+    } catch {
+      return INITIAL_FINANCIAL_BUDGETS;
+    }
+  });
+
+  const [financialTaxRecords, setFinancialTaxRecords] = useState<FinancialTaxRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finTaxRecords`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_TAX_RECORDS;
+    } catch {
+      return INITIAL_FINANCIAL_TAX_RECORDS;
+    }
+  });
+
+  const [financialJournalEntries, setFinancialJournalEntries] = useState<FinancialJournalEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finJournalEntries`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_JOURNAL_ENTRIES;
+    } catch {
+      return INITIAL_FINANCIAL_JOURNAL_ENTRIES;
+    }
+  });
+
+  const [financialCashTransactions, setFinancialCashTransactions] = useState<FinancialCashTransaction[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_finCashTx`);
+      return saved ? JSON.parse(saved) : INITIAL_FINANCIAL_CASH_TRANSACTIONS;
+    } catch {
+      return INITIAL_FINANCIAL_CASH_TRANSACTIONS;
+    }
+  });
+
+  const [financialMonthlyCashFlow, setFinancialMonthlyCashFlow] = useState<FinancialMonthlyCashFlow[]>(INITIAL_FINANCIAL_MONTHLY_CASH_FLOW);
+  const [financialMonthlyDisbursements, setFinancialMonthlyDisbursements] = useState<FinancialMonthlyDisbursement[]>(INITIAL_FINANCIAL_MONTHLY_DISBURSEMENTS);
+  const [financialMonthlyCollections, setFinancialMonthlyCollections] = useState<FinancialMonthlyCollection[]>(INITIAL_FINANCIAL_MONTHLY_COLLECTIONS);
+
+  // 9. Oversight Submodule States (oversight.* KALASAG)
+  const [oversightSnapshots, setOversightSnapshots] = useState<OversightLoanPortfolioSnapshot[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightSnapshots`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_SNAPSHOTS;
+    } catch {
+      return INITIAL_OVERSIGHT_SNAPSHOTS;
+    }
+  });
+
+  const [oversightCollectionMonitoring, setOversightCollectionMonitoring] = useState<OversightCollectionMonitoring[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightCollectionMon`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_COLLECTION_MONITORING;
+    } catch {
+      return INITIAL_OVERSIGHT_COLLECTION_MONITORING;
+    }
+  });
+
+  const [oversightDisbursementTracker, setOversightDisbursementTracker] = useState<OversightDisbursementTracker[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightDsbTracker`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_DISBURSEMENT_TRACKER;
+    } catch {
+      return INITIAL_OVERSIGHT_DISBURSEMENT_TRACKER;
+    }
+  });
+
+  const [oversightAuditEngagements, setOversightAuditEngagements] = useState<OversightAuditEngagement[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightEngagements`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_AUDIT_ENGAGEMENTS;
+    } catch {
+      return INITIAL_OVERSIGHT_AUDIT_ENGAGEMENTS;
+    }
+  });
+
+  const [oversightAuditFindings, setOversightAuditFindings] = useState<OversightAuditFinding[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightFindings`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_AUDIT_FINDINGS;
+    } catch {
+      return INITIAL_OVERSIGHT_AUDIT_FINDINGS;
+    }
+  });
+
+  const [oversightCorrectiveActions, setOversightCorrectiveActions] = useState<OversightCorrectiveAction[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightCorrectiveActions`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_CORRECTIVE_ACTIONS;
+    } catch {
+      return INITIAL_OVERSIGHT_CORRECTIVE_ACTIONS;
+    }
+  });
+
+  const [oversightComplianceRequirements, setOversightComplianceRequirements] = useState<OversightComplianceRequirement[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightComplianceReqs`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_COMPLIANCE_REQUIREMENTS;
+    } catch {
+      return INITIAL_OVERSIGHT_COMPLIANCE_REQUIREMENTS;
+    }
+  });
+
+  const [oversightComplianceReviews, setOversightComplianceReviews] = useState<OversightComplianceReview[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightComplianceReviews`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_COMPLIANCE_REVIEWS;
+    } catch {
+      return INITIAL_OVERSIGHT_COMPLIANCE_REVIEWS;
+    }
+  });
+
+  const [oversightControlExceptions, setOversightControlExceptions] = useState<OversightControlException[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightControlExceptions`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_CONTROL_EXCEPTIONS;
+    } catch {
+      return INITIAL_OVERSIGHT_CONTROL_EXCEPTIONS;
+    }
+  });
+
+  const [oversightReports, setOversightReports] = useState<OversightReport[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightReports`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_REPORTS;
+    } catch {
+      return INITIAL_OVERSIGHT_REPORTS;
+    }
+  });
+
+  const [oversightMetrics, setOversightMetrics] = useState<OversightDashboardMetric[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightMetrics`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_METRICS;
+    } catch {
+      return INITIAL_OVERSIGHT_METRICS;
+    }
+  });
+
+  const [oversightSettings, setOversightSettings] = useState<OversightSystemSettings>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_oversightSettings`);
+      return saved ? JSON.parse(saved) : INITIAL_OVERSIGHT_SETTINGS;
+    } catch {
+      return INITIAL_OVERSIGHT_SETTINGS;
     }
   });
 
@@ -3687,6 +3969,253 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
+  // ==========================================
+  // 8. Financial Submodule Actions
+  // ==========================================
+  const addFinancialAccount = (acc: Omit<FinancialAccount, 'id'>) => {
+    const newAcc: FinancialAccount = {
+      ...acc,
+      id: `acc-${Date.now()}`,
+    };
+    setFinancialAccounts((prev) => [...prev, newAcc]);
+    logAudit('FIN_ACCOUNT_CREATED', `Created Chart of Account ${newAcc.code} - ${newAcc.name}`, 'SYSTEM');
+    return newAcc;
+  };
+
+  const addFinancialJournalEntry = (entry: Omit<FinancialJournalEntry, 'id'>) => {
+    const newEntry: FinancialJournalEntry = {
+      ...entry,
+      id: `je-${Date.now()}`,
+    };
+    setFinancialJournalEntries((prev) => [newEntry, ...prev]);
+    logAudit('FIN_JOURNAL_POSTED', `Posted Journal Entry ${newEntry.ref} (₱${newEntry.totalDebit.toLocaleString()})`, 'PAYMENT');
+    return newEntry;
+  };
+
+  const addSupplierBill = (bill: Omit<FinancialSupplierBill, 'id' | 'billCode' | 'paidAmount' | 'archived'>) => {
+    const newBill: FinancialSupplierBill = {
+      ...bill,
+      id: `bill-${Date.now()}`,
+      billCode: `BILL-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+      paidAmount: 0,
+      archived: false,
+    };
+    setFinancialSupplierBills((prev) => [newBill, ...prev]);
+    logAudit('FIN_BILL_RECORDED', `Recorded vendor bill ${newBill.billCode} for ${newBill.supplierName}: ₱${newBill.amount.toLocaleString()}`, 'SYSTEM');
+    return newBill;
+  };
+
+  const paySupplierBill = (
+    billId: string,
+    amount: number,
+    paymentMethod: 'Cash' | 'Bank Transfer' | 'Cheque' | 'GCash',
+    referenceNumber?: string
+  ) => {
+    const bill = financialSupplierBills.find((b) => b.id === billId);
+    if (!bill) return { success: false, error: 'Bill not found' };
+
+    const newPaidAmount = (bill.paidAmount || 0) + amount;
+    const newStatus: 'Paid' | 'Partially Paid' | 'Unpaid' =
+      newPaidAmount >= bill.amount ? 'Paid' : newPaidAmount > 0 ? 'Partially Paid' : 'Unpaid';
+
+    const newPayment: FinancialBillPayment = {
+      id: `bp-${Date.now()}`,
+      billId,
+      amount,
+      paymentDate: new Date().toISOString().split('T')[0],
+      paymentMethod,
+      referenceNumber: referenceNumber || `REF-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setFinancialSupplierBills((prev) =>
+      prev.map((b) => (b.id === billId ? { ...b, paidAmount: newPaidAmount, status: newStatus } : b))
+    );
+    setFinancialBillPayments((prev) => [newPayment, ...prev]);
+    logAudit('FIN_BILL_PAID', `Paid ₱${amount.toLocaleString()} for bill ${bill.billCode} via ${paymentMethod}`, 'PAYMENT');
+
+    return { success: true };
+  };
+
+  const addFinancialTaxRecord = (rec: Omit<FinancialTaxRecord, 'id'>) => {
+    const newTax: FinancialTaxRecord = {
+      ...rec,
+      id: `tax-${Date.now()}`,
+    };
+    setFinancialTaxRecords((prev) => [newTax, ...prev]);
+    logAudit('FIN_TAX_RECORDED', `Recorded Tax Entry for ${newTax.period} - ${newTax.taxType} (₱${newTax.taxDue.toLocaleString()})`, 'SYSTEM');
+    return newTax;
+  };
+
+  const updateFinancialBudget = (department: string, allocated: number, used: number) => {
+    setFinancialBudgets((prev) =>
+      prev.map((b) =>
+        b.department === department
+          ? { ...b, allocated, used, remaining: Math.max(0, allocated - used) }
+          : b
+      )
+    );
+    logAudit('FIN_BUDGET_UPDATED', `Updated budget for ${department}`, 'SYSTEM');
+  };
+
+  const addCashTransaction = (tx: Omit<FinancialCashTransaction, 'id' | 'transactionCode'>) => {
+    const newTx: FinancialCashTransaction = {
+      ...tx,
+      id: `ct-${Date.now()}`,
+      transactionCode: `CSH-${tx.transactionType === 'Cash In' ? 'IN' : 'OUT'}-${Date.now().toString().slice(-4)}`,
+    };
+    setFinancialCashTransactions((prev) => [newTx, ...prev]);
+    logAudit('FIN_CASH_TX_RECORDED', `Recorded ${newTx.transactionType} ₱${newTx.amount.toLocaleString()} - ${newTx.description}`, 'PAYMENT');
+    return newTx;
+  };
+
+  // ==========================================
+  // 9. Oversight Submodule Actions (KALASAG)
+  // ==========================================
+  const addAuditFinding = (finding: Omit<OversightAuditFinding, 'findingId' | 'createdAt' | 'updatedAt'>) => {
+    const now = new Date().toISOString();
+    const newFinding: OversightAuditFinding = {
+      ...finding,
+      findingId: `fnd-${Date.now()}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setOversightAuditFindings((prev) => [newFinding, ...prev]);
+    logAudit('AUDIT_FINDING_LOGGED', `Logged Audit Finding: ${newFinding.engagementArea} - [${newFinding.riskOrImpactRating.toUpperCase()}]`, 'SYSTEM');
+    return newFinding;
+  };
+
+  const updateAuditFindingStatus = (findingId: string, status: FindingStatus, closureEvidence?: string) => {
+    setOversightAuditFindings((prev) =>
+      prev.map((f) =>
+        f.findingId === findingId
+          ? { ...f, status, closureEvidence: closureEvidence || f.closureEvidence, updatedAt: new Date().toISOString() }
+          : f
+      )
+    );
+    logAudit('AUDIT_FINDING_STATUS_CHANGED', `Updated audit finding ${findingId} to status ${status}`, 'SYSTEM');
+  };
+
+  const addCorrectiveAction = (cap: Omit<OversightCorrectiveAction, 'correctiveActionId' | 'createdAt' | 'updatedAt'>) => {
+    const now = new Date().toISOString();
+    const newCap: OversightCorrectiveAction = {
+      ...cap,
+      correctiveActionId: `cap-${Date.now()}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setOversightCorrectiveActions((prev) => [newCap, ...prev]);
+    logAudit('CORRECTIVE_ACTION_CREATED', `Created Corrective Action Plan for Finding ${cap.findingId}`, 'SYSTEM');
+    return newCap;
+  };
+
+  const verifyCorrectiveAction = (capId: string, verifiedBy: string) => {
+    const now = new Date().toISOString();
+    setOversightCorrectiveActions((prev) =>
+      prev.map((c) =>
+        c.correctiveActionId === capId
+          ? { ...c, status: 'completed', verifiedBy, verifiedByName: currentUser.name, verifiedAt: now, updatedAt: now }
+          : c
+      )
+    );
+    logAudit('CORRECTIVE_ACTION_VERIFIED', `Verified and closed CAP ${capId}`, 'SYSTEM');
+  };
+
+  const addComplianceReview = (rev: Omit<OversightComplianceReview, 'reviewId' | 'createdAt' | 'updatedAt'>) => {
+    const now = new Date().toISOString();
+    const newRev: OversightComplianceReview = {
+      ...rev,
+      reviewId: `rev-${Date.now()}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setOversightComplianceReviews((prev) => [newRev, ...prev]);
+    logAudit('COMPLIANCE_REVIEW_RECORDED', `Recorded Compliance Review for ${newRev.requirementDescription}`, 'SYSTEM');
+    return newRev;
+  };
+
+  const addControlException = (exc: Omit<OversightControlException, 'exceptionId' | 'identifiedAt' | 'createdAt' | 'updatedAt'>) => {
+    const now = new Date().toISOString();
+    const newExc: OversightControlException = {
+      ...exc,
+      exceptionId: `exc-${Date.now()}`,
+      identifiedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setOversightControlExceptions((prev) => [newExc, ...prev]);
+    logAudit('CONTROL_EXCEPTION_LOGGED', `Identified Control Exception in ${newExc.sourceArea}: ${newExc.description}`, 'SYSTEM');
+    return newExc;
+  };
+
+  const resolveControlException = (excId: string, resolutionDate?: string) => {
+    setOversightControlExceptions((prev) =>
+      prev.map((e) =>
+        e.exceptionId === excId
+          ? { ...e, status: 'resolved', resolutionDate: resolutionDate || new Date().toISOString().split('T')[0], updatedAt: new Date().toISOString() }
+          : e
+      )
+    );
+    logAudit('CONTROL_EXCEPTION_RESOLVED', `Resolved Control Exception ${excId}`, 'SYSTEM');
+  };
+
+  const generateOversightReport = (report: Omit<OversightReport, 'reportId' | 'generatedAt' | 'createdAt' | 'updatedAt'>) => {
+    const now = new Date().toISOString();
+    const newRep: OversightReport = {
+      ...report,
+      reportId: `rep-${Date.now()}`,
+      generatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setOversightReports((prev) => [newRep, ...prev]);
+    logAudit('OVERSIGHT_REPORT_GENERATED', `Generated Oversight Report: ${newRep.reportName} (${newRep.reportType})`, 'SYSTEM');
+    return newRep;
+  };
+
+  const approveOversightReport = (reportId: string, approvedBy: string, remarks?: string) => {
+    const now = new Date().toISOString();
+    setOversightReports((prev) =>
+      prev.map((r) =>
+        r.reportId === reportId
+          ? { ...r, approvalStatus: 'approved', approvedBy, approvedByName: currentUser.name, approvedAt: now, remarks: remarks || r.remarks, updatedAt: now }
+          : r
+      )
+    );
+    logAudit('OVERSIGHT_REPORT_APPROVED', `Approved Oversight Report ${reportId}`, 'SYSTEM');
+  };
+
+  const updateOversightSettings = (newSettings: Partial<OversightSystemSettings>) => {
+    setOversightSettings((prev) => ({
+      ...prev,
+      ...newSettings,
+      updatedBy: currentUser.id,
+      updatedAt: new Date().toISOString(),
+    }));
+    logAudit('OVERSIGHT_SETTINGS_UPDATED', 'Updated KALASAG Institutional Oversight System Settings', 'SYSTEM');
+  };
+
+  const updateCollectionMonitoring = (monitoringId: string, data: Partial<OversightCollectionMonitoring>) => {
+    setOversightCollectionMonitoring((prev) =>
+      prev.map((m) =>
+        m.monitoringId === monitoringId ? { ...m, ...data, updatedAt: new Date().toISOString() } : m
+      )
+    );
+    logAudit('COLLECTION_MONITORING_UPDATED', `Updated collection monitoring record ${monitoringId}`, 'PAYMENT');
+  };
+
+  const updateDisbursementTracking = (trackerId: string, status: TrackingStatus, verifiedBy?: string) => {
+    const now = new Date().toISOString();
+    setOversightDisbursementTracker((prev) =>
+      prev.map((d) =>
+        d.trackerId === trackerId
+          ? { ...d, trackingStatus: status, verifiedBy: verifiedBy || d.verifiedBy, verifiedByName: currentUser.name, verifiedAt: now, updatedAt: now }
+          : d
+      )
+    );
+    logAudit('DISBURSEMENT_TRACKING_UPDATED', `Updated disbursement tracking ${trackerId} to ${status}`, 'LOAN');
+  };
+
   const resetToDefaults = () => {
     localStorage.removeItem(`${STORAGE_KEY}_branches`);
     localStorage.removeItem(`${STORAGE_KEY}_staff`);
@@ -3707,6 +4236,26 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(`${STORAGE_KEY}_groupMeetings`);
     localStorage.removeItem(`${STORAGE_KEY}_financialTx`);
     localStorage.removeItem(`${STORAGE_KEY}_logs`);
+    localStorage.removeItem(`${STORAGE_KEY}_finAccounts`);
+    localStorage.removeItem(`${STORAGE_KEY}_finSuppliers`);
+    localStorage.removeItem(`${STORAGE_KEY}_finSupplierBills`);
+    localStorage.removeItem(`${STORAGE_KEY}_finBillPayments`);
+    localStorage.removeItem(`${STORAGE_KEY}_finBudgets`);
+    localStorage.removeItem(`${STORAGE_KEY}_finTaxRecords`);
+    localStorage.removeItem(`${STORAGE_KEY}_finJournalEntries`);
+    localStorage.removeItem(`${STORAGE_KEY}_finCashTx`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightSnapshots`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightCollectionMon`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightDsbTracker`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightEngagements`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightFindings`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightCorrectiveActions`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightComplianceReqs`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightComplianceReviews`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightControlExceptions`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightReports`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightMetrics`);
+    localStorage.removeItem(`${STORAGE_KEY}_oversightSettings`);
 
     setBranches(INITIAL_BRANCHES);
     setStaffList(INITIAL_STAFF);
@@ -3727,6 +4276,26 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     setGroupMeetingLogs(INITIAL_GROUP_MEETING_LOGS);
     setFinancialTransactions(INITIAL_FINANCIAL_TRANSACTIONS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
+    setFinancialAccounts(INITIAL_FINANCIAL_ACCOUNTS);
+    setFinancialSuppliers(INITIAL_FINANCIAL_SUPPLIERS);
+    setFinancialSupplierBills(INITIAL_FINANCIAL_SUPPLIER_BILLS);
+    setFinancialBillPayments(INITIAL_FINANCIAL_BILL_PAYMENTS);
+    setFinancialBudgets(INITIAL_FINANCIAL_BUDGETS);
+    setFinancialTaxRecords(INITIAL_FINANCIAL_TAX_RECORDS);
+    setFinancialJournalEntries(INITIAL_FINANCIAL_JOURNAL_ENTRIES);
+    setFinancialCashTransactions(INITIAL_FINANCIAL_CASH_TRANSACTIONS);
+    setOversightSnapshots(INITIAL_OVERSIGHT_SNAPSHOTS);
+    setOversightCollectionMonitoring(INITIAL_OVERSIGHT_COLLECTION_MONITORING);
+    setOversightDisbursementTracker(INITIAL_OVERSIGHT_DISBURSEMENT_TRACKER);
+    setOversightAuditEngagements(INITIAL_OVERSIGHT_AUDIT_ENGAGEMENTS);
+    setOversightAuditFindings(INITIAL_OVERSIGHT_AUDIT_FINDINGS);
+    setOversightCorrectiveActions(INITIAL_OVERSIGHT_CORRECTIVE_ACTIONS);
+    setOversightComplianceRequirements(INITIAL_OVERSIGHT_COMPLIANCE_REQUIREMENTS);
+    setOversightComplianceReviews(INITIAL_OVERSIGHT_COMPLIANCE_REVIEWS);
+    setOversightControlExceptions(INITIAL_OVERSIGHT_CONTROL_EXCEPTIONS);
+    setOversightReports(INITIAL_OVERSIGHT_REPORTS);
+    setOversightMetrics(INITIAL_OVERSIGHT_METRICS);
+    setOversightSettings(INITIAL_OVERSIGHT_SETTINGS);
   };
 
   return (
@@ -3748,6 +4317,53 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         createFinancialTransaction,
         reverseFinancialTransaction,
         updateFinancialTransactionStatus,
+
+        // 8. Financial Submodule State & Actions
+        financialAccounts,
+        financialSuppliers,
+        financialSupplierBills,
+        financialBillPayments,
+        financialBudgets,
+        financialTaxRecords,
+        financialJournalEntries,
+        financialCashTransactions,
+        financialMonthlyCashFlow,
+        financialMonthlyDisbursements,
+        financialMonthlyCollections,
+        addFinancialAccount,
+        addFinancialJournalEntry,
+        addSupplierBill,
+        paySupplierBill,
+        addFinancialTaxRecord,
+        updateFinancialBudget,
+        addCashTransaction,
+
+        // 9. Oversight Submodule State & Actions
+        oversightSnapshots,
+        oversightCollectionMonitoring,
+        oversightDisbursementTracker,
+        oversightAuditEngagements,
+        oversightAuditFindings,
+        oversightCorrectiveActions,
+        oversightComplianceRequirements,
+        oversightComplianceReviews,
+        oversightControlExceptions,
+        oversightReports,
+        oversightMetrics,
+        oversightSettings,
+        addAuditFinding,
+        updateAuditFindingStatus,
+        addCorrectiveAction,
+        verifyCorrectiveAction,
+        addComplianceReview,
+        addControlException,
+        resolveControlException,
+        generateOversightReport,
+        approveOversightReport,
+        updateOversightSettings,
+        updateCollectionMonitoring,
+        updateDisbursementTracking,
+
         auditLogs,
         reminders,
 

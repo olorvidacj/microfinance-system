@@ -80,13 +80,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     savingsAccounts,
     creditMonthlySavingsInterest,
     currentUser,
+    // Submodule data
+    financialAccounts,
+    financialSuppliers,
+    financialSupplierBills,
+    financialBudgets,
+    financialTaxRecords,
+    financialMonthlyCashFlow,
+    financialMonthlyDisbursements,
+    financialMonthlyCollections,
+    paySupplierBill,
+    oversightSnapshots,
+    oversightCollectionMonitoring,
+    oversightDisbursementTracker,
+    oversightAuditFindings,
+    oversightCorrectiveActions,
+    oversightComplianceReviews,
+    oversightControlExceptions,
+    oversightMetrics,
+    updateAuditFindingStatus,
+    verifyCorrectiveAction,
   } = useLoan();
 
   // Filter States
   const [selectedTxType, setSelectedTxType] = useState<string>('ALL');
   const [selectedTxStatus, setSelectedTxStatus] = useState<string>('ALL');
   const [txSearchTerm, setTxSearchTerm] = useState<string>('');
-  const [activeTabSection, setActiveTabSection] = useState<'transactions' | 'watchlist' | 'pendingKyc' | 'pendingLoans'>('transactions');
+  const [activeTabSection, setActiveTabSection] = useState<
+    'transactions' | 'watchlist' | 'pendingKyc' | 'pendingLoans' | 'oversight' | 'financialSubmodule'
+  >('transactions');
+
+  // Oversight & Financial submodule filter states
+  const [oversightRiskFilter, setOversightRiskFilter] = useState<string>('ALL');
+  const [billStatusFilter, setBillStatusFilter] = useState<string>('ALL');
+  const [selectedFindingToView, setSelectedFindingToView] = useState<any | null>(null);
 
   // Transaction Details Modal
   const [inspectingTx, setInspectingTx] = useState<FinancialTransaction | null>(null);
@@ -861,6 +888,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </span>
               )}
             </button>
+
+            {/* KALASAG Oversight Tab */}
+            <button
+              onClick={() => setActiveTabSection('oversight')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold transition ${
+                activeTabSection === 'oversight'
+                  ? 'bg-indigo-700 text-white shadow-xs'
+                  : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-indigo-300" />
+              <span>KALASAG Oversight</span>
+              {oversightAuditFindings.filter((f) => f.status === 'open').length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[11px] bg-rose-100 text-rose-800 font-mono">
+                  {oversightAuditFindings.filter((f) => f.status === 'open').length} Findings
+                </span>
+              )}
+            </button>
+
+            {/* Financial Ledger & AP Tab */}
+            <button
+              onClick={() => setActiveTabSection('financialSubmodule')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold transition ${
+                activeTabSection === 'financialSubmodule'
+                  ? 'bg-teal-700 text-white shadow-xs'
+                  : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              }`}
+            >
+              <Scale className="w-4 h-4 text-teal-300" />
+              <span>General Ledger & AP</span>
+              <span className="px-2 py-0.5 rounded-full text-[11px] bg-teal-100 text-teal-800 font-mono">
+                {financialAccounts.length} Accts
+              </span>
+            </button>
           </div>
 
           {activeTabSection === 'transactions' && (
@@ -1240,6 +1301,444 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 5: KALASAG Institutional Oversight & Risk Matrix */}
+        {activeTabSection === 'oversight' && (
+          <div className="p-4 sm:p-6 space-y-6">
+            {/* Oversight Header Overview */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-indigo-900/90 text-white p-5 rounded-2xl border border-indigo-700 shadow-md">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                    KALASAG Institutional Oversight
+                  </span>
+                  <span className="text-xs text-indigo-300">
+                    Active Snapshots • {oversightSnapshots.length} Recorded
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold">Comprehensive Risk Matrix & Portfolio Health</h3>
+                <p className="text-xs text-indigo-200">
+                  Continuous oversight tracking portfolio at risk, collection variances, control exceptions, and corrective action plans (CAP).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <span className="text-xs text-indigo-300 block">Overall PAR &gt; 30 Rate</span>
+                  <span className="text-2xl font-black text-amber-300 font-mono">
+                    {stats.par30.toFixed(2)}%
+                  </span>
+                </div>
+                <div className="text-right pl-3 border-l border-indigo-700">
+                  <span className="text-xs text-indigo-300 block">Open Audit Findings</span>
+                  <span className="text-2xl font-black text-rose-300 font-mono">
+                    {oversightAuditFindings.filter((f) => f.status === 'open').length}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Oversight Mini KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
+                <span className="text-xs font-semibold text-gray-500 block">Portfolio Snapshots</span>
+                <span className="text-xl font-bold text-gray-900 mt-1 block">
+                  {oversightSnapshots.length} Logs
+                </span>
+                <span className="text-[11px] text-gray-500">
+                  Last: {oversightSnapshots[0]?.snapshotDate || 'Today'}
+                </span>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
+                <span className="text-xs font-semibold text-gray-500 block">Collection Monitoring</span>
+                <span className="text-xl font-bold text-emerald-700 mt-1 block">
+                  {oversightCollectionMonitoring.filter((c) => c.remittanceStatus === 'remitted').length} / {oversightCollectionMonitoring.length} Remitted
+                </span>
+                <span className="text-[11px] text-emerald-600 font-medium">Daily collection target tracking</span>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
+                <span className="text-xs font-semibold text-gray-500 block">Corrective Action Plans (CAP)</span>
+                <span className="text-xl font-bold text-blue-700 mt-1 block">
+                  {oversightCorrectiveActions.length} Actions
+                </span>
+                <span className="text-[11px] text-blue-600 font-medium">
+                  {oversightCorrectiveActions.filter((c) => c.status === 'in_progress').length} in progress
+                </span>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
+                <span className="text-xs font-semibold text-gray-500 block">Compliance Requirements</span>
+                <span className="text-xl font-bold text-purple-700 mt-1 block">
+                  {oversightComplianceReviews.length} Reviews
+                </span>
+                <span className="text-[11px] text-purple-600 font-medium">
+                  {oversightComplianceReviews.filter((c) => c.complianceStatus === 'compliant').length} compliant
+                </span>
+              </div>
+            </div>
+
+            {/* Audit Findings and Corrective Actions Table */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600" />
+                  <span>Audit Findings & Action Matrix</span>
+                </h4>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-medium">Filter by Rating:</span>
+                  <select
+                    value={oversightRiskFilter}
+                    onChange={(e) => setOversightRiskFilter(e.target.value)}
+                    className="px-2.5 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg"
+                  >
+                    <option value="ALL">All Ratings</option>
+                    <option value="critical">Critical Risk</option>
+                    <option value="high">High Risk</option>
+                    <option value="medium">Medium Risk</option>
+                    <option value="low">Low Risk</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
+                    <tr>
+                      <th className="py-3 px-4">Engagement Area</th>
+                      <th className="py-3 px-4">Rating</th>
+                      <th className="py-3 px-4">Condition Observed</th>
+                      <th className="py-3 px-4">Recommendation</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {oversightAuditFindings
+                      .filter((f) => oversightRiskFilter === 'ALL' || f.riskOrImpactRating === oversightRiskFilter)
+                      .map((finding) => (
+                        <tr key={finding.findingId} className="hover:bg-gray-50/60 transition">
+                          <td className="py-3 px-4 font-bold text-gray-900">
+                            {finding.engagementArea || 'Cooperative Operations'}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${
+                                finding.riskOrImpactRating === 'critical' || finding.riskOrImpactRating === 'high'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : finding.riskOrImpactRating === 'medium'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {finding.riskOrImpactRating}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 max-w-xs text-gray-700">
+                            <p className="font-medium truncate">{finding.conditionObserved}</p>
+                            <p className="text-[11px] text-gray-500 truncate">Root cause: {finding.rootCause || 'N/A'}</p>
+                          </td>
+                          <td className="py-3 px-4 max-w-xs text-gray-600 truncate">
+                            {finding.recommendation}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                finding.status === 'open'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : finding.status === 'in_progress'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}
+                            >
+                              {finding.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {finding.status !== 'closed' ? (
+                              <button
+                                onClick={() =>
+                                  updateAuditFindingStatus(
+                                    finding.findingId,
+                                    finding.status === 'open' ? 'in_progress' : 'closed',
+                                    'Verified and resolved during executive oversight session.'
+                                  )
+                                }
+                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition"
+                              >
+                                {finding.status === 'open' ? 'Start Remediation' : 'Close Finding'}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-emerald-600 font-semibold flex items-center justify-end gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Resolved
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Collection Monitoring Variance Tracker Table */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+                <span>Collection Monitoring & Variance Tracker</span>
+              </h4>
+
+              <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
+                    <tr>
+                      <th className="py-3 px-4">Monitoring Date</th>
+                      <th className="py-3 px-4">Branch</th>
+                      <th className="py-3 px-4">Client / Ref</th>
+                      <th className="py-3 px-4 font-mono">Variance Amount</th>
+                      <th className="py-3 px-4">Remittance Status</th>
+                      <th className="py-3 px-4">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {oversightCollectionMonitoring.map((rec) => (
+                      <tr key={rec.monitoringId} className="hover:bg-gray-50/60 transition">
+                        <td className="py-3 px-4 font-medium text-gray-900">{rec.monitoringDate}</td>
+                        <td className="py-3 px-4 text-gray-700">{rec.branchName || 'Main Branch'}</td>
+                        <td className="py-3 px-4 text-gray-700 font-mono">{rec.clientName || rec.collectionReference}</td>
+                        <td className="py-3 px-4 font-mono">
+                          <span
+                            className={
+                              rec.varianceAmount < 0
+                                ? 'text-rose-600 font-semibold'
+                                : rec.varianceAmount > 0
+                                ? 'text-amber-600 font-semibold'
+                                : 'text-emerald-600 font-semibold'
+                            }
+                          >
+                            {rec.varianceAmount === 0 ? '₱0.00' : `${rec.varianceAmount < 0 ? '-' : '+'}${formatCurrency(Math.abs(rec.varianceAmount))}`}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              rec.remittanceStatus === 'remitted'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : rec.remittanceStatus === 'unremitted'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {rec.remittanceStatus}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-gray-600 truncate max-w-xs">{rec.remarks || 'Standard daily remittance'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 6: Financial Ledger, Budgets & Accounts Payable Submodule */}
+        {activeTabSection === 'financialSubmodule' && (
+          <div className="p-4 sm:p-6 space-y-6">
+            {/* Submodule Overview Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-teal-900 text-white p-5 rounded-2xl border border-teal-700 shadow-md">
+              <div className="space-y-1">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-teal-500/30 text-teal-200 border border-teal-400/30">
+                  Financial Submodule
+                </span>
+                <h3 className="text-xl font-bold">Chart of Accounts, Department Budgets & Accounts Payable</h3>
+                <p className="text-xs text-teal-200">
+                  Direct ledger synchronization with general accounts, vendor bills, and operational expense budgets.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <span className="text-xs text-teal-300 block">Total Budget Allocation</span>
+                  <span className="text-xl font-black text-teal-100 font-mono">
+                    {formatCurrency(financialBudgets.reduce((acc, b) => acc + b.allocated, 0))}
+                  </span>
+                </div>
+                <div className="text-right pl-3 border-l border-teal-700">
+                  <span className="text-xs text-teal-300 block">Remaining Budget</span>
+                  <span className="text-xl font-black text-amber-300 font-mono">
+                    {formatCurrency(financialBudgets.reduce((acc, b) => acc + b.remaining, 0))}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Department Budgets Cards */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-teal-600" />
+                <span>Department Operational Budgets</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {financialBudgets.map((b) => {
+                  const percentUsed = Math.min(100, Math.round((b.used / (b.allocated || 1)) * 100));
+                  return (
+                    <div key={b.department} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-gray-800">{b.department}</span>
+                        <span className="text-[11px] font-mono font-semibold text-gray-500">{percentUsed}% used</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2 my-2 overflow-hidden">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            percentUsed > 85
+                              ? 'bg-rose-500'
+                              : percentUsed > 60
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${percentUsed}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500 mt-2">
+                        <span>Used: {formatCurrency(b.used)}</span>
+                        <span className="font-semibold text-gray-700">Alloc: {formatCurrency(b.allocated)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Accounts Payable & Supplier Bills Table */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-blue-600" />
+                  <span>Accounts Payable & Supplier Invoices</span>
+                </h4>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={billStatusFilter}
+                    onChange={(e) => setBillStatusFilter(e.target.value)}
+                    className="px-2.5 py-1 text-xs bg-gray-50 border border-gray-200 rounded-lg"
+                  >
+                    <option value="ALL">All Bills</option>
+                    <option value="Unpaid">Unpaid</option>
+                    <option value="Partially Paid">Partially Paid</option>
+                    <option value="Paid">Paid</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
+                    <tr>
+                      <th className="py-3 px-4">Bill Code</th>
+                      <th className="py-3 px-4">Supplier Name</th>
+                      <th className="py-3 px-4">Due Date</th>
+                      <th className="py-3 px-4 font-mono">Invoice Amount</th>
+                      <th className="py-3 px-4 font-mono">Paid Amount</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {financialSupplierBills
+                      .filter((bill) => billStatusFilter === 'ALL' || bill.status === billStatusFilter)
+                      .map((bill) => (
+                        <tr key={bill.id} className="hover:bg-gray-50/60 transition">
+                          <td className="py-3 px-4 font-mono font-bold text-gray-900">{bill.billCode}</td>
+                          <td className="py-3 px-4 font-medium text-gray-800">{bill.supplierName}</td>
+                          <td className="py-3 px-4 text-gray-600">{bill.dueDate}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-gray-900">
+                            {formatCurrency(bill.amount)}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-emerald-700">
+                            {formatCurrency(bill.paidAmount || 0)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                bill.status === 'Paid'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : bill.status === 'Partially Paid'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              {bill.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {bill.status !== 'Paid' ? (
+                              <button
+                                onClick={() => {
+                                  const balanceRemaining = bill.amount - (bill.paidAmount || 0);
+                                  paySupplierBill(bill.id, balanceRemaining, 'Cash');
+                                }}
+                                className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold transition"
+                              >
+                                Settle Balance
+                              </button>
+                            ) : (
+                              <span className="text-xs text-emerald-600 font-semibold flex items-center justify-end gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Settled
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Chart of Accounts Master */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Scale className="w-4 h-4 text-indigo-600" />
+                <span>Standard Cooperative Chart of Accounts</span>
+              </h4>
+
+              <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
+                    <tr>
+                      <th className="py-3 px-4">Account Code</th>
+                      <th className="py-3 px-4">Account Name</th>
+                      <th className="py-3 px-4">Account Type</th>
+                      <th className="py-3 px-4">Normal Balance</th>
+                      <th className="py-3 px-4">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {financialAccounts.map((acc) => (
+                      <tr key={acc.id} className="hover:bg-gray-50/60 transition">
+                        <td className="py-3 px-4 font-mono font-bold text-gray-900">{acc.code}</td>
+                        <td className="py-3 px-4 font-medium text-gray-800">{acc.name}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-700">
+                            {acc.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-medium text-gray-600">{acc.normalBalance}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {acc.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

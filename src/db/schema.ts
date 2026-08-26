@@ -1,4 +1,7 @@
-import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, doublePrecision, jsonb, pgSchema, numeric, date, bigint, uuid } from "drizzle-orm/pg-core";
+
+export const financialSchema = pgSchema("financial");
+export const oversightSchema = pgSchema("oversight");
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -371,5 +374,521 @@ export const financialTransactions = pgTable("financial_transactions", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+// ==========================================
+// FINANCIAL SUBMODULE TABLES (financial.*)
+// ==========================================
+
+export const financialRoles = financialSchema.table("roles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  description: text("description").default(""),
+  status: text("status").notNull().default("active"),
+  permissions: jsonb("permissions").notNull().default({}),
+  isSystem: boolean("is_system").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const financialAccounts = financialSchema.table("accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  normalBalance: text("normal_balance").notNull(),
+  status: text("status").notNull().default("Active"),
+});
+
+export const financialBorrowers = financialSchema.table("borrowers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  borrowerCode: text("borrower_code").notNull().unique(),
+  name: text("name").notNull(),
+  loanAmount: numeric("loan_amount").notNull().default("0"),
+  outstanding: numeric("outstanding").notNull().default("0"),
+  nextDue: date("next_due"),
+  status: text("status").notNull().default("Current"),
+  archived: boolean("archived").notNull().default(false),
+});
+
+export const financialSuppliers = financialSchema.table("suppliers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  supplierCode: text("supplier_code").notNull().unique(),
+  name: text("name").notNull(),
+  contact: text("contact"),
+  status: text("status").notNull().default("Active"),
+});
+
+export const financialDisbursements = financialSchema.table("disbursements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  disbursementCode: text("disbursement_code").notNull().unique(),
+  borrowerName: text("borrower_name"),
+  amount: numeric("amount").notNull(),
+  disbursementDate: date("disbursement_date").notNull(),
+  officer: text("officer"),
+  status: text("status").notNull().default("For Approval"),
+  archived: boolean("archived").notNull().default(false),
+});
+
+export const financialCollections = financialSchema.table("collections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  collectionCode: text("collection_code").notNull().unique(),
+  borrowerId: uuid("borrower_id").notNull(),
+  collectionType: text("collection_type").notNull(),
+  amount: numeric("amount").notNull(),
+  principalAmount: numeric("principal_amount").notNull().default("0"),
+  interestAmount: numeric("interest_amount").notNull().default("0"),
+  collectionDate: date("collection_date").notNull(),
+  paymentMode: text("payment_mode").notNull(),
+  orNumber: text("or_number"),
+  status: text("status").notNull().default("Completed"),
+  previousBalance: numeric("previous_balance"),
+  remainingBalance: numeric("remaining_balance"),
+  notes: text("notes"),
+  archived: boolean("archived").notNull().default(false),
+});
+
+export const financialSupplierBills = financialSchema.table("supplier_bills", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  billCode: text("bill_code").notNull().unique(),
+  supplierId: uuid("supplier_id").notNull(),
+  dueDate: date("due_date").notNull(),
+  amount: numeric("amount").notNull(),
+  status: text("status").notNull().default("Unpaid"),
+  paidAmount: numeric("paid_amount").notNull().default("0"),
+  archived: boolean("archived").notNull().default(false),
+});
+
+export const financialBillPayments = financialSchema.table("bill_payments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  billId: uuid("bill_id").notNull(),
+  amount: numeric("amount").notNull(),
+  paymentDate: date("payment_date").notNull(),
+  paymentMethod: text("payment_method").notNull().default("Cash"),
+  referenceNumber: text("reference_number"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const financialTaxRecords = financialSchema.table("tax_records", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  period: text("period").notNull(),
+  taxType: text("tax_type").notNull(),
+  taxableAmount: numeric("taxable_amount").notNull(),
+  rate: numeric("rate").notNull(),
+  taxDue: numeric("tax_due").notNull(),
+  status: text("status").notNull().default("Filed"),
+});
+
+export const financialBudgets = financialSchema.table("budgets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  department: text("department").notNull().unique(),
+  allocated: numeric("allocated").notNull().default("0"),
+  used: numeric("used").notNull().default("0"),
+  remaining: numeric("remaining").notNull().default("0"),
+});
+
+export const financialJournalEntries = financialSchema.table("journal_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ref: text("ref").notNull().unique(),
+  entryDate: date("entry_date").notNull(),
+  description: text("description").notNull(),
+  totalDebit: numeric("total_debit").notNull().default("0"),
+  totalCredit: numeric("total_credit").notNull().default("0"),
+  sourceModule: text("source_module"),
+  sourceId: uuid("source_id"),
+  status: text("status").notNull().default("Posted"),
+});
+
+export const financialJournalEntryLines = financialSchema.table("journal_entry_lines", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  journalEntryId: uuid("journal_entry_id").notNull(),
+  accountId: uuid("account_id").notNull(),
+  debit: numeric("debit").notNull().default("0"),
+  credit: numeric("credit").notNull().default("0"),
+});
+
+export const financialCashTransactions = financialSchema.table("cash_transactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  transactionCode: text("transaction_code").notNull().unique(),
+  transactionDate: date("transaction_date").notNull(),
+  description: text("description").notNull(),
+  transactionType: text("transaction_type").notNull(),
+  amount: numeric("amount").notNull(),
+  sourceModule: text("source_module"),
+  sourceId: uuid("source_id"),
+});
+
+export const financialReceipts = financialSchema.table("receipts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  receiptCode: text("receipt_code").notNull().unique(),
+  collectionId: uuid("collection_id").notNull(),
+  borrowerId: uuid("borrower_id").notNull(),
+  amount: numeric("amount").notNull(),
+  principalAmount: numeric("principal_amount").notNull().default("0"),
+  interestAmount: numeric("interest_amount").notNull().default("0"),
+  issuedDate: date("issued_date").notNull(),
+  issuedBy: text("issued_by"),
+});
+
+export const financialMonthlyDisbursements = financialSchema.table("monthly_disbursements", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  month: text("month").notNull(),
+  year: integer("year").notNull(),
+  amount: numeric("amount").notNull(),
+});
+
+export const financialMonthlyCollections = financialSchema.table("monthly_collections", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  month: text("month").notNull(),
+  year: integer("year").notNull(),
+  collected: numeric("collected").notNull(),
+  target: numeric("target").notNull(),
+});
+
+export const financialMonthlyCashFlow = financialSchema.table("monthly_cash_flow", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  month: text("month").notNull(),
+  year: integer("year").notNull(),
+  inflow: numeric("inflow").notNull(),
+  outflow: numeric("outflow").notNull(),
+});
+
+export const financialAuditLogs = financialSchema.table("audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id"),
+  userName: text("user_name"),
+  userRole: text("user_role"),
+  branch: text("branch"),
+  action: text("action").notNull(),
+  module: text("module").notNull(),
+  description: text("description"),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  referenceNo: text("reference_no"),
+  oldValues: jsonb("old_values"),
+  newValues: jsonb("new_values"),
+  reason: text("reason"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  status: text("status").notNull().default("success"),
+  severity: text("severity").notNull().default("info"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const financialAuditTrails = financialSchema.table("audit_trails", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  transactionId: text("transaction_id"),
+  referenceNo: text("reference_no"),
+  module: text("module").notNull(),
+  transactionType: text("transaction_type"),
+  action: text("action").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  userId: uuid("user_id"),
+  userName: text("user_name"),
+  roleId: bigint("role_id", { mode: "number" }),
+  roleName: text("role_name"),
+  branch: text("branch"),
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status"),
+  oldValues: jsonb("old_values"),
+  newValues: jsonb("new_values"),
+  amount: numeric("amount"),
+  currency: text("currency").notNull().default("PHP"),
+  reason: text("reason"),
+  remarks: text("remarks"),
+  relatedTransactionId: text("related_transaction_id"),
+  relatedReferenceNo: text("related_reference_no"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  status: text("status").notNull().default("success"),
+  severity: text("severity").notNull().default("info"),
+  auditLogId: uuid("audit_log_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const financialNotifications = financialSchema.table("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id"),
+  title: text("title").notNull(),
+  body: text("body"),
+  type: text("type"),
+  module: text("module"),
+  referenceId: text("reference_id"),
+  referenceNo: text("reference_no"),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const financialAdmins = financialSchema.table("admins", {
+  id: uuid("id").primaryKey(),
+  name: text("name").notNull(),
+  username: text("username").unique(),
+  email: text("email").notNull().unique(),
+  contactNumber: text("contact_number"),
+  role: text("role").notNull(),
+  status: text("status").notNull(),
+  profilePictureUrl: text("profile_picture_url"),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  otpCode: text("otp_code"),
+  otpExpiresAt: timestamp("otp_expires_at", { withTimezone: true }),
+  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+});
+
+// ==========================================
+// OVERSIGHT SUBMODULE TABLES (oversight.*)
+// ==========================================
+
+export const oversightAccessReviews = oversightSchema.table("access_reviews", {
+  accessReviewId: uuid("access_review_id").primaryKey().defaultRandom(),
+  userRoleId: uuid("user_role_id").notNull(),
+  reviewerId: uuid("reviewer_id").notNull(),
+  reviewDate: timestamp("review_date", { withTimezone: true }).notNull().defaultNow(),
+  reviewOutcome: text("review_outcome").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightLoanPortfolioSnapshots = oversightSchema.table("loan_portfolio_snapshots", {
+  snapshotId: uuid("snapshot_id").primaryKey().defaultRandom(),
+  clientReference: uuid("client_reference").notNull(),
+  clientSource: text("client_source").notNull().default("client_services.clients"),
+  legacyBranchReference: uuid("legacy_branch_reference"),
+  snapshotDate: date("snapshot_date").notNull(),
+  outstandingBalance: numeric("outstanding_balance").notNull(),
+  daysPastDue: integer("days_past_due").notNull().default(0),
+  portfolioAtRiskFlag: boolean("portfolio_at_risk_flag").notNull().default(false),
+  likelihoodRating: text("likelihood_rating").notNull(),
+  impactRating: text("impact_rating").notNull(),
+  residualRiskRating: text("residual_risk_rating").notNull(),
+  recordedBy: uuid("recorded_by").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  serviceAreaReference: uuid("service_area_reference"),
+  activeLoanCount: integer("active_loan_count").notNull().default(1),
+  overdueLoanCount: integer("overdue_loan_count").notNull().default(0),
+  scheduledRepaymentAmount: numeric("scheduled_repayment_amount").notNull().default("0"),
+  receivedRepaymentAmount: numeric("received_repayment_amount").notNull().default("0"),
+  missedPaymentCount: integer("missed_payment_count").notNull().default(0),
+  dataClassification: text("data_classification").notNull().default("manual"),
+});
+
+export const oversightCollectionMonitoring = oversightSchema.table("collection_monitoring", {
+  monitoringId: uuid("monitoring_id").primaryKey().defaultRandom(),
+  collectionReference: uuid("collection_reference").notNull(),
+  collectionSource: text("collection_source").notNull().default("financial.collections"),
+  clientReference: uuid("client_reference"),
+  legacyBranchReference: uuid("legacy_branch_reference"),
+  monitoringDate: date("monitoring_date").notNull(),
+  remittanceStatus: text("remittance_status").notNull(),
+  unremittedFlag: boolean("unremitted_flag").notNull().default(false),
+  varianceAmount: numeric("variance_amount").notNull().default("0"),
+  reviewedBy: uuid("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  serviceAreaReference: uuid("service_area_reference"),
+});
+
+export const oversightDisbursementTracker = oversightSchema.table("disbursement_tracker", {
+  trackerId: uuid("tracker_id").primaryKey().defaultRandom(),
+  disbursementReference: uuid("disbursement_reference").notNull().unique(),
+  disbursementSource: text("disbursement_source").notNull().default("financial.disbursements"),
+  budgetReference: uuid("budget_reference"),
+  legacyBranchReference: uuid("legacy_branch_reference"),
+  amount: numeric("amount").notNull(),
+  fundSource: text("fund_source").notNull(),
+  trackingStatus: text("tracking_status").notNull().default("pending"),
+  verifiedBy: uuid("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  serviceAreaReference: uuid("service_area_reference"),
+});
+
+export const oversightAuditEngagements = oversightSchema.table("audit_engagements", {
+  engagementId: uuid("engagement_id").primaryKey().defaultRandom(),
+  auditArea: text("audit_area").notNull(),
+  scopeDescription: text("scope_description").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  leadAuditor: uuid("lead_auditor").notNull(),
+  status: text("status").notNull().default("planned"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightAuditFindings = oversightSchema.table("audit_findings", {
+  findingId: uuid("finding_id").primaryKey().defaultRandom(),
+  engagementId: uuid("engagement_id").notNull(),
+  controlObjective: text("control_objective").notNull(),
+  conditionObserved: text("condition_observed").notNull(),
+  expectedRequirement: text("expected_requirement").notNull(),
+  riskOrImpactRating: text("risk_or_impact_rating").notNull(),
+  rootCause: text("root_cause"),
+  recommendation: text("recommendation").notNull(),
+  managementResponse: text("management_response"),
+  responsibleOwner: uuid("responsible_owner").notNull(),
+  targetDate: date("target_date").notNull(),
+  status: text("status").notNull().default("open"),
+  closureEvidence: text("closure_evidence"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightCorrectiveActions = oversightSchema.table("corrective_actions", {
+  correctiveActionId: uuid("corrective_action_id").primaryKey().defaultRandom(),
+  findingId: uuid("finding_id").notNull(),
+  actionDescription: text("action_description").notNull(),
+  ownerId: uuid("owner_id").notNull(),
+  deadline: date("deadline").notNull(),
+  completionEvidence: text("completion_evidence"),
+  status: text("status").notNull().default("open"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  verifiedBy: uuid("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightComplianceRequirements = oversightSchema.table("compliance_requirements", {
+  requirementId: uuid("requirement_id").primaryKey().defaultRandom(),
+  requirementDescription: text("requirement_description").notNull(),
+  sourcePolicy: text("source_policy").notNull(),
+  responsibleDepartment: text("responsible_department").notNull(),
+  reviewFrequency: text("review_frequency").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightComplianceReviews = oversightSchema.table("compliance_reviews", {
+  reviewId: uuid("review_id").primaryKey().defaultRandom(),
+  requirementId: uuid("requirement_id").notNull(),
+  reviewerId: uuid("reviewer_id").notNull(),
+  reviewDate: date("review_date").notNull(),
+  complianceStatus: text("compliance_status").notNull(),
+  exceptionsNoted: text("exceptions_noted"),
+  nextReviewDate: date("next_review_date"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightControlExceptions = oversightSchema.table("control_exceptions", {
+  exceptionId: uuid("exception_id").primaryKey().defaultRandom(),
+  sourceArea: text("source_area").notNull(),
+  description: text("description").notNull(),
+  requirementId: uuid("requirement_id"),
+  findingId: uuid("finding_id"),
+  externalRecordType: text("external_record_type"),
+  externalRecordId: uuid("external_record_id"),
+  identifiedBy: uuid("identified_by").notNull(),
+  identifiedAt: timestamp("identified_at", { withTimezone: true }).notNull().defaultNow(),
+  severity: text("severity").notNull(),
+  status: text("status").notNull().default("open"),
+  escalatedTo: uuid("escalated_to"),
+  resolutionDate: date("resolution_date"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightAuditLogs = oversightSchema.table("audit_logs", {
+  auditLogId: uuid("audit_log_id").primaryKey().defaultRandom(),
+  recordType: text("record_type").notNull(),
+  recordId: uuid("record_id"),
+  actionPerformed: text("action_performed").notNull(),
+  previousValue: jsonb("previous_value"),
+  newValue: jsonb("new_value"),
+  profileId: uuid("profile_id"),
+  userRole: text("user_role"),
+  reasonForChange: text("reason_for_change"),
+  approvalReference: text("approval_reference"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightReports = oversightSchema.table("oversight_reports", {
+  reportId: uuid("report_id").primaryKey().defaultRandom(),
+  reportType: text("report_type").notNull(),
+  reportName: text("report_name").notNull(),
+  dataSource: text("data_source").notNull(),
+  reportingPeriodStart: date("reporting_period_start").notNull(),
+  reportingPeriodEnd: date("reporting_period_end").notNull(),
+  generatedBy: uuid("generated_by").notNull(),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+  approvalStatus: text("approval_status").notNull().default("draft"),
+  approvedBy: uuid("approved_by"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  confidentialityLevel: text("confidentiality_level").notNull().default("internal"),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightDashboardMetrics = oversightSchema.table("dashboard_metrics", {
+  metricId: uuid("metric_id").primaryKey().defaultRandom(),
+  reportId: uuid("report_id"),
+  metricName: text("metric_name").notNull(),
+  metricValue: numeric("metric_value").notNull(),
+  metricUnit: text("metric_unit"),
+  targetValue: numeric("target_value"),
+  asOfDate: date("as_of_date").notNull(),
+  sourceTable: text("source_table"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightNotificationReceipts = oversightSchema.table("notification_receipts", {
+  receiptId: uuid("receipt_id").primaryKey().defaultRandom(),
+  profileId: uuid("profile_id").notNull(),
+  notificationKey: text("notification_key").notNull(),
+  readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightEvidenceAttachments = oversightSchema.table("evidence_attachments", {
+  attachmentId: uuid("attachment_id").primaryKey().defaultRandom(),
+  entityType: text("entity_type").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  bucketName: text("bucket_name").notNull().default("oversight-evidence"),
+  objectPath: text("object_path").notNull().unique(),
+  fileName: text("file_name").notNull(),
+  contentType: text("content_type").notNull(),
+  fileSize: bigint("file_size", { mode: "number" }).notNull(),
+  uploadedBy: uuid("uploaded_by").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const oversightSystemSettings = oversightSchema.table("system_settings", {
+  settingsId: uuid("settings_id").primaryKey().defaultRandom(),
+  settingsKey: text("settings_key").notNull().default("default").unique(),
+  platformName: text("platform_name").notNull().default("KALASAG"),
+  platformSubtitle: text("platform_subtitle").notNull().default("Institutional Oversight"),
+  themeColor: text("theme_color").notNull().default("#C91F3B"),
+  parWarningThreshold: numeric("par_warning_threshold").notNull().default("5.00"),
+  parHighThreshold: numeric("par_high_threshold").notNull().default("8.00"),
+  collectionVarianceThreshold: numeric("collection_variance_threshold").notNull().default("5000.00"),
+  fundReviewThreshold: numeric("fund_review_threshold").notNull().default("50000.00"),
+  accessReviewCycleDays: integer("access_review_cycle_days").notNull().default(90),
+  complianceReminderDays: integer("compliance_reminder_days").notNull().default(14),
+  reportingFrequency: text("reporting_frequency").notNull().default("monthly"),
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
+  overdueAlertsEnabled: boolean("overdue_alerts_enabled").notNull().default(true),
+  approvalAlertsEnabled: boolean("approval_alerts_enabled").notNull().default(true),
+  evidenceMaxFileMb: integer("evidence_max_file_mb").notNull().default(10),
+  evidenceRetentionDays: integer("evidence_retention_days").notNull().default(1825),
+  auditRetentionDays: integer("audit_retention_days").notNull().default(2555),
+  updatedBy: uuid("updated_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 
 
