@@ -16,6 +16,14 @@ import {
   authStore,
   ensureDefaultUsers,
 } from './src/auth/index';
+import {
+  hasPermission,
+  hasAnyPermission,
+  getRolePermissions,
+  ROLE_DEFINITIONS,
+  SystemPermission,
+  normalizeRole,
+} from './src/auth/permissions';
 import { eq, desc } from 'drizzle-orm';
 
 dotenv.config();
@@ -25,10 +33,17 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// ---------- Auth plumbing ----------
+// ---------- Auth & RBAC Plumbing ----------
 
 interface AuthedRequest extends Request {
-  authUser?: { id: string; role: 'STAFF' | 'CLIENT'; email: string };
+  authUser?: {
+    id: string;
+    role: 'STAFF' | 'CLIENT';
+    staffRole?: string | null;
+    staffId?: string | null;
+    borrowerId?: string | null;
+    email: string;
+  };
 }
 
 function authenticate(req: AuthedRequest): void {
@@ -36,7 +51,14 @@ function authenticate(req: AuthedRequest): void {
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   const payload = token ? verifyToken(token) : null;
   if (payload) {
-    req.authUser = { id: payload.sub, role: payload.role, email: payload.email };
+    req.authUser = {
+      id: payload.sub,
+      role: payload.role,
+      staffRole: payload.staffRole || null,
+      staffId: payload.staffId || null,
+      borrowerId: payload.borrowerId || null,
+      email: payload.email,
+    };
   }
 }
 
@@ -44,11 +66,55 @@ function requireAuth(roles?: Array<'STAFF' | 'CLIENT'>) {
   return (req: AuthedRequest, res: Response, next: NextFunction) => {
     authenticate(req);
     if (!req.authUser) {
-      return res.status(401).json({ error: 'Authentication required' });
+      return res.status(401).json({ error: 'Authentication required. Please sign in.' });
     }
     if (roles && !roles.includes(req.authUser.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions for this resource' });
+      return res.status(403).json({ error: `Access denied. Requires ${roles.join(' or ')} access.` });
     }
+    next();
+  };
+}
+
+function requirePermission(permissions: SystemPermission | SystemPermission[]) {
+  const perms = Array.isArray(permissions) ? permissions : [permissions];
+  return (req: AuthedRequest, res: Response, next: NextFunction) => {
+    authenticate(req);
+    if (!req.authUser) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // If client user, check client permission set
+    if (req.authUser.role === 'CLIENT') {
+      const isClientPermAllowed = perms.some((p) =>
+        [
+          'access_own_account_only',
+          'client_view_loans',
+          'client_apply_services',
+          'client_view_savings',
+          'client_view_transactions_receipts',
+        ].includes(p)
+      );
+      if (isClientPermAllowed) {
+        return next();
+      }
+      return res.status(403).json({
+        error: 'Access denied. Client accounts are strictly isolated to self-service portal operations.',
+        requiredPermissions: perms,
+      });
+    }
+
+    // If staff user, check staffRole against required permissions
+    const effectiveStaffRole = normalizeRole(req.authUser.staffRole || 'ADMINISTRATOR');
+    const permitted = hasAnyPermission(effectiveStaffRole, perms);
+
+    if (!permitted) {
+      return res.status(403).json({
+        error: `Access denied: Role '${effectiveStaffRole}' lacks required permissions: [${perms.join(', ')}]`,
+        userRole: effectiveStaffRole,
+        requiredPermissions: perms,
+      });
+    }
+
     next();
   };
 }
@@ -186,16 +252,233 @@ app.get('/api/auth/me', requireAuth(), async (req: AuthedRequest, res) => {
   }
 });
 
-// Demo credentials for the login screen (safe: no hashes returned)
+// Demo credentials for the login screen (covering all 5 minimum required roles)
 app.get('/api/auth/demo-accounts', async (req, res) => {
   await ensureDefaultUsers();
   res.json({
     accounts: [
-      { label: 'Staff — Super Admin', email: 'elena.rostata@hoscomo.coop', password: 'Admin@123' },
-      { label: 'Staff — Loan Processor', email: 'grace.m@hoscomo.coop', password: 'Staff@123' },
-      { label: 'Client Portal Member', email: 'teresa.alcantara@gmail.com', password: 'Client@123' },
+      {
+        role: 'ADMINISTRATOR',
+        label: '1. Administrator (Full System Access)',
+        email: 'admin@hoscomo.coop',
+        password: 'Admin@123',
+        description: 'Full system access, user & role management, settings, approve sensitive operations',
+      },
+      {
+        role: 'CLIENT_SERVICES_STAFF',
+        label: '2. Client Services Staff',
+        email: 'clientservices@hoscomo.coop',
+        password: 'Staff@123',
+        description: 'Register clients, manage KYC documents, view client information, assist clients',
+      },
+      {
+        role: 'LOAN_OFFICER',
+        label: '3. Loan Officer',
+        email: 'loanofficer@hoscomo.coop',
+        password: 'Staff@123',
+        description: 'Process loan applications, review credit info, AI underwriting, monitor repayment',
+      },
+      {
+        role: 'CASHIER_TELLER',
+        label: '4. Cashier / Teller',
+        email: 'teller@hoscomo.coop',
+        password: 'Staff@123',
+        description: 'Process loan repayments, savings deposits & withdrawals, generate receipts',
+      },
+      {
+        role: 'CLIENT',
+        label: '5. Client (Coop Member)',
+        email: 'client@gmail.com',
+        password: 'Client@123',
+        description: 'Self-service portal: strictly view own loans, savings, receipts & apply for services',
+      },
     ],
   });
+});
+
+// ---------- RBAC & Admin Management Endpoints ----------
+
+// 1. Roles & Permissions Metadata Dictionary
+app.get('/api/admin/roles', (req, res) => {
+  res.json({
+    success: true,
+    roles: Object.values(ROLE_DEFINITIONS),
+    coreRoles: ['ADMINISTRATOR', 'CLIENT_SERVICES_STAFF', 'LOAN_OFFICER', 'CASHIER_TELLER', 'CLIENT'],
+  });
+});
+
+// 2. User Accounts List (Staff & Clients) [Requires 'manage_users' or 'view_all_records']
+app.get('/api/admin/users', requirePermission(['manage_users', 'view_all_records']), async (req: AuthedRequest, res) => {
+  try {
+    const db = getDb();
+    if (db) {
+      const dbUsers = await db.select().from(schema.users);
+      const mapped = dbUsers.map((u) => ({
+        id: u.id,
+        email: u.email,
+        fullName: u.fullName,
+        role: u.role,
+        staffRole: u.staffRole || (u.role === 'STAFF' ? 'ADMINISTRATOR' : 'CLIENT'),
+        staffId: u.staffId || null,
+        borrowerId: u.borrowerId || null,
+        phone: u.phone || '',
+        avatar: u.avatar || '',
+        isActive: u.isActive ?? true,
+        lastLoginAt: u.lastLoginAt,
+        createdAt: u.createdAt,
+        permissions: getRolePermissions(u.staffRole || u.role),
+      }));
+      return res.json({ success: true, users: mapped });
+    }
+
+    // In-memory fallback
+    const memUsers = Array.from((authStore as any).memoryUsers.values()).map((u: any) => ({
+      id: u.id,
+      email: u.email,
+      fullName: u.fullName,
+      role: u.role,
+      staffRole: u.staffRole || (u.role === 'STAFF' ? 'ADMINISTRATOR' : 'CLIENT'),
+      staffId: u.staffId || null,
+      borrowerId: u.borrowerId || null,
+      phone: u.phone || '',
+      avatar: u.avatar || '',
+      isActive: u.isActive ?? true,
+      lastLoginAt: u.lastLoginAt,
+      createdAt: u.createdAt,
+      permissions: getRolePermissions(u.staffRole || u.role),
+    }));
+    res.json({ success: true, users: memUsers });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Create User Account [Requires 'manage_users']
+app.post('/api/admin/users', requirePermission('manage_users'), async (req: AuthedRequest, res) => {
+  try {
+    const { email, password, fullName, role, staffRole, staffId, borrowerId, phone } = req.body || {};
+    if (!email || !password || !fullName || !role) {
+      return res.status(400).json({ error: 'Email, password, fullName, and role are required' });
+    }
+
+    const normEmail = String(email).trim().toLowerCase();
+    const existing = await authStore.findByEmail(normEmail);
+    if (existing) {
+      return res.status(409).json({ error: 'User with this email already exists' });
+    }
+
+    const user = await authStore.createUser({
+      email: normEmail,
+      fullName: String(fullName).trim(),
+      passwordHash: hashPassword(String(password)),
+      role: role === 'CLIENT' ? 'CLIENT' : 'STAFF',
+      staffRole: role === 'STAFF' ? normalizeRole(staffRole || 'ADMINISTRATOR') : null,
+      staffId: staffId || null,
+      borrowerId: borrowerId || null,
+      phone: phone ? String(phone) : null,
+      avatar: `https://ui-avatars.com/api/?background=4F46E5&color=fff&name=${encodeURIComponent(String(fullName).trim())}`,
+    });
+
+    res.status(201).json({
+      success: true,
+      user: publicUser(user),
+      message: `User account '${fullName}' created with role '${role === 'STAFF' ? staffRole : 'CLIENT'}'`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Update User Role / Status [Requires 'manage_users']
+app.put('/api/admin/users/:id', requirePermission('manage_users'), async (req: AuthedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { fullName, staffRole, role, isActive, phone } = req.body || {};
+
+    const db = getDb();
+    if (db) {
+      const updateData: any = {};
+      if (fullName !== undefined) updateData.fullName = fullName;
+      if (staffRole !== undefined) updateData.staffRole = normalizeRole(staffRole);
+      if (role !== undefined) updateData.role = role;
+      if (isActive !== undefined) updateData.isActive = isActive;
+      if (phone !== undefined) updateData.phone = phone;
+
+      await db.update(schema.users).set(updateData).where(eq(schema.users.id, id));
+    }
+
+    // In-memory fallback
+    const memUser = (authStore as any).memoryUsers?.get(id);
+    if (memUser) {
+      if (fullName !== undefined) memUser.fullName = fullName;
+      if (staffRole !== undefined) memUser.staffRole = normalizeRole(staffRole);
+      if (role !== undefined) memUser.role = role;
+      if (isActive !== undefined) memUser.isActive = isActive;
+      if (phone !== undefined) memUser.phone = phone;
+    }
+
+    res.json({ success: true, message: `User ${id} updated successfully` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. System Settings [Get: view_all_records/manage_settings, Put: manage_settings]
+let systemSettingsState = {
+  cooperativeName: 'San Jose Cooperative Multi-Purpose Credit Union',
+  coopCode: 'COOP-NCR-2026-088',
+  defaultMaxLoanAmount: 500000,
+  defaultMaxTenorMonths: 36,
+  dailyCashierDisbursementLimit: 100000,
+  sensitiveApprovalThreshold: 250000,
+  kycStrictnessLevel: 'High (Gov ID + Proof of Address + PMES Certificate)',
+  interestCapPerAnnum: 24.0,
+  latePenaltyRateDaily: 0.1,
+  allowOnlineLoanApplications: true,
+  require2FAForAdmin: true,
+  allowReversalsWithinHours: 24,
+  auditLogRetentionDays: 365,
+};
+
+app.get('/api/admin/system-settings', requirePermission(['manage_settings', 'view_all_records']), (req, res) => {
+  res.json({ success: true, settings: systemSettingsState });
+});
+
+app.put('/api/admin/system-settings', requirePermission('manage_settings'), (req: AuthedRequest, res) => {
+  systemSettingsState = { ...systemSettingsState, ...req.body };
+  res.json({
+    success: true,
+    settings: systemSettingsState,
+    message: 'System settings and institutional credit limits updated successfully',
+  });
+});
+
+// 6. Approve Sensitive Operations [Requires 'approve_sensitive_operations']
+app.post('/api/admin/approve-sensitive', requirePermission('approve_sensitive_operations'), async (req: AuthedRequest, res) => {
+  try {
+    const { operationType, targetId, amount, justification } = req.body || {};
+    const approver = req.authUser?.email || 'Administrator';
+    const now = new Date().toISOString();
+
+    const approvalRecord = {
+      id: `APPR-${Date.now().toString().slice(-6)}`,
+      operationType: operationType || 'HIGH_VALUE_DISBURSEMENT',
+      targetId: targetId || 'N/A',
+      amount: Number(amount) || 0,
+      justification: justification || 'Authorized under executive oversight delegation',
+      approvedBy: approver,
+      approvedAt: now,
+      status: 'APPROVED',
+    };
+
+    res.json({
+      success: true,
+      approval: approvalRecord,
+      message: `Sensitive operation '${operationType}' for target '${targetId}' successfully approved by ${approver}`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Database Health & Status (Supabase / Cloud SQL / PostgreSQL) [Staff only]
@@ -353,11 +636,21 @@ app.get('/api/db/all', requireAuth(['STAFF']), async (req: AuthedRequest, res) =
   }
 });
 
-// Members / Borrowers API [Staff only]
-app.get('/api/borrowers', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// Members / Borrowers API
+app.get('/api/borrowers', requirePermission(['view_client_info', 'register_clients', 'manage_kyc', 'assist_clients', 'access_own_account_only']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
+
+    // Client multi-tenant isolation: clients can only view their own member record
+    if (req.authUser?.role === 'CLIENT') {
+      if (!req.authUser.borrowerId) {
+        return res.json([]);
+      }
+      const list = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, req.authUser.borrowerId));
+      return res.json(list);
+    }
+
     const list = await db.select().from(schema.borrowers);
     res.json(list);
   } catch (err: any) {
@@ -365,7 +658,7 @@ app.get('/api/borrowers', requireAuth(['STAFF']), async (req: AuthedRequest, res
   }
 });
 
-app.post('/api/borrowers', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+app.post('/api/borrowers', requirePermission('register_clients'), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -377,7 +670,7 @@ app.post('/api/borrowers', requireAuth(['STAFF']), async (req: AuthedRequest, re
   }
 });
 
-app.put('/api/borrowers/:id', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+app.put('/api/borrowers/:id', requirePermission(['manage_kyc', 'assist_clients', 'register_clients']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -390,10 +683,20 @@ app.put('/api/borrowers/:id', requireAuth(['STAFF']), async (req: AuthedRequest,
 });
 
 // Loans API
-app.get('/api/loans', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+app.get('/api/loans', requirePermission(['review_client_loan_info', 'process_loan_applications', 'monitor_loan_repayment', 'view_all_records', 'access_own_account_only', 'client_view_loans']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
+
+    // Client multi-tenant isolation: clients can only view loans belonging to their member profile
+    if (req.authUser?.role === 'CLIENT') {
+      if (!req.authUser.borrowerId) {
+        return res.json([]);
+      }
+      const list = await db.select().from(schema.loans).where(eq(schema.loans.borrowerId, req.authUser.borrowerId));
+      return res.json(list);
+    }
+
     const list = await db.select().from(schema.loans);
     res.json(list);
   } catch (err: any) {
@@ -401,7 +704,7 @@ app.get('/api/loans', requireAuth(['STAFF']), async (req: AuthedRequest, res) =>
   }
 });
 
-app.post('/api/loans', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+app.post('/api/loans', requirePermission(['process_loan_applications', 'client_apply_services']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -413,7 +716,7 @@ app.post('/api/loans', requireAuth(['STAFF']), async (req: AuthedRequest, res) =
   }
 });
 
-app.put('/api/loans/:id', async (req, res) => {
+app.put('/api/loans/:id', requirePermission(['manage_loan_applications', 'approve_sensitive_operations']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -425,8 +728,8 @@ app.put('/api/loans/:id', async (req, res) => {
   }
 });
 
-// Payments API
-app.post('/api/payments', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// Payments API (Cashier / Teller processing)
+app.post('/api/payments', requirePermission('process_loan_repayments'), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -439,34 +742,35 @@ app.post('/api/payments', requireAuth(['STAFF']), async (req: AuthedRequest, res
 });
 
 // 7. Financial Transactions Core API
-app.get('/api/financial-transactions', async (req: AuthedRequest, res) => {
+app.get('/api/financial-transactions', requirePermission(['view_transaction_records', 'access_own_account_only', 'client_view_transactions_receipts']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    const user = token ? verifyToken(token) : null;
 
-    let list;
-    if (user && user.role === 'CLIENT' && user.borrowerId) {
-      list = await db
+    // Client multi-tenant isolation: clients can only view their own transactions
+    if (req.authUser?.role === 'CLIENT') {
+      if (!req.authUser.borrowerId) {
+        return res.json([]);
+      }
+      const list = await db
         .select()
         .from(schema.financialTransactions)
-        .where(eq(schema.financialTransactions.clientId, user.borrowerId))
+        .where(eq(schema.financialTransactions.clientId, req.authUser.borrowerId))
         .orderBy(desc(schema.financialTransactions.createdAt));
-    } else {
-      list = await db
-        .select()
-        .from(schema.financialTransactions)
-        .orderBy(desc(schema.financialTransactions.createdAt));
+      return res.json(list);
     }
+
+    const list = await db
+      .select()
+      .from(schema.financialTransactions)
+      .orderBy(desc(schema.financialTransactions.createdAt));
     res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/financial-transactions', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+app.post('/api/financial-transactions', requirePermission(['process_loan_repayments', 'process_savings_deposits', 'process_savings_withdrawals']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -484,8 +788,8 @@ app.post('/api/financial-transactions', requireAuth(['STAFF']), async (req: Auth
   }
 });
 
-// Reversal & Adjustment: Never permanently delete completed financial transactions
-app.post('/api/financial-transactions/:id/reverse', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// Reversal & Adjustment: Strictly requires 'approve_sensitive_operations' (Administrator)
+app.post('/api/financial-transactions/:id/reverse', requirePermission('approve_sensitive_operations'), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -520,7 +824,7 @@ app.post('/api/financial-transactions/:id/reverse', requireAuth(['STAFF']), asyn
       amount: -Math.abs(orig.amount),
       transactionDate: now.split('T')[0],
       paymentMethod: 'Adjustment',
-      processedBy: reversedBy || 'Audit Officer / General Manager',
+      processedBy: reversedBy || req.authUser?.email || 'Executive Administrator',
       status: 'Completed',
       notes: `Reversal & Adjustment of transaction ${orig.referenceNumber} (${orig.id}). Reason: ${reason || 'Correction of entry'}`,
       reversalOfTxnId: orig.id,
@@ -590,8 +894,8 @@ app.delete('/api/financial-transactions/:id', requireAuth(['STAFF']), async (req
 });
 
 
-// Solidarity Groups API [Staff only]
-app.get('/api/solidarity-groups', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// Solidarity Groups API
+app.get('/api/solidarity-groups', requirePermission(['view_client_info', 'manage_loan_applications', 'view_all_records']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -602,7 +906,7 @@ app.get('/api/solidarity-groups', requireAuth(['STAFF']), async (req: AuthedRequ
   }
 });
 
-app.post('/api/solidarity-groups', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+app.post('/api/solidarity-groups', requirePermission(['manage_loan_applications', 'register_clients']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -614,7 +918,7 @@ app.post('/api/solidarity-groups', requireAuth(['STAFF']), async (req: AuthedReq
   }
 });
 
-app.put('/api/solidarity-groups/:id', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+app.put('/api/solidarity-groups/:id', requirePermission(['manage_loan_applications', 'register_clients']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
@@ -626,8 +930,8 @@ app.put('/api/solidarity-groups/:id', requireAuth(['STAFF']), async (req: Authed
   }
 });
 
-// AI Underwriting & Credit Risk Analysis
-app.post('/api/gemini/underwrite', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// AI Underwriting & Credit Risk Analysis [Requires 'process_loan_applications' or 'review_client_loan_info']
+app.post('/api/gemini/underwrite', requirePermission(['process_loan_applications', 'review_client_loan_info']), async (req: AuthedRequest, res) => {
   try {
     const { borrower, loanDetails, collateral, guarantors } = req.body;
     const ai = getAi();
@@ -712,8 +1016,8 @@ Return ONLY a valid JSON object matching this structure:
   }
 });
 
-// AI Repayment Reminder Notice Drafter
-app.post('/api/gemini/reminder-draft', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// AI Repayment Reminder Notice Drafter [Requires 'monitor_loan_repayment' or 'assist_clients']
+app.post('/api/gemini/reminder-draft', requirePermission(['monitor_loan_repayment', 'assist_clients']), async (req: AuthedRequest, res) => {
   try {
     const { borrowerName, loanNumber, amountDue, dueDate, daysOverdue, urgency, channel } = req.body;
     const ai = getAi();
@@ -760,8 +1064,8 @@ Return a JSON object with:
   }
 });
 
-// AI Loan Restructuring & Financial Health Advice
-app.post('/api/gemini/restructure-advice', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// AI Loan Restructuring & Financial Health Advice [Requires 'manage_loan_applications' or 'approve_sensitive_operations' or 'monitor_loan_repayment']
+app.post('/api/gemini/restructure-advice', requirePermission(['manage_loan_applications', 'approve_sensitive_operations', 'monitor_loan_repayment']), async (req: AuthedRequest, res) => {
   try {
     const { loan, reasonForHardship } = req.body;
     const ai = getAi();

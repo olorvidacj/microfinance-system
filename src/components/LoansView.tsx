@@ -23,6 +23,7 @@ import {
   Scale,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
+import { useAccess } from '../hooks/useAccess';
 import { formatCurrency, formatDate } from '../utils/loanMath';
 import { Loan, LoanStatus, CoopLoanStep, CreditCommitteeEvaluation, LoanDisbursementVoucher } from '../types';
 
@@ -58,6 +59,11 @@ export const LoansView: React.FC<LoansViewProps> = ({
     rejectLoan,
     evaluateMultiLoanEligibility,
   } = useLoan();
+
+  const { hasPermission } = useAccess();
+  const canProcessLoan = hasPermission('process_loan_applications') || hasPermission('client_apply_services');
+  const canApprove = hasPermission('manage_loan_applications') || hasPermission('approve_sensitive_operations');
+  const canRecordPayment = hasPermission('process_loan_repayments');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');

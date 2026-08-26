@@ -15,6 +15,7 @@ import {
   ArrowRightLeft,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
+import { useAccess } from '../hooks/useAccess';
 import { formatCurrency, formatDate } from '../utils/loanMath';
 import { PaymentRecord } from '../types';
 import { FinancialTransactionsCore } from './FinancialTransactionsCore';
@@ -29,6 +30,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   onViewReceipt,
 }) => {
   const { filteredPayments, filteredFinancialTransactions, branches, stats } = useLoan();
+  const { hasPermission } = useAccess();
+  const canRecordPayment = hasPermission('process_loan_repayments');
 
   const [activeSubTab, setActiveSubTab] = useState<'repayments' | 'financialCore'>('repayments');
   const [searchTerm, setSearchTerm] = useState('');
@@ -142,13 +145,15 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               <Download className="w-4 h-4 text-gray-500" />
               <span>Export CSV</span>
             </button>
-            <button
-              onClick={onOpenRecordPayment}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition shadow-xs"
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>Record Payment</span>
-            </button>
+            {canRecordPayment && (
+              <button
+                onClick={onOpenRecordPayment}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition shadow-xs"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Record Payment</span>
+              </button>
+            )}
           </div>
         )}
       </div>

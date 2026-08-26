@@ -19,6 +19,7 @@ export interface AuthUserRecord {
 export interface TokenPayload {
   sub: string;
   role: 'STAFF' | 'CLIENT';
+  staffRole?: string | null;
   email: string;
   borrowerId?: string | null;
   staffId?: string | null;
@@ -54,10 +55,11 @@ function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url');
 }
 
-export function signToken(user: { id: string; role: string; email: string; borrowerId?: string | null; staffId?: string | null }): string {
+export function signToken(user: { id: string; role: string; staffRole?: string | null; email: string; borrowerId?: string | null; staffId?: string | null }): string {
   const payload: TokenPayload = {
     sub: user.id,
     role: user.role as 'STAFF' | 'CLIENT',
+    staffRole: user.staffRole || null,
     email: user.email,
     borrowerId: user.borrowerId || null,
     staffId: user.staffId || null,
@@ -84,17 +86,50 @@ export function verifyToken(token: string): TokenPayload | null {
   }
 }
 
-// ---------- Default Accounts ----------
+// ---------- Default Accounts (All 5 Core Minimum Roles) ----------
 
 const DEFAULT_USERS: Array<Omit<AuthUserRecord, 'id'> & { password: string }> = [
+  {
+    email: 'admin@hoscomo.coop',
+    password: 'Admin@123',
+    fullName: 'Elena Rostata',
+    passwordHash: '',
+    role: 'STAFF',
+    staffRole: 'ADMINISTRATOR',
+    staffId: 'staff-08',
+    borrowerId: null,
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+  },
   {
     email: 'elena.rostata@hoscomo.coop',
     password: 'Admin@123',
     fullName: 'Elena Rostata',
     passwordHash: '',
     role: 'STAFF',
-    staffRole: 'SUPER_ADMIN',
-    staffId: 's-1',
+    staffRole: 'ADMINISTRATOR',
+    staffId: 'staff-08',
+    borrowerId: null,
+    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
+  },
+  {
+    email: 'clientservices@hoscomo.coop',
+    password: 'Staff@123',
+    fullName: 'Camille Bernardo',
+    passwordHash: '',
+    role: 'STAFF',
+    staffRole: 'CLIENT_SERVICES_STAFF',
+    staffId: 'staff-09',
+    borrowerId: null,
+    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150',
+  },
+  {
+    email: 'loanofficer@hoscomo.coop',
+    password: 'Staff@123',
+    fullName: 'Grace Mendoza',
+    passwordHash: '',
+    role: 'STAFF',
+    staffRole: 'LOAN_OFFICER',
+    staffId: 'staff-02',
     borrowerId: null,
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
   },
@@ -104,10 +139,32 @@ const DEFAULT_USERS: Array<Omit<AuthUserRecord, 'id'> & { password: string }> = 
     fullName: 'Grace Mendoza',
     passwordHash: '',
     role: 'STAFF',
-    staffRole: 'LOAN_PROCESSOR',
-    staffId: 's-4',
+    staffRole: 'LOAN_OFFICER',
+    staffId: 'staff-02',
     borrowerId: null,
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+  },
+  {
+    email: 'teller@hoscomo.coop',
+    password: 'Staff@123',
+    fullName: 'Chloe Simmons',
+    passwordHash: '',
+    role: 'STAFF',
+    staffRole: 'CASHIER_TELLER',
+    staffId: 'staff-07',
+    borrowerId: null,
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+  },
+  {
+    email: 'client@gmail.com',
+    password: 'Client@123',
+    fullName: 'Teresa Alcantara',
+    passwordHash: '',
+    role: 'CLIENT',
+    staffRole: null,
+    staffId: null,
+    borrowerId: 'borrower-01',
+    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
   },
   {
     email: 'teresa.alcantara@gmail.com',
@@ -117,7 +174,7 @@ const DEFAULT_USERS: Array<Omit<AuthUserRecord, 'id'> & { password: string }> = 
     role: 'CLIENT',
     staffRole: null,
     staffId: null,
-    borrowerId: 'b-1',
+    borrowerId: 'borrower-01',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
   },
 ];

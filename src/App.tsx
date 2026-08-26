@@ -18,9 +18,11 @@ import { ClientManagementView } from './components/ClientManagementView';
 import { SavingsView } from './components/SavingsView';
 import { GroupLendingView } from './components/GroupLendingView';
 import { ClientPortalView } from './components/ClientPortalView';
+import { RolesAdminView } from './components/RolesAdminView';
 import { LoginView } from './components/LoginView';
 import { LandingView } from './components/LandingView';
 import { Building2, Loader2, LogOut } from 'lucide-react';
+import { useAccess } from './hooks/useAccess';
 
 import { NewLoanModal } from './components/NewLoanModal';
 import { LoanDetailModal } from './components/LoanDetailModal';
@@ -78,8 +80,26 @@ const SafeAvatar: React.FC<{ src?: string; name?: string; className?: string }> 
 const MainApp: React.FC = () => {
   const { user } = useAuth();
   const { staffList, setCurrentUser } = useLoan();
+  const { canAccessTab, roleKey } = useAccess();
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const personaAppliedRef = React.useRef(false);
+
+  // When role changes, if current activeTab is not permitted, switch to first allowed tab
+  useEffect(() => {
+    if (!canAccessTab(activeTab)) {
+      if (roleKey === 'CLIENT') {
+        setActiveTab('clientPortal');
+      } else if (canAccessTab('dashboard')) {
+        setActiveTab('dashboard');
+      } else if (canAccessTab('loans')) {
+        setActiveTab('loans');
+      } else if (canAccessTab('membership')) {
+        setActiveTab('membership');
+      } else if (canAccessTab('payments')) {
+        setActiveTab('payments');
+      }
+    }
+  }, [roleKey, activeTab, canAccessTab]);
 
   // Sync the authenticated staff account with the console persona (once)
   useEffect(() => {
@@ -194,6 +214,8 @@ const MainApp: React.FC = () => {
         {activeTab === 'savings' && <SavingsView />}
 
         {activeTab === 'groupLending' && <GroupLendingView />}
+
+        {activeTab === 'roles' && <RolesAdminView />}
 
         {activeTab === 'clientPortal' && <ClientPortalView />}
 

@@ -12,8 +12,10 @@ import {
   Package,
   Users,
   Smartphone,
+  ShieldCheck,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
+import { useAccess } from '../hooks/useAccess';
 
 export type NavTab =
   | 'dashboard'
@@ -28,7 +30,8 @@ export type NavTab =
   | 'calculator'
   | 'branches'
   | 'products'
-  | 'reports';
+  | 'reports'
+  | 'roles';
 
 interface NavigationProps {
   activeTab: NavTab;
@@ -37,6 +40,7 @@ interface NavigationProps {
 
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }) => {
   const { stats, filteredLoans, filteredMembershipApps, withdrawalRequests } = useLoan();
+  const { canAccessTab, roleKey } = useAccess();
 
   const pendingWithdrawalsCount = withdrawalRequests.filter((w) => w.status === 'Pending Approval').length;
   const pendingAppsCount = filteredMembershipApps.filter(
@@ -46,7 +50,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
     (l) => l.status === 'In Arrears' || (l.daysInArrears && l.daysInArrears > 0)
   ).length;
 
-  const navItems = [
+  const allNavItems = [
     { id: 'dashboard' as NavTab, label: 'Dashboard', icon: LayoutDashboard },
     {
       id: 'membership' as NavTab,
@@ -57,21 +61,21 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
     },
     {
       id: 'loans' as NavTab,
-      label: 'Loan Application & Disbursement',
+      label: 'Loan Applications & Repayments',
       icon: FileSpreadsheet,
       badge: filteredLoans.length,
       badgeColor: 'bg-slate-100 text-slate-700',
     },
     {
       id: 'payments' as NavTab,
-      label: 'Repayments & Installments',
+      label: 'Cashier & Transactions',
       icon: Receipt,
       badge: overdueCount > 0 ? `${overdueCount} Overdue` : undefined,
       badgeColor: 'bg-rose-100 text-rose-700 font-bold',
     },
     {
       id: 'savings' as NavTab,
-      label: 'Savings Accounts',
+      label: 'Savings & Deposits',
       icon: PiggyBank,
       badge: pendingWithdrawalsCount > 0 ? pendingWithdrawalsCount : undefined,
       badgeColor: 'bg-amber-100 text-amber-800 font-semibold',
@@ -82,6 +86,13 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
       icon: Users,
       badge: 'Grameen',
       badgeColor: 'bg-indigo-100 text-indigo-700 font-semibold',
+    },
+    {
+      id: 'roles' as NavTab,
+      label: 'Roles & Permissions',
+      icon: ShieldCheck,
+      badge: 'RBAC',
+      badgeColor: 'bg-purple-100 text-purple-800 font-semibold',
     },
     {
       id: 'clientPortal' as NavTab,
@@ -101,11 +112,14 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
     { id: 'reports' as NavTab, label: 'Audit & Reports', icon: FileText },
   ];
 
+  // Enforce frontend role access control filtering
+  const visibleNavItems = allNavItems.filter((item) => canAccessTab(item.id));
+
   return (
     <div className="bg-white border-b border-slate-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <nav className="flex space-x-1 sm:space-x-2 overflow-x-auto py-2.5 no-scrollbar">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (

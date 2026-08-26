@@ -1,4 +1,9 @@
 export type UserRole =
+  | 'ADMINISTRATOR'
+  | 'CLIENT_SERVICES_STAFF'
+  | 'LOAN_OFFICER'
+  | 'CASHIER_TELLER'
+  | 'CLIENT'
   | 'SUPER_ADMIN'
   | 'MANAGER'
   | 'LOAN_PROCESSOR'
@@ -8,6 +13,21 @@ export type UserRole =
   | 'BOARD_OF_DIRECTORS'
   | 'TELLER'
   | 'AUDITOR';
+
+export type { SystemRole, SystemPermission, RoleDefinition } from './auth/permissions';
+export {
+  ROLE_DEFINITIONS,
+  CORE_ROLES_LIST,
+  ALL_ROLES_LIST,
+  PERMISSION_CATEGORIES,
+  getRolePermissions,
+  hasPermission,
+  hasAnyPermission,
+  hasAllPermissions,
+  canAccessTab,
+  getRoleDefinition,
+  normalizeRole,
+} from './auth/permissions';
 
 export interface UserStaff {
   id: string;

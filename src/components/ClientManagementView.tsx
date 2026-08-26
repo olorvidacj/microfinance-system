@@ -34,6 +34,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
+import { useAccess } from '../hooks/useAccess';
 import { formatCurrency, formatDate } from '../utils/loanMath';
 import { Borrower, ClientStatus, KycStatus, Loan } from '../types';
 import { ClientRegistrationModal } from './ClientRegistrationModal';
@@ -62,6 +63,11 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
     bodApproveMembershipApp,
     rejectMembershipApp,
   } = useLoan();
+
+  const { hasPermission } = useAccess();
+  const canRegisterClient = hasPermission('register_clients');
+  const canManageKyc = hasPermission('manage_kyc');
+  const canAssistClient = hasPermission('assist_clients');
 
   // Sub-tabs
   const [activeTab, setActiveTab] = useState<'directory' | 'kycQueue' | 'pipeline' | 'audit'>('directory');

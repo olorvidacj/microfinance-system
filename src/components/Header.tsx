@@ -19,6 +19,8 @@ import { useLoan } from '../context/LoanContext';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/loanMath';
 import { SupabaseModal } from './SupabaseModal';
+import { useAccess } from '../hooks/useAccess';
+import { ROLE_DEFINITIONS, normalizeRole } from '../auth/permissions';
 
 interface HeaderProps {
   onOpenNewLoan: () => void;
@@ -46,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
     syncWithDatabase,
   } = useLoan();
   const { logout, user: authUser } = useAuth();
+  const { roleDef, switchRole, hasPermission } = useAccess();
 
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
@@ -53,20 +56,9 @@ export const Header: React.FC<HeaderProps> = ({
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
 
   const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'SUPER_ADMIN':
-        return 'bg-purple-50 text-purple-700 border-purple-200';
-      case 'BRANCH_MANAGER':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'LOAN_OFFICER':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'TELLER':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'AUDITOR':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
-      default:
-        return 'bg-gray-50 text-gray-700 border-gray-200';
-    }
+    const norm = normalizeRole(role);
+    const def = ROLE_DEFINITIONS[norm];
+    return def ? def.badgeColor : 'bg-gray-50 text-gray-700 border-gray-200';
   };
 
   return (
@@ -205,34 +197,60 @@ export const Header: React.FC<HeaderProps> = ({
               {showRoleDropdown && (
                 <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-3.5 py-2 border-b border-slate-100">
-                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Switch Staff Persona</div>
-                    <div className="text-[11px] text-slate-400">Test role-based access & permissions</div>
+                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Switch Persona (RBAC)</div>
+                    <div className="text-[11px] text-slate-400">Test role-based permissions & views</div>
                   </div>
-                  {staffList.map((staff) => (
+                  <div className="max-h-72 overflow-y-auto">
+                    {staffList.map((staff) => (
+                      <button
+                        key={staff.id}
+                        onClick={() => {
+                          setCurrentUser(staff);
+                          setShowRoleDropdown(false);
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-3 transition hover:bg-slate-50 ${
+                          currentUser.id === staff.id ? 'bg-purple-50/80 font-semibold text-purple-900' : 'text-slate-700'
+                        }`}
+                      >
+                        <img src={staff.avatar} alt={staff.name} className="w-8 h-8 rounded-full object-cover" />
+                        <div className="flex-1 truncate">
+                          <div className="text-xs font-semibold text-slate-900">{staff.name}</div>
+                          <div className="text-[11px] text-slate-400">{staff.title}</div>
+                          <span
+                            className={`inline-block mt-0.5 text-[9px] px-2 py-0.5 rounded-full border font-medium ${getRoleBadgeColor(
+                              staff.role
+                            )}`}
+                          >
+                            {ROLE_DEFINITIONS[normalizeRole(staff.role)]?.name || staff.role}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+
+                    {/* Client Persona */}
                     <button
-                      key={staff.id}
                       onClick={() => {
-                        setCurrentUser(staff);
+                        switchRole('CLIENT');
                         setShowRoleDropdown(false);
                       }}
-                      className={`w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-3 transition hover:bg-slate-50 ${
-                        currentUser.id === staff.id ? 'bg-blue-50/80 font-semibold text-blue-900' : 'text-slate-700'
+                      className={`w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-3 transition hover:bg-emerald-50/50 border-t border-slate-100 ${
+                        normalizeRole(currentUser.role) === 'CLIENT' ? 'bg-emerald-50/80 font-semibold text-emerald-900' : 'text-slate-700'
                       }`}
                     >
-                      <img src={staff.avatar} alt={staff.name} className="w-8 h-8 rounded-full object-cover" />
+                      <img
+                        src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150"
+                        alt="Teresa Alcantara"
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
                       <div className="flex-1 truncate">
-                        <div className="text-xs font-semibold text-slate-900">{staff.name}</div>
-                        <div className="text-[11px] text-slate-400">{staff.title}</div>
-                        <span
-                          className={`inline-block mt-0.5 text-[9px] px-2 py-0.5 rounded-full border font-medium ${getRoleBadgeColor(
-                            staff.role
-                          )}`}
-                        >
-                          {staff.role}
+                        <div className="text-xs font-semibold text-slate-900">Teresa Alcantara</div>
+                        <div className="text-[11px] text-slate-400">Cooperative Member (Borrower & Depositor)</div>
+                        <span className="inline-block mt-0.5 text-[9px] px-2 py-0.5 rounded-full border font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
+                          Client (Self-Service Portal Only)
                         </span>
                       </div>
                     </button>
-                  ))}
+                  </div>
                 </div>
               )}
             </div>
