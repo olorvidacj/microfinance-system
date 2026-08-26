@@ -8,6 +8,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { getDb, schema, testDbConnection } from './src/db/index';
 import { initDbSchema } from './src/db/initDb';
 import { seedDatabaseIfEmpty } from './src/db/seed';
+import { getServerSupabase, testServerSupabaseConnection } from './src/db/supabaseServer';
 import {
   signToken,
   verifyToken,
@@ -545,6 +546,36 @@ app.get('/api/db/status', requireAuth(['STAFF']), async (req: AuthedRequest, res
       error: error.message,
     });
   }
+});
+
+// Server-Side Supabase Status Check (Zero Secret Leakage to Client)
+app.get('/api/supabase/server-status', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  try {
+    const status = await testServerSupabaseConnection();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Mobile App (React Native / Expo) Configuration Endpoint
+app.get('/api/mobile/config', (req, res) => {
+  res.json({
+    appName: 'HOSCOMO Microfinance Mobile',
+    version: '1.0.0',
+    platform: 'React Native / Expo',
+    apiBaseUrl: '/api',
+    authType: 'JWT + Supabase Auth',
+    rbacRoles: ['ADMINISTRATOR', 'CLIENT_SERVICES_STAFF', 'LOAN_OFFICER', 'CASHIER_TELLER', 'CLIENT'],
+    features: {
+      clientSelfServicePortal: true,
+      loanApplications: true,
+      savingsPassbook: true,
+      repaymentTracking: true,
+      receiptGenerator: true,
+      groupSolidarityLending: true,
+    },
+  });
 });
 
 // Test custom connection string endpoint
