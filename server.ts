@@ -160,13 +160,14 @@ function publicUser(u: any) {
 app.post('/api/auth/login', async (req, res) => {
   try {
     await ensureDefaultUsers();
-    const { email, password } = req.body || {};
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    const { email, phone, password, identifier } = req.body || {};
+    const loginIdentifier = String(identifier || phone || email || '').trim();
+    if (!loginIdentifier || !password) {
+      return res.status(400).json({ error: 'Phone number or email, and password are required' });
     }
-    const user = await authStore.findByEmail(String(email));
+    const user = await authStore.findByEmailOrPhone(loginIdentifier);
     if (!user || !verifyPassword(String(password), user.passwordHash)) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid phone number, email, or password' });
     }
     if ((user as any).isActive === false) {
       return res.status(403).json({ error: 'This account has been deactivated' });
@@ -182,20 +183,37 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { fullName, email, phone, password, borrowerNumber } = req.body || {};
-    if (!fullName || !email || !password) {
-      return res.status(400).json({ error: 'Full name, email and password are required' });
-    }
-    if (String(password).length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const existing = await authStore.findByEmail(normalizedEmail);
-    if (existing) {
-      return res.status(409).json({ error: 'An account with this email already exists' });
+    const { phone, password, fullName, email, borrowerNumber } = req.body || {};
+    
+    // Only phone number is required
+    const rawPhone = String(phone || '').trim();
+    if (!rawPhone) {
+      return res.status(400).json({ error: 'Mobile phone number is required to register' });
     }
 
-    // Link to an existing member record when possible
+    const cleanPhone = rawPhone.replace(/\s+/g, '');
+    const digitsOnly = cleanPhone.replace(/\D/g, '');
+    if (digitsOnly.length < 7) {
+      return res.status(400).json({ error: 'Please enter a valid mobile phone number' });
+    }
+
+    const userPass = password && String(password).length >= 6 ? String(password) : 'Client@123';
+
+    // Generate fallback email and name if not provided
+    const normalizedEmail = email
+      ? String(email).trim().toLowerCase()
+      : `client.${digitsOnly}@hoscomo.coop`;
+    const initialName = fullName && String(fullName).trim()
+      ? String(fullName).trim()
+      : `Member (${digitsOnly.slice(-4) || 'New'})`;
+
+    // Check if phone or email already registered
+    const existing = (await authStore.findByEmailOrPhone(cleanPhone)) || (await authStore.findByEmailOrPhone(normalizedEmail));
+    if (existing) {
+      return res.status(409).json({ error: 'An account with this phone number or email already exists. Please sign in.' });
+    }
+
+    // Link to an existing member record when possible or create new borrower record
     let borrowerId: string | null = null;
     const db = getDb();
     if (db) {
@@ -209,26 +227,55 @@ app.post('/api/auth/register', async (req, res) => {
           if (rows.length > 0) borrowerId = rows[0].id;
         }
         if (!borrowerId) {
-          const rows = await db
-            .select()
-            .from(schema.borrowers)
-            .where(eq(schema.borrowers.email, normalizedEmail))
-            .limit(1);
-          if (rows.length > 0) borrowerId = rows[0].id;
+          // Check matching phone
+          const allBorrowers = await db.select().from(schema.borrowers);
+          const match = allBorrowers.find((b) => {
+            if (!b.phone) return false;
+            const bDigits = String(b.phone).replace(/\D/g, '');
+            return b.phone === cleanPhone || (digitsOnly.length >= 7 && bDigits.endsWith(digitsOnly.slice(-7)));
+          });
+          if (match) {
+            borrowerId = match.id;
+          }
         }
-      } catch {}
+        // If no matching borrower found, auto-create a linked borrower record so client can fill profile immediately
+        if (!borrowerId) {
+          const newBorrowerId = `b-${Date.now()}`;
+          const newBorrowerNumber = `MBR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          await db.insert(schema.borrowers).values({
+            id: newBorrowerId,
+            borrowerNumber: newBorrowerNumber,
+            fullName: initialName,
+            phone: cleanPhone,
+            email: normalizedEmail,
+            address: '',
+            status: 'ACTIVE',
+            kycStatus: 'PENDING',
+            creditScore: 680,
+            creditTier: 'STANDARD',
+            dateOfBirth: '',
+            civilStatus: 'Single',
+            occupation: '',
+            businessName: '',
+            monthlyIncome: 0,
+          });
+          borrowerId = newBorrowerId;
+        }
+      } catch (dbErr) {
+        console.log('[Register] DB borrower creation:', dbErr);
+      }
     }
 
     const user = await authStore.createUser({
       email: normalizedEmail,
-      fullName: String(fullName).trim(),
-      passwordHash: hashPassword(String(password)),
+      fullName: initialName,
+      passwordHash: hashPassword(userPass),
       role: 'CLIENT',
       staffRole: null,
       staffId: null,
       borrowerId,
-      phone: phone ? String(phone) : null,
-      avatar: `https://ui-avatars.com/api/?background=2563EB&color=fff&name=${encodeURIComponent(String(fullName).trim())}`,
+      phone: cleanPhone,
+      avatar: `https://ui-avatars.com/api/?background=059669&color=fff&name=${encodeURIComponent(initialName)}`,
     });
 
     const token = signToken(user);
@@ -237,6 +284,8 @@ app.post('/api/auth/register', async (req, res) => {
       token,
       user: publicUser(user),
       linkedMember: Boolean(borrowerId),
+      isNewRegistration: true,
+      message: 'Account created successfully with phone number. You may now complete your profile details.',
     });
   } catch (err: any) {
     console.error('[Auth] register error:', err);

@@ -312,29 +312,40 @@ clientMobileRouter.get('/profile', requireAuth(), async (req: AuthedRequest, res
     const borrowerId = getClientBorrowerId(req);
     const db = getDb();
     let borrower: any = null;
+    let userRow: any = null;
 
     if (db) {
-      const rows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
-      if (rows.length > 0) borrower = rows[0];
+      if (borrowerId) {
+        const rows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+        if (rows.length > 0) borrower = rows[0];
+      }
+      if (req.authUser?.id) {
+        const uRows = await db.select().from(schema.users).where(eq(schema.users.id, req.authUser.id)).limit(1);
+        if (uRows.length > 0) userRow = uRows[0];
+      }
     }
+
+    const defaultName = req.authUser?.fullName || userRow?.fullName || borrower?.fullName || 'New Member';
+    const defaultEmail = req.authUser?.email || userRow?.email || borrower?.email || '';
+    const defaultPhone = req.authUser?.phone || userRow?.phone || borrower?.phone || '';
 
     const profileData = {
       id: borrower?.id || borrowerId,
-      fullName: borrower?.fullName || req.authUser?.fullName || 'Teresa Alcantara',
-      email: borrower?.email || req.authUser?.email || 'teresa.alcantara@gmail.com',
-      phone: borrower?.phone || req.authUser?.phone || '+63 917 555 4321',
-      address: borrower?.address || 'Brgy. 88, San Jose, Tacloban City, Leyte',
-      dateOfBirth: borrower?.dateOfBirth || '1988-04-12',
-      civilStatus: borrower?.civilStatus || 'Married',
-      occupation: borrower?.occupation || 'Micro-Enterprise Owner (Sari-Sari Store)',
-      employer: borrower?.businessName || 'Teresa Sari-Sari Store & Eatery',
-      monthlyIncome: borrower?.monthlyIncome || 35000,
-      avatar: req.authUser?.avatar || borrower?.avatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
-      memberNumber: borrower?.borrowerNumber || 'MBR-2024-001',
-      membershipDate: borrower?.createdAt || '2024-01-15',
-      kycStatus: borrower?.kycStatus || 'VERIFIED',
-      creditScore: borrower?.creditScore || 745,
-      creditTier: borrower?.creditTier || 'PRIME',
+      fullName: borrower?.fullName || defaultName,
+      email: borrower?.email || defaultEmail,
+      phone: borrower?.phone || defaultPhone,
+      address: borrower?.address || '',
+      dateOfBirth: borrower?.dateOfBirth || '',
+      civilStatus: borrower?.civilStatus || 'Single',
+      occupation: borrower?.occupation || '',
+      employer: borrower?.businessName || '',
+      monthlyIncome: Number(borrower?.monthlyIncome) || 0,
+      avatar: req.authUser?.avatar || userRow?.avatar || borrower?.avatar || `https://ui-avatars.com/api/?background=059669&color=fff&name=${encodeURIComponent(defaultName)}`,
+      memberNumber: borrower?.borrowerNumber || 'MBR-PENDING',
+      membershipDate: borrower?.createdAt ? String(borrower.createdAt).split('T')[0] : new Date().toISOString().split('T')[0],
+      kycStatus: borrower?.kycStatus || 'PENDING',
+      creditScore: borrower?.creditScore || 680,
+      creditTier: borrower?.creditTier || 'STANDARD',
     };
 
     res.json({ success: true, profile: profileData });
@@ -343,28 +354,48 @@ clientMobileRouter.get('/profile', requireAuth(), async (req: AuthedRequest, res
   }
 });
 
-// Edit Allowed Profile Info (Phone, Address, Civil Status, Emergency Contact)
+// Edit & Fill Profile Info (Full Name, Email, Phone, Address, Civil Status, Occupation, Employer, Monthly Income, DOB)
 clientMobileRouter.patch('/profile', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
-    const { phone, address, civilStatus, occupation, employer } = req.body;
+    const { fullName, email, phone, address, dateOfBirth, civilStatus, occupation, employer, monthlyIncome } = req.body;
     const db = getDb();
 
-    if (db) {
+    // 1. Update Borrower Record
+    if (db && borrowerId) {
       await db
         .update(schema.borrowers)
         .set({
-          ...(phone ? { phone: String(phone).trim() } : {}),
-          ...(address ? { address: String(address).trim() } : {}),
-          ...(civilStatus ? { civilStatus: String(civilStatus).trim() } : {}),
-          ...(occupation ? { occupation: String(occupation).trim() } : {}),
+          ...(fullName !== undefined ? { fullName: String(fullName).trim() } : {}),
+          ...(email !== undefined ? { email: String(email).trim().toLowerCase() } : {}),
+          ...(phone !== undefined ? { phone: String(phone).trim() } : {}),
+          ...(address !== undefined ? { address: String(address).trim() } : {}),
+          ...(dateOfBirth !== undefined ? { dateOfBirth: String(dateOfBirth).trim() } : {}),
+          ...(civilStatus !== undefined ? { civilStatus: String(civilStatus).trim() } : {}),
+          ...(occupation !== undefined ? { occupation: String(occupation).trim() } : {}),
+          ...(employer !== undefined ? { businessName: String(employer).trim() } : {}),
+          ...(monthlyIncome !== undefined ? { monthlyIncome: Number(monthlyIncome) || 0 } : {}),
         })
         .where(eq(schema.borrowers.id, borrowerId));
     }
 
+    // 2. Update User Record & AuthStore
+    if (req.authUser?.id) {
+      const updates: any = {};
+      if (fullName !== undefined) updates.fullName = String(fullName).trim();
+      if (email !== undefined) updates.email = String(email).trim().toLowerCase();
+      if (phone !== undefined) updates.phone = String(phone).trim();
+      
+      if (Object.keys(updates).length > 0) {
+        if (db) {
+          await db.update(schema.users).set(updates).where(eq(schema.users.id, req.authUser.id));
+        }
+      }
+    }
+
     res.json({
       success: true,
-      message: 'Profile information updated successfully',
+      message: 'Profile details saved and updated successfully.',
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

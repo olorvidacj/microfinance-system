@@ -52,20 +52,20 @@ class ApiService {
   }
 
   // 1. Authentication
-  async login(email: string, password: string): Promise<UserSession> {
+  async login(identifier: string, password: string): Promise<UserSession> {
     const data = await this.request<{ success: boolean; token: string; user: any }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ identifier, password }),
     });
     this.setToken(data.token);
     return { token: data.token, user: data.user };
   }
 
   async register(payload: {
-    fullName: string;
-    email: string;
     phone: string;
-    password: string;
+    password?: string;
+    fullName?: string;
+    email?: string;
     borrowerNumber?: string;
   }): Promise<UserSession> {
     const data = await this.request<{ success: boolean; token: string; user: any }>('/auth/register', {

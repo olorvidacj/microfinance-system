@@ -23,23 +23,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   const [loading, setLoading] = useState(false);
 
   // Form Fields
-  const [email, setEmail] = useState('client@gmail.com');
+  // In Login: loginIdentifier can be phone number or email
+  const [loginIdentifier, setLoginIdentifier] = useState('09175554321');
   const [password, setPassword] = useState('Client@123');
-  const [fullName, setFullName] = useState('');
+
+  // In Registration: ONLY phone number is required (+ optional password)
   const [phone, setPhone] = useState('');
-  const [borrowerNumber, setBorrowerNumber] = useState('');
+  const [regPassword, setRegPassword] = useState('Client@123');
+
+  // Recovery
+  const [recoveryEmailOrPhone, setRecoveryEmailOrPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Validation Error', 'Please enter email and password.');
+    if (!loginIdentifier.trim() || !password) {
+      Alert.alert('Validation Error', 'Please enter your mobile phone number or email, and password.');
       return;
     }
     setLoading(true);
     try {
-      const session = await api.login(email, password);
+      const session = await api.login(loginIdentifier.trim(), password);
       onSuccess(session);
     } catch (err: any) {
       Alert.alert('Login Failed', err.message || 'Check your credentials and try again.');
@@ -49,40 +54,52 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   };
 
   const handleRegister = async () => {
-    if (!fullName || !email || !password) {
-      Alert.alert('Validation Error', 'Please fill in full name, email, and password.');
+    const cleanPhone = phone.trim();
+    if (!cleanPhone) {
+      Alert.alert('Phone Number Required', 'Please enter your mobile phone number to register.');
       return;
     }
-    if (password.length < 8) {
-      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
+    const digits = cleanPhone.replace(/\D/g, '');
+    if (digits.length < 7) {
+      Alert.alert('Invalid Phone Number', 'Please enter a valid 10 to 12 digit mobile phone number.');
       return;
     }
+    if (regPassword && regPassword.length < 6) {
+      Alert.alert('Weak Password', 'Password must be at least 6 characters.');
+      return;
+    }
+
     setLoading(true);
     try {
       const session = await api.register({
-        fullName,
-        email,
-        phone,
-        password,
-        borrowerNumber: borrowerNumber || undefined,
+        phone: cleanPhone,
+        password: regPassword || 'Client@123',
       });
-      Alert.alert('Registration Successful', 'Welcome to HOSCOMO Mobile Banking!');
-      onSuccess(session);
+      Alert.alert(
+        'Account Created! 🎉',
+        'Welcome to HOSCOMO Mobile. You can now complete your full legal name, ID details, and KYC in your Profile tab.',
+        [
+          {
+            text: 'Continue to App',
+            onPress: () => onSuccess(session),
+          },
+        ]
+      );
     } catch (err: any) {
-      Alert.alert('Registration Failed', err.message || 'Unable to complete registration.');
+      Alert.alert('Registration Failed', err.message || 'Unable to register with this phone number.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!email) {
-      Alert.alert('Required', 'Please enter your registered email address.');
+    if (!recoveryEmailOrPhone.trim()) {
+      Alert.alert('Required', 'Please enter your registered email address or phone number.');
       return;
     }
     setLoading(true);
     try {
-      const res = await api.forgotPassword(email);
+      const res = await api.forgotPassword(recoveryEmailOrPhone.trim());
       setInfoMessage(res.message);
       if (res.demoOtp) {
         setOtp(res.demoOtp);
@@ -102,7 +119,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
     }
     setLoading(true);
     try {
-      await api.verifyOtp(email, otp);
+      await api.verifyOtp(recoveryEmailOrPhone.trim(), otp);
       setMode('reset_password');
     } catch (err: any) {
       Alert.alert('Verification Failed', err.message);
@@ -112,15 +129,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   };
 
   const handleResetPassword = async () => {
-    if (!newPassword || newPassword.length < 8) {
-      Alert.alert('Invalid Password', 'New password must be at least 8 characters.');
+    if (!newPassword || newPassword.length < 6) {
+      Alert.alert('Invalid Password', 'New password must be at least 6 characters.');
       return;
     }
     setLoading(true);
     try {
-      const res = await api.resetPassword(email, otp, newPassword);
+      const res = await api.resetPassword(recoveryEmailOrPhone.trim(), otp, newPassword);
       Alert.alert('Password Reset', res.message);
       setPassword(newPassword);
+      setLoginIdentifier(recoveryEmailOrPhone.trim());
       setMode('login');
     } catch (err: any) {
       Alert.alert('Reset Failed', err.message);
@@ -139,17 +157,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
           </View>
           <Text style={styles.title}>
             {mode === 'login' && 'Member Sign In'}
-            {mode === 'register' && 'Client Registration'}
-            {mode === 'forgot_password' && 'Forgot Password'}
+            {mode === 'register' && 'Quick Registration'}
+            {mode === 'forgot_password' && 'Account Recovery'}
             {mode === 'verify_otp' && 'OTP Verification'}
             {mode === 'reset_password' && 'Set New Password'}
           </Text>
           <Text style={styles.subtitle}>
-            {mode === 'login' && 'Access your loan balances, savings passbook, and submit applications on the go.'}
-            {mode === 'register' && 'Create your mobile client account. Existing members are auto-linked.'}
-            {mode === 'forgot_password' && 'Enter your email to receive a 6-digit one-time verification code.'}
-            {mode === 'verify_otp' && 'Enter the 6-digit OTP code sent to your registered email.'}
-            {mode === 'reset_password' && 'Choose a strong password with at least 8 characters.'}
+            {mode === 'login' && 'Sign in using your mobile phone number or registered email.'}
+            {mode === 'register' && 'Only your phone number is needed to get started. You can fill up all personal details in your profile anytime.'}
+            {mode === 'forgot_password' && 'Enter your phone number or email to receive a one-time verification code.'}
+            {mode === 'verify_otp' && 'Enter the 6-digit OTP code sent to your mobile or email.'}
+            {mode === 'reset_password' && 'Choose a new secure password or PIN for your account.'}
           </Text>
         </View>
 
@@ -163,14 +181,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
         {mode === 'login' && (
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.label}>Mobile Phone Number or Email</Text>
               <TextInput
                 style={styles.input}
-                value={email}
-                onChangeText={setEmail}
+                value={loginIdentifier}
+                onChangeText={setLoginIdentifier}
                 autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder="e.g. client@gmail.com"
+                placeholder="e.g. 09175554321 or client@gmail.com"
               />
             </View>
 
@@ -187,9 +204,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
 
             <TouchableOpacity
               style={styles.forgotLink}
-              onPress={() => setMode('forgot_password')}
+              onPress={() => {
+                setRecoveryEmailOrPhone(loginIdentifier);
+                setMode('forgot_password');
+              }}
             >
-              <Text style={styles.forgotLinkText}>Forgot your password?</Text>
+              <Text style={styles.forgotLinkText}>Forgot your password / PIN?</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -205,85 +225,63 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
             </TouchableOpacity>
 
             <View style={styles.switchContainer}>
-              <Text style={styles.switchText}>New coop member?</Text>
+              <Text style={styles.switchText}>New member?</Text>
               <TouchableOpacity onPress={() => setMode('register')}>
-                <Text style={styles.switchLink}> Register Account</Text>
+                <Text style={styles.switchLink}> Register with Phone Number</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* 2. REGISTRATION MODE */}
+        {/* 2. REGISTRATION MODE - ONLY PHONE NUMBER NEEDED */}
         {mode === 'register' && (
           <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="e.g. Maria Santos"
-              />
+            {/* Quick Phone Notice Callout */}
+            <View style={styles.fastRegNotice}>
+              <Text style={styles.fastRegNoticeTitle}>📱 Fast 1-Step Registration</Text>
+              <Text style={styles.fastRegNoticeBody}>
+                Only your phone number is required now. Fill in your legal name, address, and KYC details inside your Profile whenever you are ready.
+              </Text>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.label}>Mobile Phone Number *</Text>
               <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder="maria.santos@gmail.com"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Mobile Phone Number</Text>
-              <TextInput
-                style={styles.input}
+                style={[styles.input, styles.highlightInput]}
                 value={phone}
                 onChangeText={setPhone}
                 keyboardType="phone-pad"
-                placeholder="+63 917 XXX XXXX"
+                placeholder="e.g. 0917 123 4567 or +63 917 123 4567"
+                autoFocus
               />
+              <Text style={styles.helperText}>We will use this phone number for your login and loan alerts.</Text>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Passbook / Member Number (Optional)</Text>
+              <Text style={styles.label}>Create Password / PIN</Text>
               <TextInput
                 style={styles.input}
-                value={borrowerNumber}
-                onChangeText={setBorrowerNumber}
-                placeholder="MBR-2024-001"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password (Min. 8 characters)</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
+                value={regPassword}
+                onChangeText={setRegPassword}
                 secureTextEntry
-                placeholder="••••••••"
+                placeholder="Choose a password or 6-digit PIN"
               />
             </View>
 
             <TouchableOpacity
-              style={styles.primaryButton}
+              style={[styles.primaryButton, { backgroundColor: '#059669' }]}
               onPress={handleRegister}
               disabled={loading}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.primaryButtonText}>Complete Mobile Registration</Text>
+                <Text style={styles.primaryButtonText}>⚡ Create Account with Phone Number</Text>
               )}
             </TouchableOpacity>
 
             <View style={styles.switchContainer}>
-              <Text style={styles.switchText}>Already registered?</Text>
+              <Text style={styles.switchText}>Already have an account?</Text>
               <TouchableOpacity onPress={() => setMode('login')}>
                 <Text style={styles.switchLink}> Sign In</Text>
               </TouchableOpacity>
@@ -295,14 +293,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
         {mode === 'forgot_password' && (
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Registered Email Address</Text>
+              <Text style={styles.label}>Registered Phone Number or Email</Text>
               <TextInput
                 style={styles.input}
-                value={email}
-                onChangeText={setEmail}
+                value={recoveryEmailOrPhone}
+                onChangeText={setRecoveryEmailOrPhone}
                 autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder="you@example.com"
+                placeholder="09175554321 or you@example.com"
               />
             </View>
 
@@ -361,13 +358,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
         {mode === 'reset_password' && (
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>New Password</Text>
+              <Text style={styles.label}>New Password / PIN</Text>
               <TextInput
                 style={styles.input}
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry
-                placeholder="••••••••"
+                placeholder="Enter new password"
               />
             </View>
 
@@ -387,17 +384,29 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
 
         {/* Demo Helper */}
         <View style={styles.demoCard}>
-          <Text style={styles.demoTitle}>💡 One-Tap Demo Profiles</Text>
-          <TouchableOpacity
-            style={styles.demoButton}
-            onPress={() => {
-              setEmail('client@gmail.com');
-              setPassword('Client@123');
-              setMode('login');
-            }}
-          >
-            <Text style={styles.demoButtonText}>Client: client@gmail.com (Client@123)</Text>
-          </TouchableOpacity>
+          <Text style={styles.demoTitle}>💡 Quick Demo Accounts</Text>
+          <View style={styles.demoRow}>
+            <TouchableOpacity
+              style={styles.demoButton}
+              onPress={() => {
+                setLoginIdentifier('09175554321');
+                setPassword('Client@123');
+                setMode('login');
+              }}
+            >
+              <Text style={styles.demoButtonText}>📱 Phone: 09175554321</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.demoButton}
+              onPress={() => {
+                setLoginIdentifier('client@gmail.com');
+                setPassword('Client@123');
+                setMode('login');
+              }}
+            >
+              <Text style={styles.demoButtonText}>✉️ Email: client@gmail.com</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </ScrollView>
@@ -451,29 +460,47 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 13,
     color: '#64748B',
-    lineHeight: 19,
+    lineHeight: 18,
   },
   infoBanner: {
     backgroundColor: '#EFF6FF',
     borderColor: '#BFDBFE',
     borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 16,
+  },
+  infoText: {
+    color: '#1E40AF',
+    fontSize: 12,
+  },
+  fastRegNotice: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+    borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
   },
-  infoText: {
+  fastRegNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#166534',
+    marginBottom: 4,
+  },
+  fastRegNoticeBody: {
     fontSize: 12,
-    color: '#1D4ED8',
+    color: '#15803D',
     lineHeight: 17,
   },
   form: {
     marginTop: 4,
   },
   inputGroup: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
   label: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#334155',
     marginBottom: 6,
@@ -481,18 +508,30 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 14,
     color: '#0F172A',
   },
+  highlightInput: {
+    borderColor: '#059669',
+    backgroundColor: '#FAFCFB',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  helperText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 4,
+  },
   otpInput: {
     textAlign: 'center',
-    letterSpacing: 8,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
+    letterSpacing: 8,
+    paddingVertical: 10,
   },
   forgotLink: {
     alignSelf: 'flex-end',
@@ -500,23 +539,24 @@ const styles = StyleSheet.create({
   },
   forgotLinkText: {
     fontSize: 12,
-    color: '#0284C7',
+    color: '#059669',
     fontWeight: '600',
   },
   primaryButton: {
-    backgroundColor: '#059669',
-    borderRadius: 12,
+    backgroundColor: '#0F172A',
     paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
+    marginTop: 4,
     shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 2,
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
   cancelButton: {
@@ -532,7 +572,8 @@ const styles = StyleSheet.create({
   switchContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 18,
+    alignItems: 'center',
+    marginTop: 20,
   },
   switchText: {
     fontSize: 13,
@@ -540,8 +581,8 @@ const styles = StyleSheet.create({
   },
   switchLink: {
     fontSize: 13,
-    color: '#059669',
     fontWeight: '700',
+    color: '#059669',
   },
   demoCard: {
     marginTop: 24,
@@ -550,21 +591,30 @@ const styles = StyleSheet.create({
     borderTopColor: '#F1F5F9',
   },
   demoTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#475569',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginBottom: 8,
   },
+  demoRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   demoButton: {
-    backgroundColor: '#F1F5F9',
+    flex: 1,
+    backgroundColor: '#F8FAFC',
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
   },
   demoButtonText: {
-    fontSize: 12,
-    color: '#334155',
+    fontSize: 11,
+    color: '#475569',
     fontWeight: '600',
   },
 });

@@ -223,6 +223,51 @@ class AuthStore {
     return this.memoryUsers.get(normalized) || null;
   }
 
+  async findByEmailOrPhone(identifier: string): Promise<AuthUserRecord | null> {
+    if (!identifier) return null;
+    const cleanRaw = String(identifier).trim();
+    const normalizedEmail = cleanRaw.toLowerCase();
+    const cleanDigits = cleanRaw.replace(/\D/g, '');
+
+    // 1. Try finding by email directly
+    const byEmail = await this.findByEmail(normalizedEmail);
+    if (byEmail) return byEmail;
+
+    // 2. Try finding by phone in database
+    const db = getDb();
+    if (db && this.isDbAvailable !== false) {
+      try {
+        const allUsers = await db.select().from(schema.users);
+        const match = allUsers.find((u) => {
+          if (!u.phone) return false;
+          const uDigits = String(u.phone).replace(/\D/g, '');
+          return (
+            u.phone === cleanRaw ||
+            (cleanDigits.length >= 7 && (uDigits.endsWith(cleanDigits) || cleanDigits.endsWith(uDigits)))
+          );
+        });
+        if (match) return match as unknown as AuthUserRecord;
+      } catch {
+        this.isDbAvailable = false;
+      }
+    }
+
+    // 3. Try finding by phone in memory users
+    for (const u of this.memoryUsers.values()) {
+      if (u.phone) {
+        const uDigits = String(u.phone).replace(/\D/g, '');
+        if (
+          u.phone === cleanRaw ||
+          (cleanDigits.length >= 7 && (uDigits.endsWith(cleanDigits) || cleanDigits.endsWith(uDigits)))
+        ) {
+          return u;
+        }
+      }
+    }
+
+    return null;
+  }
+
   async findById(id: string): Promise<AuthUserRecord | null> {
     const db = getDb();
     if (db && this.isDbAvailable !== false) {
@@ -235,6 +280,38 @@ class AuthStore {
     }
     for (const u of this.memoryUsers.values()) {
       if (u.id === id) return u;
+    }
+    return null;
+  }
+
+  async updateUser(id: string, updates: Partial<AuthUserRecord>): Promise<AuthUserRecord | null> {
+    const db = getDb();
+    if (db && this.isDbAvailable !== false) {
+      try {
+        await db
+          .update(schema.users)
+          .set({
+            ...(updates.fullName ? { fullName: updates.fullName } : {}),
+            ...(updates.email ? { email: updates.email.toLowerCase() } : {}),
+            ...(updates.phone ? { phone: updates.phone } : {}),
+            ...(updates.avatar ? { avatar: updates.avatar } : {}),
+          })
+          .where(eq(schema.users.id, id));
+      } catch {
+        this.isDbAvailable = false;
+      }
+    }
+
+    for (const [key, u] of this.memoryUsers.entries()) {
+      if (u.id === id) {
+        const updated = { ...u, ...updates };
+        this.memoryUsers.set(key, updated);
+        if (updates.email && updates.email.toLowerCase() !== key) {
+          this.memoryUsers.delete(key);
+          this.memoryUsers.set(updates.email.toLowerCase(), updated);
+        }
+        return updated;
+      }
     }
     return null;
   }
