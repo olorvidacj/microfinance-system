@@ -67,6 +67,12 @@ class ApiService {
     fullName?: string;
     email?: string;
     borrowerNumber?: string;
+    dateOfBirth?: string;
+    address?: string;
+    civilStatus?: string;
+    occupation?: string;
+    employerOrBusiness?: string;
+    monthlyIncome?: number;
   }): Promise<UserSession> {
     const data = await this.request<{ success: boolean; token: string; user: any }>('/auth/register', {
       method: 'POST',
@@ -74,6 +80,30 @@ class ApiService {
     });
     this.setToken(data.token);
     return { token: data.token, user: data.user };
+  }
+
+  async sendRegistrationOtp(phone: string, email?: string): Promise<{
+    success: boolean;
+    message: string;
+    formattedPhone?: string;
+    demoOtp?: string;
+    expiresInSeconds?: number;
+  }> {
+    return this.request('/auth/send-registration-otp', {
+      method: 'POST',
+      body: JSON.stringify({ phone, email }),
+    });
+  }
+
+  async verifyRegistrationOtp(phone: string, otp: string): Promise<{
+    success: boolean;
+    verified: boolean;
+    message: string;
+  }> {
+    return this.request('/auth/verify-registration-otp', {
+      method: 'POST',
+      body: JSON.stringify({ phone, otp }),
+    });
   }
 
   async forgotPassword(email: string): Promise<{ success: boolean; message: string; demoOtp?: string }> {

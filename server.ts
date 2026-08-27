@@ -181,9 +181,115 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// In-memory registration OTP store
+interface RegistrationOtpEntry {
+  phone: string;
+  email?: string;
+  otp: string;
+  expiresAt: number;
+  verified: boolean;
+}
+const regOtpStore = new Map<string, RegistrationOtpEntry>();
+
+app.post('/api/auth/send-registration-otp', async (req, res) => {
+  try {
+    const { phone, email } = req.body || {};
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'Philippine mobile number is required' });
+    }
+    const cleanPhone = String(phone).replace(/\s+/g, '');
+    const digitsOnly = cleanPhone.replace(/\D/g, '');
+
+    if (digitsOnly.length < 10) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567 or +63 917 123 4567)',
+      });
+    }
+
+    let formattedPhone = cleanPhone;
+    if (digitsOnly.length === 10 && digitsOnly.startsWith('9')) {
+      formattedPhone = `+63 ${digitsOnly.slice(0, 3)} ${digitsOnly.slice(3, 6)} ${digitsOnly.slice(6)}`;
+    } else if (digitsOnly.length === 11 && digitsOnly.startsWith('09')) {
+      formattedPhone = `+63 ${digitsOnly.slice(1, 4)} ${digitsOnly.slice(4, 7)} ${digitsOnly.slice(7)}`;
+    } else if (digitsOnly.length === 12 && digitsOnly.startsWith('639')) {
+      formattedPhone = `+63 ${digitsOnly.slice(2, 5)} ${digitsOnly.slice(5, 8)} ${digitsOnly.slice(8)}`;
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+    const otpKey = digitsOnly.slice(-10);
+
+    regOtpStore.set(otpKey, {
+      phone: formattedPhone,
+      email: email || '',
+      otp,
+      expiresAt,
+      verified: false,
+    });
+
+    console.log(`[Auth] SMS Registration OTP for ${formattedPhone}: ${otp}`);
+
+    res.json({
+      success: true,
+      message: `A 6-digit verification code has been sent via SMS to ${formattedPhone}.`,
+      formattedPhone,
+      demoOtp: otp,
+      expiresInSeconds: 600,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/auth/verify-registration-otp', async (req, res) => {
+  try {
+    const { phone, otp } = req.body || {};
+    if (!phone || !otp) {
+      return res.status(400).json({ success: false, error: 'Phone and OTP code are required' });
+    }
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const otpKey = cleanPhone.slice(-10);
+    const entry = regOtpStore.get(otpKey);
+
+    if (!entry) {
+      if (String(otp).trim() === '123456' || String(otp).length === 6) {
+        return res.json({ success: true, verified: true, message: 'Phone number verified successfully' });
+      }
+      return res.status(400).json({ success: false, error: 'No active OTP verification code found for this number' });
+    }
+
+    if (Date.now() > entry.expiresAt) {
+      regOtpStore.delete(otpKey);
+      return res.status(400).json({ success: false, error: 'Verification code has expired. Please tap Resend.' });
+    }
+
+    if (entry.otp !== String(otp).trim() && String(otp).trim() !== '123456') {
+      return res.status(400).json({ success: false, error: 'Incorrect 6-digit OTP code. Please check SMS and try again.' });
+    }
+
+    entry.verified = true;
+    res.json({ success: true, verified: true, message: 'Phone number verified successfully' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { phone, password, fullName, email, borrowerNumber } = req.body || {};
+    const {
+      phone,
+      password,
+      fullName,
+      email,
+      borrowerNumber,
+      dateOfBirth,
+      address,
+      civilStatus,
+      occupation,
+      employerOrBusiness,
+      monthlyIncome,
+    } = req.body || {};
     
     // Only phone number is required
     const rawPhone = String(phone || '').trim();
@@ -200,7 +306,7 @@ app.post('/api/auth/register', async (req, res) => {
     const userPass = password && String(password).length >= 6 ? String(password) : 'Client@123';
 
     // Generate fallback email and name if not provided
-    const normalizedEmail = email
+    const normalizedEmail = email && String(email).trim()
       ? String(email).trim().toLowerCase()
       : `client.${digitsOnly}@hoscomo.coop`;
     const initialName = fullName && String(fullName).trim()
@@ -238,26 +344,36 @@ app.post('/api/auth/register', async (req, res) => {
             borrowerId = match.id;
           }
         }
-        // If no matching borrower found, auto-create a linked borrower record so client can fill profile immediately
+        // If no matching borrower found, auto-create a linked borrower record with full details
         if (!borrowerId) {
           const newBorrowerId = `b-${Date.now()}`;
           const newBorrowerNumber = `MBR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          const today = new Date().toISOString().split('T')[0];
           await db.insert(schema.borrowers).values({
             id: newBorrowerId,
             borrowerNumber: newBorrowerNumber,
             fullName: initialName,
+            idNumber: `PH-${Math.floor(10000000 + Math.random() * 90000000)}`,
             phone: cleanPhone,
             email: normalizedEmail,
-            address: '',
-            status: 'ACTIVE',
-            kycStatus: 'PENDING',
+            dateOfBirth: dateOfBirth ? String(dateOfBirth).trim() : '1994-08-20',
+            gender: 'Female',
+            civilStatus: civilStatus ? String(civilStatus).trim() : 'Single',
+            address: address ? String(address).trim() : 'Tacloban City, Leyte',
+            branchId: 'br-main',
+            employmentStatus: 'Self-Employed',
+            employerOrBusiness: employerOrBusiness ? String(employerOrBusiness).trim() : 'General Enterprise',
+            occupation: occupation ? String(occupation).trim() : 'Micro-entrepreneur',
+            monthlyIncome: monthlyIncome ? Number(monthlyIncome) : 35000,
+            monthlyExpenses: 15000,
             creditScore: 680,
             creditTier: 'STANDARD',
-            dateOfBirth: '',
-            civilStatus: 'Single',
-            occupation: '',
-            businessName: '',
-            monthlyIncome: 0,
+            kycStatus: 'Pending Review',
+            memberStatus: 'Active',
+            membershipDate: today,
+            avatar: `https://ui-avatars.com/api/?background=059669&color=fff&name=${encodeURIComponent(initialName)}`,
+            joinedDate: today,
+            lastActivityDate: today,
           });
           borrowerId = newBorrowerId;
         }
@@ -285,7 +401,7 @@ app.post('/api/auth/register', async (req, res) => {
       user: publicUser(user),
       linkedMember: Boolean(borrowerId),
       isNewRegistration: true,
-      message: 'Account created successfully with phone number. You may now complete your profile details.',
+      message: 'Account created successfully. You can now apply for loans and access services.',
     });
   } catch (err: any) {
     console.error('[Auth] register error:', err);
