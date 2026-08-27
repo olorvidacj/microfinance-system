@@ -456,22 +456,22 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             </ul>
           </div>
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-widest text-white mb-4">Portal</h4>
+            <h4 className="text-xs font-semibold uppercase tracking-widest text-white mb-4">Access Portals</h4>
             <ul className="space-y-2.5 text-xs">
               <li>
                 <button onClick={onSignIn} className="hover:text-blue-400 transition">
-                  Member Sign In
+                  Staff & Admin Sign In
                 </button>
               </li>
               <li>
                 <button onClick={onSignIn} className="hover:text-blue-400 transition">
-                  Staff Console
+                  Staff Workstation
                 </button>
               </li>
               <li>
-                <button onClick={onSignIn} className="hover:text-blue-400 transition">
-                  Create Account
-                </button>
+                <span className="text-emerald-400 font-medium">
+                  Client App: React Native / Expo
+                </span>
               </li>
             </ul>
           </div>

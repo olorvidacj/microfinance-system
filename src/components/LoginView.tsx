@@ -159,33 +159,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBack, onAuthenticated })
             )}
           </div>
 
-          {/* Mode Tabs */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl mb-7">
-            <button
-              onClick={() => switchMode('signin')}
-              className={`py-2.5 rounded-xl text-sm font-semibold transition ${
-                mode === 'signin' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => switchMode('register')}
-              className={`py-2.5 rounded-xl text-sm font-semibold transition ${
-                mode === 'register' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Client Register
-            </button>
+          {/* Web Access Notice */}
+          <div className="mb-6 p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-900">
+            <Smartphone className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-emerald-800">Borrower / Client Access: </span>
+              <span>Client self-service & new member registration are hosted on the <strong>HOSCOMO React Native Mobile App</strong>. Web portal sign-in is reserved for Cooperative Staff & Administrators.</span>
+            </div>
           </div>
 
           <h2 className="text-xl font-bold text-slate-900">
-            {mode === 'signin' ? 'Welcome back' : 'Create your client account'}
+            Staff & Administration Sign In
           </h2>
           <p className="text-xs text-slate-500 mt-1 mb-6">
-            {mode === 'signin'
-              ? 'Enter your staff or client portal credentials.'
-              : 'Register for online banking. Existing members are auto-linked by email or member number.'}
+            Enter your cooperative staff credentials to access the management workstation.
           </p>
 
           {error && (
@@ -202,23 +189,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBack, onAuthenticated })
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Full Name</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Juan Dela Cruz"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
-                  />
-                </div>
-              </div>
-            )}
-
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email Address</label>
               <div className="relative">
@@ -228,41 +198,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBack, onAuthenticated })
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="staff@hoscomo.coop"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
                 />
               </div>
             </div>
-
-            {mode === 'register' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mobile Number</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+63 9XX XXX XXXX"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Member No. <span className="font-normal text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={borrowerNumber}
-                    onChange={(e) => setBorrowerNumber(e.target.value)}
-                    placeholder="MBR-2024-001"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
-                  />
-                </div>
-              </div>
-            )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password</label>
@@ -271,10 +211,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBack, onAuthenticated })
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  minLength={mode === 'register' ? 8 : undefined}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={mode === 'register' ? 'Minimum 8 characters' : '••••••••'}
+                  placeholder="••••••••"
                   className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
                 />
                 <button
@@ -293,7 +232,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBack, onAuthenticated })
               className="w-full mt-2 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-md shadow-blue-600/20 transition flex items-center justify-center gap-2 text-sm"
             >
               {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === 'signin' ? 'Sign In Securely' : 'Create Account'}
+              Sign In to Workstation
             </button>
           </form>
 

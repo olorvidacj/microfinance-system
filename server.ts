@@ -26,6 +26,7 @@ import {
   normalizeRole,
 } from './src/auth/permissions';
 import { eq, desc } from 'drizzle-orm';
+import { clientMobileRouter } from './src/routes/clientMobileRoutes';
 
 dotenv.config();
 
@@ -577,6 +578,10 @@ app.get('/api/mobile/config', (req, res) => {
     },
   });
 });
+
+// Mount Client Mobile API routes for mobile app
+app.use('/api/client', clientMobileRouter);
+app.use('/api', clientMobileRouter);
 
 // Test custom connection string endpoint
 app.post('/api/db/test-connection', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
