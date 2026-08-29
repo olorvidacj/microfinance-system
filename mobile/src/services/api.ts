@@ -10,7 +10,10 @@ import {
   MobileNotification,
 } from '../types';
 
-export const API_BASE_URL = 'http://localhost:3000/api';
+export const API_BASE_URL =
+  typeof window !== 'undefined' && window.location && window.location.origin
+    ? `${window.location.origin}/api`
+    : '/api';
 
 class ApiService {
   private token: string | null = null;

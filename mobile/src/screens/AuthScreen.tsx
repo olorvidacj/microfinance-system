@@ -310,16 +310,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
         monthlyIncome: monthlyIncome ? Number(monthlyIncome) : 35000,
       });
 
-      Alert.alert(
-        'Account Created Successfully! 🎉',
-        `Welcome to HOSCOMO Lending, ${fullName || 'Member'}! Your client account is verified and ready for instant loan applications.`,
-        [
-          {
-            text: 'Access My Lending Dashboard →',
-            onPress: () => onSuccess(session),
-          },
-        ]
-      );
+      // Immediately log in and activate session
+      onSuccess(session);
     } catch (err: any) {
       Alert.alert('Registration Failed', err.message || 'Unable to complete registration. Please try again.');
     } finally {

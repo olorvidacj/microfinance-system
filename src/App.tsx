@@ -384,25 +384,7 @@ const ClientAppShell: React.FC = () => {
         </header>
 
         <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 pb-12">
-          {user?.borrowerId ? (
-            <ClientPortalView lockedBorrowerId={user.borrowerId} isClientSession />
-          ) : (
-            <div className="mt-16 mx-auto max-w-md text-center bg-white border border-slate-200 rounded-3xl p-10 shadow-sm">
-              <ShieldInfoIcon />
-              <h2 className="text-lg font-bold text-slate-900 mt-4">Account Awaiting Member Linkage</h2>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                Your login was created successfully, but no cooperative member record is linked yet.
-                Please visit your nearest HOSCOMO branch or register with your Member Number
-                (e.g. MBR-2024-001) so we can verify and connect your passbook and loans.
-              </p>
-              <button
-                onClick={logout}
-                className="mt-6 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition"
-              >
-                Sign Out
-              </button>
-            </div>
-          )}
+          <ClientPortalView lockedBorrowerId={user?.borrowerId || undefined} isClientSession />
         </main>
       </div>
     </LoanProvider>
@@ -419,6 +401,7 @@ const ShieldInfoIcon: React.FC = () => (
 const AuthGate: React.FC = () => {
   const { user, isRestoring } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
+  const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'register'>('signin');
 
   if (isRestoring) {
     return (
@@ -438,12 +421,20 @@ const AuthGate: React.FC = () => {
     if (showAuth) {
       return (
         <LoginView
+          initialMode={authInitialMode}
           onBack={() => setShowAuth(false)}
           onAuthenticated={() => setShowAuth(false)}
         />
       );
     }
-    return <LandingView onSignIn={() => setShowAuth(true)} />;
+    return (
+      <LandingView
+        onSignIn={(mode = 'signin') => {
+          setAuthInitialMode(mode);
+          setShowAuth(true);
+        }}
+      />
+    );
   }
 
   if (user.role === 'CLIENT') return <ClientAppShell />;

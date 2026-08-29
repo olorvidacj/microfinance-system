@@ -13,10 +13,13 @@ export interface AuthUser {
 
 interface RegisterData {
   fullName: string;
-  email: string;
+  email?: string;
   phone?: string;
-  password: string;
+  password?: string;
   borrowerNumber?: string;
+  address?: string;
+  occupation?: string;
+  monthlyIncome?: number;
 }
 
 interface AuthContextType {

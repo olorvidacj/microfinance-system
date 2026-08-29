@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 interface LandingViewProps {
-  onSignIn: () => void;
+  onSignIn: (initialMode?: 'signin' | 'register') => void;
 }
 
 const NAV_LINKS = [
@@ -144,13 +144,13 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
           </nav>
           <div className="flex items-center gap-2">
             <button
-              onClick={onSignIn}
+              onClick={() => onSignIn('signin')}
               className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 text-sm font-semibold transition"
             >
               Sign In
             </button>
             <button
-              onClick={onSignIn}
+              onClick={() => onSignIn('register')}
               className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-600/20 transition"
             >
               Join Now
@@ -188,18 +188,18 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <button
-                onClick={onSignIn}
+                onClick={() => onSignIn('register')}
                 className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-white text-blue-700 font-semibold text-sm shadow-lg hover:bg-blue-50 transition"
               >
-                Open Member Portal
+                Register as Member Online
                 <ArrowRight className="w-4 h-4" />
               </button>
-              <a
-                href="#products"
+              <button
+                onClick={() => onSignIn('signin')}
                 className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/25 text-white font-semibold text-sm backdrop-blur-sm transition"
               >
-                Explore Loan Products
-              </a>
+                Sign In to Portal
+              </button>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-blue-200">
               <span className="inline-flex items-center gap-1.5">
@@ -274,7 +274,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               from the self-service portal, wherever you are.
             </p>
             <button
-              onClick={onSignIn}
+              onClick={() => onSignIn('signin')}
               className="mt-7 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-600/20 transition"
             >
               Access Your Account
@@ -402,13 +402,21 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               <p className="mt-3 text-sm text-blue-100 max-w-xl mx-auto leading-relaxed">
                 Sign in to the portal or create your client account today — membership takes less than 10 minutes.
               </p>
-              <button
-                onClick={onSignIn}
-                className="mt-7 inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-white text-blue-700 font-semibold text-sm shadow-lg hover:bg-blue-50 transition"
-              >
-                Get Started Now
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="mt-7 flex flex-wrap justify-center gap-3">
+                <button
+                  onClick={() => onSignIn('register')}
+                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-white text-blue-700 font-semibold text-sm shadow-lg hover:bg-blue-50 transition"
+                >
+                  Register as Member
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onSignIn('signin')}
+                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-white/15 hover:bg-white/20 border border-white/30 text-white font-semibold text-sm backdrop-blur-sm transition"
+                >
+                  Sign In to Portal
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -459,13 +467,13 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             <h4 className="text-xs font-semibold uppercase tracking-widest text-white mb-4">Access Portals</h4>
             <ul className="space-y-2.5 text-xs">
               <li>
-                <button onClick={onSignIn} className="hover:text-blue-400 transition">
+                <button onClick={() => onSignIn('signin')} className="hover:text-blue-400 transition">
                   Staff & Admin Sign In
                 </button>
               </li>
               <li>
-                <button onClick={onSignIn} className="hover:text-blue-400 transition">
-                  Staff Workstation
+                <button onClick={() => onSignIn('register')} className="hover:text-blue-400 transition">
+                  Client / Member Registration
                 </button>
               </li>
               <li>
