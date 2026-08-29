@@ -30,3 +30,14 @@ npx expo start
 3. Run on device or simulator:
 - Scan the QR code using the **Expo Go** app on iOS or Android.
 - Press `a` for Android Emulator or `i` for iOS Simulator.
+
+## Backend API connection
+
+The app talks to the REST API served by the Express backend (port `3000`):
+
+- **Web**: uses the same origin as the page automatically.
+- **Native (device/simulator)**: the API host is auto-detected from the Expo dev
+  server, so your phone must be on the same network as the machine running the
+  backend. Start the backend from the repo root with `npm run dev`.
+- **Override**: set `EXPO_PUBLIC_API_URL` (e.g. in a `.env` file in the `mobile`
+  folder) to point at a hosted or custom API, e.g. `EXPO_PUBLIC_API_URL=https://api.example.com/api`.

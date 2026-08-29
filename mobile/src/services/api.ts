@@ -10,10 +10,38 @@ import {
   MobileNotification,
 } from '../types';
 
-export const API_BASE_URL =
-  typeof window !== 'undefined' && window.location && window.location.origin
-    ? `${window.location.origin}/api`
-    : '/api';
+import Constants from 'expo-constants';
+
+const BACKEND_PORT = 3000;
+
+function resolveApiBaseUrl(): string {
+  // 1. Explicit override (production build / self-hosted API)
+  const override = process.env.EXPO_PUBLIC_API_URL;
+  if (override) {
+    return override.replace(/\/+$/, '');
+  }
+
+  // 2. Web: reuse the page origin (the Express server serves both API & frontend)
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    return `${window.location.origin}/api`;
+  }
+
+  // 3. Native (Expo Go / dev build): resolve the Metro dev-server host and point
+  //    at the backend port, which listens on 0.0.0.0 for LAN access from devices.
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    Constants.expoGoConfig?.debuggerHost ||
+    '';
+  const host = (hostUri || '').split(':')[0].trim();
+  if (host) {
+    return `http://${host}:${BACKEND_PORT}/api`;
+  }
+
+  // 4. Last-resort fallback
+  return `http://localhost:${BACKEND_PORT}/api`;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 class ApiService {
   private token: string | null = null;
@@ -50,6 +78,9 @@ class ApiService {
       return data as T;
     } catch (err: any) {
       console.warn(`[API] Error fetching ${endpoint}:`, err.message);
+      if (err instanceof TypeError) {
+        throw new Error(`Unable to reach the server (${API_BASE_URL}).\n\nMake sure the backend is running on port ${BACKEND_PORT} and your device is on the same network.`);
+      }
       throw err;
     }
   }

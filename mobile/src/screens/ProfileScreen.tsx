@@ -108,7 +108,7 @@ export const ProfileScreen: React.FC = () => {
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Save',
-              onPress: async (url) => {
+              onPress: async (url?: string) => {
                 if (url) {
                   await api.uploadAvatar(url);
                   fetchProfileData();

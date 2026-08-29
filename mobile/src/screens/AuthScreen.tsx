@@ -461,7 +461,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                     {regStep === 3 && 'RESIDENCE & INCOME'}
                     {regStep === 4 && 'FINAL CONFIRMATION'}
                   </Text>
-                  <h2 style={{ display: 'none' }}>Client Registration</h2>
                   <Text style={styles.stepMainTitle}>
                     {regStep === 1 && 'Create Your Account'}
                     {regStep === 2 && 'Personal Information'}
