@@ -282,15 +282,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="sm:hidden">DB</span>
               <span className={`w-2 h-2 rounded-full ${dbStatus.connected ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></span>
             </button>
-
-            {/* Reset Demo Data Button */}
-            <button
-              title="Reset Demo Data"
-              onClick={() => setShowResetConfirm(true)}
-              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </div>
@@ -300,38 +291,6 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={showSupabaseModal}
         onClose={() => setShowSupabaseModal(false)}
       />
-
-      {/* Reset Confirmation Dialog */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center animate-in zoom-in-95 duration-150">
-            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
-              <RotateCcw className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900">Reset Demo Data?</h3>
-            <p className="text-xs text-gray-500 mt-2">
-              This will restore all branches, borrowers, loan contracts, and collections ledger back to initial clean state.
-            </p>
-            <div className="mt-6 flex items-center gap-3">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="flex-1 py-2 px-4 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  resetToDefaults();
-                  setShowResetConfirm(false);
-                }}
-                className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition"
-              >
-                Confirm Reset
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 };

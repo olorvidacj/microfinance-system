@@ -159,19 +159,47 @@ function publicUser(u: any) {
 
 app.post('/api/auth/login', async (req, res) => {
   try {
-    await ensureDefaultUsers();
     const { email, phone, password, identifier } = req.body || {};
     const loginIdentifier = String(identifier || phone || email || '').trim();
     if (!loginIdentifier || !password) {
       return res.status(400).json({ error: 'Phone number or email, and password are required' });
     }
-    const user = await authStore.findByEmailOrPhone(loginIdentifier);
+
+    let user = await authStore.findByEmailOrPhone(loginIdentifier);
+
+    // If not found locally in db, check Supabase Auth / Supabase Users table
+    const supabase = getServerSupabase();
+    if (!user && supabase && loginIdentifier.includes('@')) {
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: loginIdentifier.toLowerCase(),
+          password: String(password),
+        });
+        if (!authError && authData.user) {
+          // Provision or sync to db
+          const fullName = authData.user.user_metadata?.full_name || authData.user.email?.split('@')[0] || 'User';
+          user = await authStore.createUser({
+            id: authData.user.id,
+            email: authData.user.email!.toLowerCase(),
+            fullName,
+            passwordHash: hashPassword(String(password)),
+            role: (authData.user.user_metadata?.role as any) || 'CLIENT',
+            staffRole: authData.user.user_metadata?.staff_role || null,
+            phone: authData.user.phone || authData.user.user_metadata?.phone || null,
+          });
+        }
+      } catch (sbLoginErr) {
+        console.warn('[Auth] Supabase auth direct login check error:', sbLoginErr);
+      }
+    }
+
     if (!user || !verifyPassword(String(password), user.passwordHash)) {
       return res.status(401).json({ error: 'Invalid phone number, email, or password' });
     }
     if ((user as any).isActive === false) {
       return res.status(403).json({ error: 'This account has been deactivated' });
     }
+
     await authStore.touchLogin(user.id);
     const token = signToken(user);
     res.json({ success: true, token, user: publicUser(user) });
@@ -382,7 +410,47 @@ app.post('/api/auth/register', async (req, res) => {
       }
     }
 
+    // 1. Try registering with Supabase Auth if server client is available
+    let supabaseUserId: string | null = null;
+    const supabase = getServerSupabase();
+    if (supabase) {
+      try {
+        const { data: sbData, error: sbErr } = await supabase.auth.admin.createUser({
+          email: normalizedEmail,
+          password: userPass,
+          email_confirm: true,
+          user_metadata: {
+            full_name: initialName,
+            phone: cleanPhone,
+            role: 'CLIENT',
+          },
+        });
+        if (!sbErr && sbData.user) {
+          supabaseUserId = sbData.user.id;
+        } else if (sbErr) {
+          // Fallback to standard signUp
+          const { data: signUpData } = await supabase.auth.signUp({
+            email: normalizedEmail,
+            password: userPass,
+            options: {
+              data: {
+                full_name: initialName,
+                phone: cleanPhone,
+                role: 'CLIENT',
+              },
+            },
+          });
+          if (signUpData?.user) {
+            supabaseUserId = signUpData.user.id;
+          }
+        }
+      } catch (sbRegisterErr) {
+        console.warn('[Register] Supabase auth registration notice:', sbRegisterErr);
+      }
+    }
+
     const user = await authStore.createUser({
+      id: supabaseUserId || undefined,
       email: normalizedEmail,
       fullName: initialName,
       passwordHash: hashPassword(userPass),
@@ -417,50 +485,6 @@ app.get('/api/auth/me', requireAuth(), async (req: AuthedRequest, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// Demo credentials for the login screen (covering all 5 minimum required roles)
-app.get('/api/auth/demo-accounts', async (req, res) => {
-  await ensureDefaultUsers();
-  res.json({
-    accounts: [
-      {
-        role: 'ADMINISTRATOR',
-        label: '1. Administrator (Full System Access)',
-        email: 'admin@hoscomo.coop',
-        password: 'Admin@123',
-        description: 'Full system access, user & role management, settings, approve sensitive operations',
-      },
-      {
-        role: 'CLIENT_SERVICES_STAFF',
-        label: '2. Client Services Staff',
-        email: 'clientservices@hoscomo.coop',
-        password: 'Staff@123',
-        description: 'Register clients, manage KYC documents, view client information, assist clients',
-      },
-      {
-        role: 'LOAN_OFFICER',
-        label: '3. Loan Officer',
-        email: 'loanofficer@hoscomo.coop',
-        password: 'Staff@123',
-        description: 'Process loan applications, review credit info, AI underwriting, monitor repayment',
-      },
-      {
-        role: 'CASHIER_TELLER',
-        label: '4. Cashier / Teller',
-        email: 'teller@hoscomo.coop',
-        password: 'Staff@123',
-        description: 'Process loan repayments, savings deposits & withdrawals, generate receipts',
-      },
-      {
-        role: 'CLIENT',
-        label: '5. Client (Coop Member)',
-        email: 'client@gmail.com',
-        password: 'Client@123',
-        description: 'Self-service portal: strictly view own loans, savings, receipts & apply for services',
-      },
-    ],
-  });
 });
 
 // ---------- RBAC & Admin Management Endpoints ----------
@@ -498,23 +522,30 @@ app.get('/api/admin/users', requirePermission(['manage_users', 'view_all_records
       return res.json({ success: true, users: mapped });
     }
 
-    // In-memory fallback
-    const memUsers = Array.from((authStore as any).memoryUsers.values()).map((u: any) => ({
-      id: u.id,
-      email: u.email,
-      fullName: u.fullName,
-      role: u.role,
-      staffRole: u.staffRole || (u.role === 'STAFF' ? 'ADMINISTRATOR' : 'CLIENT'),
-      staffId: u.staffId || null,
-      borrowerId: u.borrowerId || null,
-      phone: u.phone || '',
-      avatar: u.avatar || '',
-      isActive: u.isActive ?? true,
-      lastLoginAt: u.lastLoginAt,
-      createdAt: u.createdAt,
-      permissions: getRolePermissions(u.staffRole || u.role),
-    }));
-    res.json({ success: true, users: memUsers });
+    const supabase = getServerSupabase();
+    if (supabase) {
+      const { data: sbUsers } = await supabase.from('users').select('*');
+      if (Array.isArray(sbUsers)) {
+        const mapped = sbUsers.map((u: any) => ({
+          id: u.id,
+          email: u.email,
+          fullName: u.full_name || u.fullName || u.email,
+          role: u.role || 'CLIENT',
+          staffRole: u.staff_role || u.staffRole || (u.role === 'STAFF' ? 'ADMINISTRATOR' : 'CLIENT'),
+          staffId: u.staff_id || u.staffId || null,
+          borrowerId: u.borrower_id || u.borrowerId || null,
+          phone: u.phone || '',
+          avatar: u.avatar || '',
+          isActive: u.is_active ?? true,
+          lastLoginAt: u.last_login_at,
+          createdAt: u.created_at,
+          permissions: getRolePermissions(u.staff_role || u.role),
+        }));
+        return res.json({ success: true, users: mapped });
+      }
+    }
+
+    res.json({ success: true, users: [] });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -562,27 +593,13 @@ app.put('/api/admin/users/:id', requirePermission('manage_users'), async (req: A
     const { id } = req.params;
     const { fullName, staffRole, role, isActive, phone } = req.body || {};
 
-    const db = getDb();
-    if (db) {
-      const updateData: any = {};
-      if (fullName !== undefined) updateData.fullName = fullName;
-      if (staffRole !== undefined) updateData.staffRole = normalizeRole(staffRole);
-      if (role !== undefined) updateData.role = role;
-      if (isActive !== undefined) updateData.isActive = isActive;
-      if (phone !== undefined) updateData.phone = phone;
-
-      await db.update(schema.users).set(updateData).where(eq(schema.users.id, id));
-    }
-
-    // In-memory fallback
-    const memUser = (authStore as any).memoryUsers?.get(id);
-    if (memUser) {
-      if (fullName !== undefined) memUser.fullName = fullName;
-      if (staffRole !== undefined) memUser.staffRole = normalizeRole(staffRole);
-      if (role !== undefined) memUser.role = role;
-      if (isActive !== undefined) memUser.isActive = isActive;
-      if (phone !== undefined) memUser.phone = phone;
-    }
+    await authStore.updateUser(id, {
+      ...(fullName !== undefined ? { fullName } : {}),
+      ...(staffRole !== undefined ? { staffRole: normalizeRole(staffRole) } : {}),
+      ...(role !== undefined ? { role } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+      ...(phone !== undefined ? { phone } : {}),
+    });
 
     res.json({ success: true, message: `User ${id} updated successfully` });
   } catch (err: any) {

@@ -28,8 +28,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   // -------------------------------------------------------------
   // Sign In State
   // -------------------------------------------------------------
-  const [loginIdentifier, setLoginIdentifier] = useState('09175554321');
-  const [password, setPassword] = useState('Client@123');
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // -------------------------------------------------------------
@@ -1070,31 +1070,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                 >
                   <Text style={styles.switchLink}> Register Now (Step-by-Step)</Text>
                 </TouchableOpacity>
-              </View>
-
-              {/* Demo Credentials */}
-              <View style={styles.demoCard}>
-                <Text style={styles.demoTitle}>💡 Quick Demo Access</Text>
-                <View style={styles.demoRow}>
-                  <TouchableOpacity
-                    style={styles.demoButton}
-                    onPress={() => {
-                      setLoginIdentifier('09175554321');
-                      setPassword('Client@123');
-                    }}
-                  >
-                    <Text style={styles.demoButtonText}>📱 Phone: 09175554321</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.demoButton}
-                    onPress={() => {
-                      setLoginIdentifier('teresa.alcantara@gmail.com');
-                      setPassword('Client@123');
-                    }}
-                  >
-                    <Text style={styles.demoButtonText}>✉️ Email: teresa@gmail.com</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             </View>
           </View>

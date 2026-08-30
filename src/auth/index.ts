@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { getDb, schema } from '../db/index';
 import { initDbSchema } from '../db/initDb';
-import { eq } from 'drizzle-orm';
+import { getServerSupabase } from '../db/supabaseServer';
+import { eq, or, ilike } from 'drizzle-orm';
 
 export interface AuthUserRecord {
   id: string;
@@ -14,6 +15,7 @@ export interface AuthUserRecord {
   borrowerId?: string | null;
   phone?: string | null;
   avatar?: string | null;
+  isActive?: boolean | null;
 }
 
 export interface TokenPayload {
@@ -39,6 +41,7 @@ export function hashPassword(password: string): string {
 
 export function verifyPassword(password: string, stored: string): boolean {
   try {
+    if (!stored) return false;
     const [salt, expectedHash] = stored.split(':');
     if (!salt || !expectedHash) return false;
     const derived = crypto.scryptSync(password, salt, 64);
@@ -86,141 +89,53 @@ export function verifyToken(token: string): TokenPayload | null {
   }
 }
 
-// ---------- Default Accounts (All 5 Core Minimum Roles) ----------
-
-const DEFAULT_USERS: Array<Omit<AuthUserRecord, 'id'> & { password: string }> = [
-  {
-    email: 'admin@hoscomo.coop',
-    password: 'Admin@123',
-    fullName: 'Elena Rostata',
-    passwordHash: '',
-    role: 'STAFF',
-    staffRole: 'ADMINISTRATOR',
-    staffId: 'staff-08',
-    borrowerId: null,
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-  },
-  {
-    email: 'elena.rostata@hoscomo.coop',
-    password: 'Admin@123',
-    fullName: 'Elena Rostata',
-    passwordHash: '',
-    role: 'STAFF',
-    staffRole: 'ADMINISTRATOR',
-    staffId: 'staff-08',
-    borrowerId: null,
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-  },
-  {
-    email: 'clientservices@hoscomo.coop',
-    password: 'Staff@123',
-    fullName: 'Camille Bernardo',
-    passwordHash: '',
-    role: 'STAFF',
-    staffRole: 'CLIENT_SERVICES_STAFF',
-    staffId: 'staff-09',
-    borrowerId: null,
-    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150',
-  },
-  {
-    email: 'loanofficer@hoscomo.coop',
-    password: 'Staff@123',
-    fullName: 'Grace Mendoza',
-    passwordHash: '',
-    role: 'STAFF',
-    staffRole: 'LOAN_OFFICER',
-    staffId: 'staff-02',
-    borrowerId: null,
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-  },
-  {
-    email: 'grace.m@hoscomo.coop',
-    password: 'Staff@123',
-    fullName: 'Grace Mendoza',
-    passwordHash: '',
-    role: 'STAFF',
-    staffRole: 'LOAN_OFFICER',
-    staffId: 'staff-02',
-    borrowerId: null,
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-  },
-  {
-    email: 'teller@hoscomo.coop',
-    password: 'Staff@123',
-    fullName: 'Chloe Simmons',
-    passwordHash: '',
-    role: 'STAFF',
-    staffRole: 'CASHIER_TELLER',
-    staffId: 'staff-07',
-    borrowerId: null,
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-  },
-  {
-    email: 'client@gmail.com',
-    password: 'Client@123',
-    fullName: 'Teresa Alcantara',
-    passwordHash: '',
-    role: 'CLIENT',
-    staffRole: null,
-    staffId: null,
-    borrowerId: 'borrower-01',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
-  },
-  {
-    email: 'teresa.alcantara@gmail.com',
-    password: 'Client@123',
-    fullName: 'Teresa Alcantara',
-    passwordHash: '',
-    role: 'CLIENT',
-    staffRole: null,
-    staffId: null,
-    borrowerId: 'borrower-01',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
-  },
-];
-
-// ---------- User Store (DB-backed, in-memory fallback when no database) ----------
-
-interface MemoryUser extends AuthUserRecord {
-  createdAt: Date;
-}
+// ---------- Real Database & Supabase User Store ----------
 
 class AuthStore {
-  private memoryUsers: Map<string, MemoryUser> = new Map();
-  private isDbAvailable: boolean | null = null;
-
-  constructor() {
-    // Pre-populate in-memory users immediately for instant zero-latency fallback
-    for (const def of DEFAULT_USERS) {
-      this.memoryUsers.set(def.email.toLowerCase(), {
-        id: `u-${def.email.split('@')[0]}`,
-        email: def.email.toLowerCase(),
-        passwordHash: hashPassword(def.password),
-        fullName: def.fullName,
-        role: def.role,
-        staffRole: def.staffRole,
-        staffId: def.staffId,
-        borrowerId: def.borrowerId,
-        phone: def.phone ?? null,
-        avatar: def.avatar,
-        createdAt: new Date(),
-      });
-    }
-  }
-
   async findByEmail(email: string): Promise<AuthUserRecord | null> {
     const normalized = email.trim().toLowerCase();
+    
+    // 1. Check Primary Postgres Database (Drizzle ORM)
     const db = getDb();
-    if (db && this.isDbAvailable !== false) {
+    if (db) {
       try {
         const rows = await db.select().from(schema.users).where(eq(schema.users.email, normalized)).limit(1);
         if (rows.length > 0) return rows[0] as unknown as AuthUserRecord;
-      } catch (err: any) {
-        // Fall back to memory store quietly
-        this.isDbAvailable = false;
+      } catch (err) {
+        console.warn('[AuthStore] DB query by email warning:', err);
       }
     }
-    return this.memoryUsers.get(normalized) || null;
+
+    // 2. Check Supabase Server Client
+    const supabase = getServerSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .ilike('email', normalized)
+          .maybeSingle();
+        if (!error && data) {
+          return {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || data.passwordHash || '',
+            fullName: data.full_name || data.fullName || data.email,
+            role: data.role || 'CLIENT',
+            staffRole: data.staff_role || data.staffRole || null,
+            staffId: data.staff_id || data.staffId || null,
+            borrowerId: data.borrower_id || data.borrowerId || null,
+            phone: data.phone || null,
+            avatar: data.avatar || null,
+            isActive: data.is_active !== undefined ? data.is_active : true,
+          };
+        }
+      } catch (sbErr) {
+        console.warn('[AuthStore] Supabase findByEmail error:', sbErr);
+      }
+    }
+
+    return null;
   }
 
   async findByEmailOrPhone(identifier: string): Promise<AuthUserRecord | null> {
@@ -229,16 +144,18 @@ class AuthStore {
     const normalizedEmail = cleanRaw.toLowerCase();
     const cleanDigits = cleanRaw.replace(/\D/g, '');
 
-    // 1. Try finding by email directly
-    const byEmail = await this.findByEmail(normalizedEmail);
-    if (byEmail) return byEmail;
+    // 1. Direct Email Lookup
+    if (cleanRaw.includes('@')) {
+      return this.findByEmail(normalizedEmail);
+    }
 
-    // 2. Try finding by phone in database
+    // 2. Lookup in PostgreSQL DB
     const db = getDb();
-    if (db && this.isDbAvailable !== false) {
+    if (db) {
       try {
-        const allUsers = await db.select().from(schema.users);
-        const match = allUsers.find((u) => {
+        const rows = await db.select().from(schema.users);
+        const match = rows.find((u) => {
+          if (u.email && u.email.toLowerCase() === normalizedEmail) return true;
           if (!u.phone) return false;
           const uDigits = String(u.phone).replace(/\D/g, '');
           return (
@@ -247,21 +164,45 @@ class AuthStore {
           );
         });
         if (match) return match as unknown as AuthUserRecord;
-      } catch {
-        this.isDbAvailable = false;
+      } catch (err) {
+        console.warn('[AuthStore] DB query by phone warning:', err);
       }
     }
 
-    // 3. Try finding by phone in memory users
-    for (const u of this.memoryUsers.values()) {
-      if (u.phone) {
-        const uDigits = String(u.phone).replace(/\D/g, '');
-        if (
-          u.phone === cleanRaw ||
-          (cleanDigits.length >= 7 && (uDigits.endsWith(cleanDigits) || cleanDigits.endsWith(uDigits)))
-        ) {
-          return u;
+    // 3. Lookup in Supabase Table
+    const supabase = getServerSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('users').select('*');
+        if (!error && Array.isArray(data)) {
+          const match = data.find((u: any) => {
+            const uEmail = (u.email || '').toLowerCase();
+            if (uEmail === normalizedEmail) return true;
+            const uPhone = String(u.phone || '');
+            const uDigits = uPhone.replace(/\D/g, '');
+            return (
+              uPhone === cleanRaw ||
+              (cleanDigits.length >= 7 && (uDigits.endsWith(cleanDigits) || cleanDigits.endsWith(uDigits)))
+            );
+          });
+          if (match) {
+            return {
+              id: match.id,
+              email: match.email,
+              passwordHash: match.password_hash || match.passwordHash || '',
+              fullName: match.full_name || match.fullName || match.email,
+              role: match.role || 'CLIENT',
+              staffRole: match.staff_role || match.staffRole || null,
+              staffId: match.staff_id || match.staffId || null,
+              borrowerId: match.borrower_id || match.borrowerId || null,
+              phone: match.phone || null,
+              avatar: match.avatar || null,
+              isActive: match.is_active !== undefined ? match.is_active : true,
+            };
+          }
         }
+      } catch (sbErr) {
+        console.warn('[AuthStore] Supabase findByEmailOrPhone error:', sbErr);
       }
     }
 
@@ -269,24 +210,47 @@ class AuthStore {
   }
 
   async findById(id: string): Promise<AuthUserRecord | null> {
+    if (!id) return null;
     const db = getDb();
-    if (db && this.isDbAvailable !== false) {
+    if (db) {
       try {
         const rows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
         if (rows.length > 0) return rows[0] as unknown as AuthUserRecord;
-      } catch {
-        this.isDbAvailable = false;
+      } catch (err) {
+        console.warn('[AuthStore] DB findById warning:', err);
       }
     }
-    for (const u of this.memoryUsers.values()) {
-      if (u.id === id) return u;
+
+    const supabase = getServerSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
+        if (!error && data) {
+          return {
+            id: data.id,
+            email: data.email,
+            passwordHash: data.password_hash || data.passwordHash || '',
+            fullName: data.full_name || data.fullName || data.email,
+            role: data.role || 'CLIENT',
+            staffRole: data.staff_role || data.staffRole || null,
+            staffId: data.staff_id || data.staffId || null,
+            borrowerId: data.borrower_id || data.borrowerId || null,
+            phone: data.phone || null,
+            avatar: data.avatar || null,
+            isActive: data.is_active !== undefined ? data.is_active : true,
+          };
+        }
+      } catch (sbErr) {
+        console.warn('[AuthStore] Supabase findById error:', sbErr);
+      }
     }
+
     return null;
   }
 
   async updateUser(id: string, updates: Partial<AuthUserRecord>): Promise<AuthUserRecord | null> {
     const db = getDb();
-    if (db && this.isDbAvailable !== false) {
+    if (db) {
       try {
         await db
           .update(schema.users)
@@ -295,86 +259,111 @@ class AuthStore {
             ...(updates.email ? { email: updates.email.toLowerCase() } : {}),
             ...(updates.phone ? { phone: updates.phone } : {}),
             ...(updates.avatar ? { avatar: updates.avatar } : {}),
+            ...(updates.borrowerId ? { borrowerId: updates.borrowerId } : {}),
           })
           .where(eq(schema.users.id, id));
-      } catch {
-        this.isDbAvailable = false;
+      } catch (err) {
+        console.warn('[AuthStore] DB updateUser error:', err);
       }
     }
 
-    for (const [key, u] of this.memoryUsers.entries()) {
-      if (u.id === id) {
-        const updated = { ...u, ...updates };
-        this.memoryUsers.set(key, updated);
-        if (updates.email && updates.email.toLowerCase() !== key) {
-          this.memoryUsers.delete(key);
-          this.memoryUsers.set(updates.email.toLowerCase(), updated);
-        }
-        return updated;
+    const supabase = getServerSupabase();
+    if (supabase) {
+      try {
+        await supabase
+          .from('users')
+          .update({
+            ...(updates.fullName ? { full_name: updates.fullName } : {}),
+            ...(updates.email ? { email: updates.email.toLowerCase() } : {}),
+            ...(updates.phone ? { phone: updates.phone } : {}),
+            ...(updates.avatar ? { avatar: updates.avatar } : {}),
+            ...(updates.borrowerId ? { borrower_id: updates.borrowerId } : {}),
+          })
+          .eq('id', id);
+      } catch (sbErr) {
+        console.warn('[AuthStore] Supabase updateUser error:', sbErr);
       }
     }
-    return null;
+
+    return this.findById(id);
   }
 
-  async createUser(data: Omit<AuthUserRecord, 'id'>): Promise<AuthUserRecord> {
-    const user: AuthUserRecord = { ...data, id: `u-${crypto.randomUUID()}` };
+  async createUser(data: Omit<AuthUserRecord, 'id'> & { id?: string }): Promise<AuthUserRecord> {
+    const userId = data.id || `u-${crypto.randomUUID()}`;
+    const user: AuthUserRecord = {
+      id: userId,
+      email: data.email.toLowerCase(),
+      passwordHash: data.passwordHash,
+      fullName: data.fullName,
+      role: data.role,
+      staffRole: data.staffRole || null,
+      staffId: data.staffId || null,
+      borrowerId: data.borrowerId || null,
+      phone: data.phone || null,
+      avatar: data.avatar || null,
+      isActive: true,
+    };
+
+    // 1. Insert into PostgreSQL Database
     const db = getDb();
-    if (db && this.isDbAvailable !== false) {
+    if (db) {
       try {
         await db.insert(schema.users).values({
           id: user.id,
-          email: user.email.toLowerCase(),
+          email: user.email,
           passwordHash: user.passwordHash,
           fullName: user.fullName,
           role: user.role,
-          staffRole: user.staffRole || null,
-          staffId: user.staffId || null,
-          borrowerId: user.borrowerId || null,
-          phone: user.phone || null,
-          avatar: user.avatar || null,
+          staffRole: user.staffRole,
+          staffId: user.staffId,
+          borrowerId: user.borrowerId,
+          phone: user.phone,
+          avatar: user.avatar,
         });
-        this.isDbAvailable = true;
       } catch (err: any) {
-        this.isDbAvailable = false;
+        console.warn('[AuthStore] DB insert user:', err.message);
       }
     }
-    this.memoryUsers.set(user.email.toLowerCase(), { ...user, createdAt: new Date() });
+
+    // 2. Sync to Supabase table
+    const supabase = getServerSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('users').upsert({
+          id: user.id,
+          email: user.email,
+          password_hash: user.passwordHash,
+          full_name: user.fullName,
+          role: user.role,
+          staff_role: user.staffRole,
+          staff_id: user.staffId,
+          borrower_id: user.borrowerId,
+          phone: user.phone,
+          avatar: user.avatar,
+          is_active: true,
+        });
+      } catch (sbErr) {
+        console.warn('[AuthStore] Supabase table insert error:', sbErr);
+      }
+    }
+
     return user;
   }
 
   async touchLogin(id: string): Promise<void> {
     const db = getDb();
-    if (db && this.isDbAvailable !== false) {
+    if (db) {
       try {
         await db.update(schema.users).set({ lastLoginAt: new Date() }).where(eq(schema.users.id, id));
-      } catch {
-        this.isDbAvailable = false;
-      }
+      } catch {}
     }
   }
 }
 
 export const authStore = new AuthStore();
 
-let defaultsReady = false;
-
 export async function ensureDefaultUsers(): Promise<void> {
-  if (defaultsReady) return;
-  defaultsReady = true;
+  // Initializes DB schema tables if not yet created. No demo/mock accounts are inserted.
   await initDbSchema().catch(() => {});
-  for (const def of DEFAULT_USERS) {
-    const existing = await authStore.findByEmail(def.email);
-    if (existing) continue;
-    await authStore.createUser({
-      email: def.email.toLowerCase(),
-      fullName: def.fullName,
-      passwordHash: hashPassword(def.password),
-      role: def.role,
-      staffRole: def.staffRole,
-      staffId: def.staffId,
-      borrowerId: def.borrowerId,
-      phone: def.phone ?? null,
-      avatar: def.avatar,
-    });
-  }
 }
+

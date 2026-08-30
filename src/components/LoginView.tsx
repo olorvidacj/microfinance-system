@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Building2,
   Mail,
@@ -23,26 +23,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-interface DemoAccount {
-  label: string;
-  email: string;
-  password: string;
-  role?: string;
-}
-
 interface LoginViewProps {
   initialMode?: 'signin' | 'register';
   onBack?: () => void;
   onAuthenticated?: () => void;
 }
-
-const FALLBACK_DEMO_ACCOUNTS: DemoAccount[] = [
-  { label: 'Client (Coop Member)', email: 'teresa.alcantara@gmail.com', password: 'Client@123', role: 'CLIENT' },
-  { label: 'Administrator (Full Access)', email: 'admin@hoscomo.coop', password: 'Admin@123', role: 'ADMINISTRATOR' },
-  { label: 'Client Services Staff', email: 'clientservices@hoscomo.coop', password: 'Staff@123', role: 'CLIENT_SERVICES_STAFF' },
-  { label: 'Loan Officer', email: 'loanofficer@hoscomo.coop', password: 'Staff@123', role: 'LOAN_OFFICER' },
-  { label: 'Cashier / Teller', email: 'teller@hoscomo.coop', password: 'Staff@123', role: 'CASHIER_TELLER' },
-];
 
 export const LoginView: React.FC<LoginViewProps> = ({
   initialMode = 'signin',
@@ -74,16 +59,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>(FALLBACK_DEMO_ACCOUNTS);
-
-  useEffect(() => {
-    fetch('/api/auth/demo-accounts')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.accounts?.length) setDemoAccounts(data.accounts);
-      })
-      .catch(() => {});
-  }, []);
 
   const resetFeedback = () => {
     setError('');
@@ -336,36 +311,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 >
                   Register as Client Now
                 </button>
-              </div>
-
-              {/* Quick Demo Autofill List */}
-              <div className="mt-6 pt-5 border-t border-slate-100">
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
-                  <span className="flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                    Quick Demo Accounts
-                  </span>
-                  <span className="text-slate-400 font-normal">Click to fill</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {demoAccounts.map((acct) => (
-                    <button
-                      key={acct.email}
-                      type="button"
-                      onClick={() => {
-                        setEmailOrPhone(acct.email);
-                        setPassword(acct.password);
-                        resetFeedback();
-                      }}
-                      className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 transition text-left group"
-                    >
-                      <div className="text-xs font-semibold text-slate-800 group-hover:text-blue-700 flex items-center justify-between">
-                        <span className="truncate">{acct.label}</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate font-mono mt-0.5">{acct.email}</div>
-                    </button>
-                  ))}
-                </div>
               </div>
             </form>
           ) : (
