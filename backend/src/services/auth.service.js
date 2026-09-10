@@ -34,7 +34,7 @@ function toAuthError(error) {
  */
 export async function registerClient({ fullName, email, password, phone = null, clientCode = null }) {
   // ---- 1. Resolve or create the clients record --------------------------
-  const selectFields = 'id, client_code, full_name, status, kyc_status';
+  const selectFields = 'id, client_code, full_name, status, kyc_status, contact_number, email';
   let existingClient = null;
 
   const byEmail = await supabase
@@ -44,6 +44,19 @@ export async function registerClient({ fullName, email, password, phone = null, 
     .maybeSingle();
   if (byEmail.error) throw serviceUnavailable(`Database unavailable (${byEmail.error.message})`, 'DB_UNAVAILABLE');
   existingClient = byEmail.data;
+
+  // Check phone uniqueness on existing client records
+  if (phone) {
+    const byPhone = await supabase
+      .from('clients')
+      .select(selectFields)
+      .eq('contact_number', phone)
+      .maybeSingle();
+    if (byPhone.error) throw serviceUnavailable(`Database unavailable (${byPhone.error.message})`, 'DB_UNAVAILABLE');
+    if (byPhone.data && (!existingClient || byPhone.data.id !== existingClient.id)) {
+      throw conflict('An account with this phone number already exists', 'DUPLICATE_CLIENT_PHONE');
+    }
+  }
 
   if (existingClient && clientCode && existingClient.client_code !== clientCode) {
     throw conflict(
@@ -87,7 +100,7 @@ export async function registerClient({ fullName, email, password, phone = null, 
       .insert({
         full_name: fullName,
         email,
-        phone,
+        contact_number: phone,
         status: CLIENT_STATUSES.PENDING_VERIFICATION,
         kyc_status: KYC_STATUSES.PENDING,
       })
@@ -95,7 +108,7 @@ export async function registerClient({ fullName, email, password, phone = null, 
       .single();
     if (created.error) {
       if (created.error.code === '23505') {
-        throw conflict('A client with this email already exists', 'DUPLICATE_CLIENT_EMAIL');
+        throw conflict('A client with this email or phone number already exists', 'DUPLICATE_CLIENT');
       }
       throw serviceUnavailable(`Database unavailable (${created.error.message})`, 'DB_UNAVAILABLE');
     }

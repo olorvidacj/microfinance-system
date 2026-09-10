@@ -9,6 +9,7 @@ export interface AuthUser {
   staffId?: string | null;
   borrowerId?: string | null;
   avatar?: string;
+  branchId?: string | null;
 }
 
 interface RegisterData {

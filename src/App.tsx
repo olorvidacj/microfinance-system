@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { LoanProvider } from './context/LoanContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useLoan } from './context/LoanContext';
@@ -21,8 +22,20 @@ import { ClientPortalView } from './components/ClientPortalView';
 import { RolesAdminView } from './components/RolesAdminView';
 import { LoginView } from './components/LoginView';
 import { LandingView } from './components/LandingView';
-import { Building2, Loader2, LogOut } from 'lucide-react';
+import { Building2, Loader2 } from 'lucide-react';
 import { useAccess } from './hooks/useAccess';
+
+// Client Portal (routed app)
+import { PortalLayout } from './portal/components/layout/PortalLayout';
+import { PublicPortalLayout } from './portal/components/layout/PublicPortalLayout';
+import { PORTAL_ROUTES } from './portal/routers/PortalRoutes';
+import ClientLoginPage from './portal/pages/ClientLoginPage';
+import ClientRegisterPage from './portal/pages/ClientRegisterPage';
+
+// Branch Personnel Portal (routed app)
+import StaffLoginPage from './branch/pages/StaffLoginPage';
+import BranchRoutes from './branch/routers/BranchRoutes';
+import { isBranchStaffRole } from './branch/components/layout/BranchLayout';
 
 import { NewLoanModal } from './components/NewLoanModal';
 import { LoanDetailModal } from './components/LoanDetailModal';
@@ -45,37 +58,6 @@ interface NewLoanParams {
   interestType?: InterestType;
   repaymentFrequency?: RepaymentFrequency;
 }
-
-const getInitials = (name?: string) =>
-  (name || 'U')
-    .trim()
-    .split(/\s+/)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
-const SafeAvatar: React.FC<{ src?: string; name?: string; className?: string }> = ({ src, name, className }) => {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    return (
-      <div
-        className={`${className || ''} bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold`}
-        title={name}
-      >
-        {getInitials(name)}
-      </div>
-    );
-  }
-  return (
-    <img
-      src={src}
-      alt={name || 'Avatar'}
-      className={className}
-      onError={() => setFailed(true)}
-    />
-  );
-};
 
 const MainApp: React.FC = () => {
   const { user } = useAuth();
@@ -343,54 +325,6 @@ const MainApp: React.FC = () => {
   );
 };
 
-// Slim shell for authenticated CLIENT accounts: portal only, no staff console
-const ClientAppShell: React.FC = () => {
-  const { user, logout } = useAuth();
-
-  return (
-    <LoanProvider>
-      <div className="min-h-screen bg-slate-50 text-gray-900 font-sans antialiased flex flex-col">
-        {/* Client Top Bar */}
-        <header className="bg-white border-b border-slate-100 sticky top-0 z-30 shadow-xs">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-md">
-                <Building2 className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="font-bold text-slate-900 tracking-tight leading-none block">HOSCOMO</span>
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider">Client Portal</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <SafeAvatar
-                src={user?.avatar}
-                name={user?.fullName}
-                className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
-              />
-              <div className="hidden sm:block text-right">
-                <div className="text-xs font-semibold text-slate-800 leading-tight">{user?.fullName}</div>
-                <div className="text-[10px] text-slate-400 font-mono leading-tight">{user?.email}</div>
-              </div>
-              <button
-                onClick={logout}
-                title="Sign out"
-                className="ml-1 p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 pb-12">
-          <ClientPortalView lockedBorrowerId={user?.borrowerId || undefined} isClientSession />
-        </main>
-      </div>
-    </LoanProvider>
-  );
-};
-
 const ShieldInfoIcon: React.FC = () => (
   <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto">
     <Building2 className="w-7 h-7 text-blue-600" />
@@ -418,39 +352,85 @@ const AuthGate: React.FC = () => {
   }
 
   if (!user) {
-    if (showAuth) {
-      return (
-        <LoginView
-          initialMode={authInitialMode}
-          onBack={() => setShowAuth(false)}
-          onAuthenticated={() => setShowAuth(false)}
-        />
-      );
-    }
     return (
-      <LandingView
-        onSignIn={(mode = 'signin') => {
-          setAuthInitialMode(mode);
-          setShowAuth(true);
-        }}
-      />
+      <Routes>
+        <Route
+          path="/"
+          element={
+            showAuth ? (
+              <LoginView
+                initialMode={authInitialMode}
+                onBack={() => setShowAuth(false)}
+                onAuthenticated={() => setShowAuth(false)}
+              />
+            ) : (
+              <LandingView
+                onSignIn={(mode = 'signin') => {
+                  setAuthInitialMode(mode);
+                  setShowAuth(true);
+                }}
+              />
+            )
+          }
+        />
+        <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
+        <Route
+          path="/portal/login"
+          element={
+            <PublicPortalLayout>
+              <ClientLoginPage />
+            </PublicPortalLayout>
+          }
+        />
+        <Route
+          path="/portal/register"
+          element={
+            <PublicPortalLayout>
+              <ClientRegisterPage />
+            </PublicPortalLayout>
+          }
+        />
+        <Route path="/staff/login" element={<StaffLoginPage />} />
+        <Route path="/staff/*" element={<Navigate to="/staff/login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     );
   }
 
-  if (user.role === 'CLIENT') return <ClientAppShell />;
+  if (user.role === 'CLIENT') {
+    return (
+      <Routes>
+        <Route path="/portal" element={<PortalLayout />}>
+          {PORTAL_ROUTES.map((r) => (
+            <Route key={r.path} path={r.path} element={r.element} />
+          ))}
+          <Route path="*" element={<Navigate to="/portal" replace />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/portal" replace />} />
+      </Routes>
+    );
+  }
+
+  if (user.role === 'STAFF' && isBranchStaffRole(user.staffRole)) {
+    return <BranchRoutes />;
+  }
 
   return (
     <LoanProvider>
-      <MainApp />
+      <Routes>
+        <Route path="*" element={<MainApp />} />
+      </Routes>
     </LoanProvider>
   );
 };
 
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AuthGate />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
+    </BrowserRouter>
   );
 };
 

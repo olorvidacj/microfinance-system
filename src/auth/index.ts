@@ -16,6 +16,7 @@ export interface AuthUserRecord {
   phone?: string | null;
   avatar?: string | null;
   isActive?: boolean | null;
+  branchId?: string | null;
 }
 
 export interface TokenPayload {
@@ -25,6 +26,7 @@ export interface TokenPayload {
   email: string;
   borrowerId?: string | null;
   staffId?: string | null;
+  branchId?: string | null;
   exp: number;
 }
 
@@ -58,7 +60,15 @@ function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url');
 }
 
-export function signToken(user: { id: string; role: string; staffRole?: string | null; email: string; borrowerId?: string | null; staffId?: string | null }): string {
+export function signToken(user: {
+  id: string;
+  role: string;
+  staffRole?: string | null;
+  email: string;
+  borrowerId?: string | null;
+  staffId?: string | null;
+  branchId?: string | null;
+}): string {
   const payload: TokenPayload = {
     sub: user.id,
     role: user.role as 'STAFF' | 'CLIENT',
@@ -66,6 +76,7 @@ export function signToken(user: { id: string; role: string; staffRole?: string |
     email: user.email,
     borrowerId: user.borrowerId || null,
     staffId: user.staffId || null,
+    branchId: user.branchId || null,
     exp: Date.now() + TOKEN_TTL_MS,
   };
   const body = b64url(JSON.stringify(payload));
@@ -92,6 +103,34 @@ export function verifyToken(token: string): TokenPayload | null {
 // ---------- Real Database & Supabase User Store ----------
 
 class AuthStore {
+  async resolveBranchId(staffId?: string | null): Promise<string | null> {
+    if (!staffId) return null;
+    const db = getDb();
+    if (db) {
+      try {
+        const rows = await db
+          .select()
+          .from(schema.staff)
+          .where(eq(schema.staff.id, staffId))
+          .limit(1);
+        if (rows.length > 0 && rows[0].assignedBranchId && rows[0].assignedBranchId !== 'all') {
+          return rows[0].assignedBranchId;
+        }
+      } catch (err) {
+        console.warn('[AuthStore] resolveBranchId warning:', err);
+      }
+    }
+    return null;
+  }
+
+  private async decorate(record: AuthUserRecord | null): Promise<AuthUserRecord | null> {
+    if (!record) return null;
+    if (record.branchId == null) {
+      record.branchId = await this.resolveBranchId(record.staffId);
+    }
+    return record;
+  }
+
   async findByEmail(email: string): Promise<AuthUserRecord | null> {
     const normalized = email.trim().toLowerCase();
     
@@ -100,7 +139,7 @@ class AuthStore {
     if (db) {
       try {
         const rows = await db.select().from(schema.users).where(eq(schema.users.email, normalized)).limit(1);
-        if (rows.length > 0) return rows[0] as unknown as AuthUserRecord;
+        if (rows.length > 0) return this.decorate(rows[0] as unknown as AuthUserRecord);
       } catch (err) {
         console.warn('[AuthStore] DB query by email warning:', err);
       }
@@ -116,7 +155,7 @@ class AuthStore {
           .ilike('email', normalized)
           .maybeSingle();
         if (!error && data) {
-          return {
+          const rec: AuthUserRecord = {
             id: data.id,
             email: data.email,
             passwordHash: data.password_hash || data.passwordHash || '',
@@ -129,6 +168,7 @@ class AuthStore {
             avatar: data.avatar || null,
             isActive: data.is_active !== undefined ? data.is_active : true,
           };
+          return this.decorate(rec);
         }
       } catch (sbErr) {
         console.warn('[AuthStore] Supabase findByEmail error:', sbErr);
@@ -158,12 +198,9 @@ class AuthStore {
           if (u.email && u.email.toLowerCase() === normalizedEmail) return true;
           if (!u.phone) return false;
           const uDigits = String(u.phone).replace(/\D/g, '');
-          return (
-            u.phone === cleanRaw ||
-            (cleanDigits.length >= 7 && (uDigits.endsWith(cleanDigits) || cleanDigits.endsWith(uDigits)))
-          );
+          return cleanDigits.length > 0 && uDigits === cleanDigits;
         });
-        if (match) return match as unknown as AuthUserRecord;
+        if (match) return this.decorate(match as unknown as AuthUserRecord);
       } catch (err) {
         console.warn('[AuthStore] DB query by phone warning:', err);
       }
@@ -180,13 +217,10 @@ class AuthStore {
             if (uEmail === normalizedEmail) return true;
             const uPhone = String(u.phone || '');
             const uDigits = uPhone.replace(/\D/g, '');
-            return (
-              uPhone === cleanRaw ||
-              (cleanDigits.length >= 7 && (uDigits.endsWith(cleanDigits) || cleanDigits.endsWith(uDigits)))
-            );
+            return cleanDigits.length > 0 && uDigits === cleanDigits;
           });
           if (match) {
-            return {
+            const rec: AuthUserRecord = {
               id: match.id,
               email: match.email,
               passwordHash: match.password_hash || match.passwordHash || '',
@@ -199,6 +233,7 @@ class AuthStore {
               avatar: match.avatar || null,
               isActive: match.is_active !== undefined ? match.is_active : true,
             };
+            return this.decorate(rec);
           }
         }
       } catch (sbErr) {
@@ -215,7 +250,7 @@ class AuthStore {
     if (db) {
       try {
         const rows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
-        if (rows.length > 0) return rows[0] as unknown as AuthUserRecord;
+        if (rows.length > 0) return this.decorate(rows[0] as unknown as AuthUserRecord);
       } catch (err) {
         console.warn('[AuthStore] DB findById warning:', err);
       }
@@ -226,7 +261,7 @@ class AuthStore {
       try {
         const { data, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
         if (!error && data) {
-          return {
+          const rec: AuthUserRecord = {
             id: data.id,
             email: data.email,
             passwordHash: data.password_hash || data.passwordHash || '',
@@ -239,6 +274,7 @@ class AuthStore {
             avatar: data.avatar || null,
             isActive: data.is_active !== undefined ? data.is_active : true,
           };
+          return this.decorate(rec);
         }
       } catch (sbErr) {
         console.warn('[AuthStore] Supabase findById error:', sbErr);
@@ -260,6 +296,10 @@ class AuthStore {
             ...(updates.phone ? { phone: updates.phone } : {}),
             ...(updates.avatar ? { avatar: updates.avatar } : {}),
             ...(updates.borrowerId ? { borrowerId: updates.borrowerId } : {}),
+            ...(updates.staffId !== undefined ? { staffId: updates.staffId } : {}),
+            ...(updates.staffRole !== undefined ? { staffRole: updates.staffRole } : {}),
+            ...(updates.role !== undefined ? { role: updates.role } : {}),
+            ...(updates.isActive !== undefined ? { isActive: updates.isActive } : {}),
           })
           .where(eq(schema.users.id, id));
       } catch (err) {
@@ -278,6 +318,10 @@ class AuthStore {
             ...(updates.phone ? { phone: updates.phone } : {}),
             ...(updates.avatar ? { avatar: updates.avatar } : {}),
             ...(updates.borrowerId ? { borrower_id: updates.borrowerId } : {}),
+            ...(updates.staffId !== undefined ? { staff_id: updates.staffId } : {}),
+            ...(updates.staffRole !== undefined ? { staff_role: updates.staffRole } : {}),
+            ...(updates.role !== undefined ? { role: updates.role } : {}),
+            ...(updates.isActive !== undefined ? { is_active: updates.isActive } : {}),
           })
           .eq('id', id);
       } catch (sbErr) {
@@ -347,7 +391,7 @@ class AuthStore {
       }
     }
 
-    return user;
+    return this.decorate(user);
   }
 
   async touchLogin(id: string): Promise<void> {
@@ -365,5 +409,31 @@ export const authStore = new AuthStore();
 export async function ensureDefaultUsers(): Promise<void> {
   // Initializes DB schema tables if not yet created. No demo/mock accounts are inserted.
   await initDbSchema().catch(() => {});
+
+  // Bootstrap a single initial administrator account so that the first staff users
+  // can be provisioned through the admin console. Created only when the users table
+  // is completely empty (idempotent) and can be disabled with HOSCOMO_SKIP_BOOTSTRAP=1.
+  if (process.env.HOSCOMO_SKIP_BOOTSTRAP === '1') return;
+  try {
+    const db = getDb();
+    if (!db) return;
+    const [existing] = await db.select({ id: schema.users.id }).from(schema.users).limit(1);
+    if (existing) return;
+
+    const password = process.env.HOSCOMO_BOOTSTRAP_PASSWORD || 'Admin@123';
+    await db.insert(schema.users).values({
+      id: 'u-bootstrap-admin',
+      email: process.env.HOSCOMO_BOOTSTRAP_EMAIL || 'admin@hoscomo.coop',
+      passwordHash: hashPassword(password),
+      fullName: 'System Administrator',
+      role: 'STAFF',
+      staffRole: 'ADMINISTRATOR',
+      staffId: 'staff-08',
+      isActive: true,
+    });
+    console.warn('[Auth] Bootstrap administrator created: admin@hoscomo.coop (change the password immediately).');
+  } catch (err: any) {
+    console.warn('[Auth] Bootstrap admin creation skipped:', err.message);
+  }
 }
 

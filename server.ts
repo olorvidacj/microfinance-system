@@ -27,6 +27,7 @@ import {
 } from './src/auth/permissions';
 import { eq, desc } from 'drizzle-orm';
 import { clientMobileRouter } from './src/routes/clientMobileRoutes';
+import { branchRouter } from './src/routes/branchRoutes';
 
 dotenv.config();
 
@@ -45,6 +46,7 @@ interface AuthedRequest extends Request {
     staffId?: string | null;
     borrowerId?: string | null;
     email: string;
+    branchId?: string | null;
   };
 }
 
@@ -60,6 +62,7 @@ function authenticate(req: AuthedRequest): void {
       staffId: payload.staffId || null,
       borrowerId: payload.borrowerId || null,
       email: payload.email,
+      branchId: payload.branchId || null,
     };
   }
 }
@@ -154,6 +157,7 @@ function publicUser(u: any) {
     staffId: u.staffId || null,
     borrowerId: u.borrowerId || null,
     avatar: u.avatar || '',
+    branchId: u.branchId || null,
   };
 }
 
@@ -361,12 +365,12 @@ app.post('/api/auth/register', async (req, res) => {
           if (rows.length > 0) borrowerId = rows[0].id;
         }
         if (!borrowerId) {
-          // Check matching phone
+          // Check matching phone (exact digit match only)
           const allBorrowers = await db.select().from(schema.borrowers);
           const match = allBorrowers.find((b) => {
             if (!b.phone) return false;
             const bDigits = String(b.phone).replace(/\D/g, '');
-            return b.phone === cleanPhone || (digitsOnly.length >= 7 && bDigits.endsWith(digitsOnly.slice(-7)));
+            return digitsOnly.length > 0 && bDigits === digitsOnly;
           });
           if (match) {
             borrowerId = match.id;
@@ -591,11 +595,12 @@ app.post('/api/admin/users', requirePermission('manage_users'), async (req: Auth
 app.put('/api/admin/users/:id', requirePermission('manage_users'), async (req: AuthedRequest, res) => {
   try {
     const { id } = req.params;
-    const { fullName, staffRole, role, isActive, phone } = req.body || {};
+    const { fullName, staffRole, role, staffId, isActive, phone } = req.body || {};
 
     await authStore.updateUser(id, {
       ...(fullName !== undefined ? { fullName } : {}),
       ...(staffRole !== undefined ? { staffRole: normalizeRole(staffRole) } : {}),
+      ...(staffId !== undefined ? { staffId: staffId || null } : {}),
       ...(role !== undefined ? { role } : {}),
       ...(isActive !== undefined ? { isActive } : {}),
       ...(phone !== undefined ? { phone } : {}),
@@ -762,6 +767,7 @@ app.get('/api/mobile/config', (req, res) => {
 });
 
 // Mount Client Mobile API routes for mobile app
+app.use('/api/branch', branchRouter);
 app.use('/api/client', clientMobileRouter);
 app.use('/api', clientMobileRouter);
 

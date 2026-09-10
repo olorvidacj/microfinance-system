@@ -71,6 +71,9 @@ CREATE TABLE clients (
 -- Duplicate prevention: case-insensitive unique email
 CREATE UNIQUE INDEX uq_clients_email_lower ON clients (LOWER(email)) WHERE email IS NOT NULL;
 
+-- Duplicate prevention: unique contact number
+CREATE UNIQUE INDEX uq_clients_contact_number ON clients (contact_number) WHERE contact_number IS NOT NULL;
+
 ALTER TABLE profiles
   ADD CONSTRAINT fk_profiles_client
   FOREIGN KEY (client_id) REFERENCES clients (client_id) ON DELETE SET NULL;

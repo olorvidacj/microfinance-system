@@ -2275,6 +2275,23 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
 
     const initialStatus: ClientStatus = clientData.clientStatus || clientData.memberStatus || 'Pending';
 
+    // Duplicate check: reject clients with the same phone or email already registered
+    if (clientData.phone || clientData.email) {
+      const newPhoneDigits = String(clientData.phone || '').replace(/\D/g, '');
+      const newEmail = String(clientData.email || '').trim().toLowerCase();
+      const duplicate = borrowers.find((b) => {
+        const existingPhoneDigits = String(b.phone || '').replace(/\D/g, '');
+        const phoneMatch = newPhoneDigits.length > 0 && existingPhoneDigits === newPhoneDigits;
+        const emailMatch = newEmail && b.email && b.email.trim().toLowerCase() === newEmail;
+        return phoneMatch || emailMatch;
+      });
+      if (duplicate) {
+        throw new Error(
+          `A client with this ${newEmail ? 'email' : 'phone number'} is already registered: ${duplicate.fullName} (${duplicate.borrowerNumber}).`
+        );
+      }
+    }
+
     const newClient: Borrower = {
       id: `bor-${Date.now()}`,
       borrowerNumber: clientData.borrowerNumber || generatedId,

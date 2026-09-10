@@ -388,6 +388,36 @@ export async function initDbSchema(): Promise<boolean> {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        doc_number TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        client_id TEXT,
+        client_name TEXT,
+        loan_id TEXT,
+        loan_number TEXT,
+        doc_name TEXT NOT NULL,
+        doc_type TEXT NOT NULL,
+        file_url TEXT,
+        uploaded_by TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Active',
+        notes TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS branch_notifications (
+        id TEXT PRIMARY KEY,
+        branch_id TEXT NOT NULL,
+        target_staff_id TEXT,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        related_type TEXT,
+        related_id TEXT,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        created_at TEXT NOT NULL
+      );
     `);
 
     console.log('[Database] Schema verified and all tables ensured.');

@@ -375,6 +375,36 @@ export const financialTransactions = pgTable("financial_transactions", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const documents = pgTable("documents", {
+  id: text("id").primaryKey(),
+  docNumber: text("doc_number").notNull(),
+  branchId: text("branch_id").notNull(),
+  clientId: text("client_id"),
+  clientName: text("client_name"),
+  loanId: text("loan_id"),
+  loanNumber: text("loan_number"),
+  docName: text("doc_name").notNull(),
+  docType: text("doc_type").notNull(),
+  fileUrl: text("file_url"),
+  uploadedBy: text("uploaded_by").notNull(),
+  status: text("status").notNull().default("Active"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const branchNotifications = pgTable("branch_notifications", {
+  id: text("id").primaryKey(),
+  branchId: text("branch_id").notNull(),
+  targetStaffId: text("target_staff_id"),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  relatedType: text("related_type"),
+  relatedId: text("related_id"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: text("created_at").notNull(),
+});
+
 // ==========================================
 // FINANCIAL SUBMODULE TABLES (financial.*)
 // ==========================================

@@ -104,6 +104,10 @@ CREATE TABLE IF NOT EXISTS public.borrowers (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Duplicate prevention on borrowers: unique phone and email
+CREATE UNIQUE INDEX IF NOT EXISTS uq_borrowers_phone ON public.borrowers (phone);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_borrowers_email_lower ON public.borrowers (LOWER(email));
+
 -- 5. MEMBERSHIP APPLICATIONS TABLE
 CREATE TABLE IF NOT EXISTS public.membership_applications (
     id TEXT PRIMARY KEY,
