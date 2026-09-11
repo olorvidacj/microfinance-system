@@ -89,7 +89,7 @@ const DocumentsPage: React.FC = () => {
                   <tr key={d.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
                           <FileCheck2 className="h-4 w-4" />
                         </div>
                         <div>

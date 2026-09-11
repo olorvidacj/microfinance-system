@@ -392,6 +392,66 @@ export const documents = pgTable("documents", {
   createdAt: text("created_at").notNull(),
 });
 
+// ---------------------------------------------------------------------------
+// KYC (Know Your Customer) tables
+// ---------------------------------------------------------------------------
+
+export const kycSubmissions = pgTable("kyc_submissions", {
+  id: text("id").primaryKey(),
+  borrowerId: text("borrower_id").notNull(),
+  status: text("status").notNull().default("NOT_STARTED"),
+  personalInfo: jsonb("personal_info"),
+  address: jsonb("address"),
+  employment: jsonb("employment"),
+  submittedAt: text("submitted_at"),
+  reviewedAt: text("reviewed_at"),
+  reviewedBy: text("reviewed_by"),
+  reviewedByName: text("reviewed_by_name"),
+  correctionReason: text("correction_reason"),
+  rejectionReason: text("rejection_reason"),
+  verifiedAt: text("verified_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const kycDocuments = pgTable("kyc_documents", {
+  id: text("id").primaryKey(),
+  kycSubmissionId: text("kyc_submission_id").notNull(),
+  borrowerId: text("borrower_id").notNull(),
+  documentType: text("document_type").notNull(),
+  documentName: text("document_name").notNull(),
+  fileName: text("file_name"),
+  fileUrl: text("file_url"),
+  status: text("status").notNull().default("PENDING"),
+  rejectionReason: text("rejection_reason"),
+  verifiedBy: text("verified_by"),
+  verifiedAt: text("verified_at"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const kycAuditLog = pgTable("kyc_audit_log", {
+  id: text("id").primaryKey(),
+  borrowerId: text("borrower_id").notNull(),
+  kycSubmissionId: text("kyc_submission_id"),
+  staffUserId: text("staff_user_id"),
+  staffName: text("staff_name"),
+  action: text("action").notNull(),
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status"),
+  reason: text("reason"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const kycRequiredDocuments = pgTable("kyc_required_documents", {
+  id: text("id").primaryKey(),
+  documentType: text("document_type").notNull(),
+  documentName: text("document_name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
 export const branchNotifications = pgTable("branch_notifications", {
   id: text("id").primaryKey(),
   branchId: text("branch_id").notNull(),

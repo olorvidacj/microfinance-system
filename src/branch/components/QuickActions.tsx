@@ -36,9 +36,9 @@ export const QuickActions: React.FC = () => {
           <Link
             key={a.to}
             to={a.to}
-            className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 transition-colors hover:border-blue-200 hover:bg-blue-50"
+            className="group flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3 transition-colors hover:border-emerald-200 hover:bg-emerald-50/50"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-blue-700 shadow-sm ring-1 ring-slate-200 transition-colors group-hover:ring-blue-200">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition-colors group-hover:bg-emerald-100">
               <a.icon className="h-5 w-5" />
             </div>
             <div className="min-w-0">

@@ -524,13 +524,65 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
   try {
     const borrowerId = getClientBorrowerId(req);
     const db = getDb();
-    let kycStatus = 'VERIFIED';
+    let kycStatus = 'NOT_STARTED';
+    let submissionId: string | undefined;
+    let submittedAt: string | undefined;
+    let reviewedAt: string | undefined;
+    let correctionReason: string | undefined;
+    let rejectionReason: string | undefined;
+    let verifiedAt: string | undefined;
+    let reviewedByName: string | undefined;
     let documents: any[] = [];
 
     if (db) {
       const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
       if (bRows.length > 0) {
-        kycStatus = bRows[0].kycStatus || 'VERIFIED';
+        kycStatus = bRows[0].kycStatus || 'NOT_STARTED';
+      }
+      const subRows = await db.select().from(schema.kycSubmissions)
+        .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+        .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+      if (subRows.length > 0) {
+        const sub = subRows[0];
+        submissionId = sub.id;
+        kycStatus = sub.status || kycStatus;
+        submittedAt = sub.submittedAt || undefined;
+        reviewedAt = sub.reviewedAt || undefined;
+        correctionReason = sub.correctionReason || undefined;
+        rejectionReason = sub.rejectionReason || undefined;
+        verifiedAt = sub.verifiedAt || undefined;
+        reviewedByName = sub.reviewedByName || undefined;
+      }
+      const docRows = await db.select().from(schema.kycDocuments)
+        .where(eq(schema.kycDocuments.borrowerId, borrowerId));
+      documents = docRows.map((d: any) => ({
+        type: d.documentType,
+        name: d.documentName,
+        submitted: !!d.fileName,
+        status: d.status || 'PENDING',
+        fileName: d.fileName,
+      }));
+    }
+
+    let requiredDocs = [
+      { type: 'VALID_ID', name: 'Primary Government ID (UMID / Driver License / Passport)', submitted: documents.some((d: any) => d.type === 'VALID_ID' && d.submitted), status: documents.find((d: any) => d.type === 'VALID_ID')?.status || 'NOT_STARTED' },
+      { type: 'PROOF_OF_ADDRESS', name: 'Barangay Clearance or Utility Bill', submitted: documents.some((d: any) => d.type === 'PROOF_OF_ADDRESS' && d.submitted), status: documents.find((d: any) => d.type === 'PROOF_OF_ADDRESS')?.status || 'NOT_STARTED' },
+      { type: 'PROOF_OF_INCOME', name: 'Payslip / Business Permit / Bank Statement', submitted: documents.some((d: any) => d.type === 'PROOF_OF_INCOME' && d.submitted), status: documents.find((d: any) => d.type === 'PROOF_OF_INCOME')?.status || 'NOT_STARTED' },
+      { type: 'PHOTO_2X2', name: 'Recent 2x2 ID Photo', submitted: documents.some((d: any) => d.type === 'PHOTO_2X2' && d.submitted), status: documents.find((d: any) => d.type === 'PHOTO_2X2')?.status || 'NOT_STARTED' },
+    ];
+
+    if (db) {
+      const reqRows = await db.select().from(schema.kycRequiredDocuments)
+        .where(eq(schema.kycRequiredDocuments.isActive, true))
+        .orderBy(schema.kycRequiredDocuments.sortOrder);
+      if (reqRows.length > 0) {
+        requiredDocs = reqRows.map((r: any) => ({
+          type: r.documentType,
+          name: r.documentName,
+          description: r.description || undefined,
+          submitted: documents.some((d: any) => d.type === r.documentType && d.submitted),
+          status: documents.find((d: any) => d.type === r.documentType)?.status || 'NOT_STARTED',
+        }));
       }
     }
 
@@ -538,14 +590,157 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
       success: true,
       kycStatus,
       isVerified: kycStatus === 'VERIFIED',
-      requiredDocuments: [
-        { type: 'VALID_ID', name: 'Primary Government ID (UMID / Driver License / Passport)', submitted: true, status: 'VERIFIED' },
-        { type: 'PROOF_OF_BILLING', name: 'Barangay Clearance or Utility Bill', submitted: true, status: 'VERIFIED' },
-        { type: 'PROOF_OF_INCOME', name: 'Payslip / Business Permit / Bank Statement', submitted: true, status: 'VERIFIED' },
-        { type: 'PHOTO_2X2', name: 'Recent 2x2 ID Photo', submitted: true, status: 'VERIFIED' },
-      ],
+      requiredDocuments: requiredDocs,
       uploadedDocuments: documents,
+      submissionId,
+      submittedAt,
+      reviewedAt,
+      correctionReason,
+      rejectionReason,
+      verifiedAt,
+      reviewedByName,
     });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit KYC application (create or update submission)
+clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const { personalInfo, address, employment } = req.body || {};
+    if (!personalInfo || !address || !employment) {
+      return res.status(400).json({ success: false, error: 'personalInfo, address, and employment are required.' });
+    }
+    const now = new Date().toISOString();
+    const db = getDb();
+    if (db) {
+      const existing = await db.select().from(schema.kycSubmissions)
+        .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+        .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+      if (existing.length > 0 && (existing[0].status === 'NOT_STARTED' || existing[0].status === 'CORRECTION_REQUIRED')) {
+        await db.update(schema.kycSubmissions).set({
+          personalInfo,
+          address,
+          employment,
+          status: 'PENDING',
+          submittedAt: now,
+          updatedAt: now,
+          correctionReason: null,
+        }).where(eq(schema.kycSubmissions.id, existing[0].id));
+      } else {
+        const submissionId = `KYC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        await db.insert(schema.kycSubmissions).values({
+          id: submissionId,
+          borrowerId,
+          status: 'PENDING',
+          personalInfo,
+          address,
+          employment,
+          submittedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await db.update(schema.borrowers).set({ kycStatus: 'PENDING' }).where(eq(schema.borrowers.id, borrowerId));
+      await db.insert(schema.kycAuditLog).values({
+        id: `AUDIT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        borrowerId,
+        action: 'SUBMITTED',
+        previousStatus: 'NOT_STARTED',
+        newStatus: 'PENDING',
+        createdAt: now,
+      });
+    }
+
+    mockClientNotifications.unshift({
+      id: `notif-${Date.now()}`,
+      borrowerId,
+      title: 'KYC Submitted',
+      message: 'Your KYC application has been received and is pending review.',
+      category: 'announcement',
+      isRead: false,
+      createdAt: now,
+    });
+
+    res.json({ success: true, message: 'KYC submitted for review.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// List KYC required documents (configurable by institution) with upload status
+clientMobileRouter.get('/kyc/required-documents', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const db = getDb();
+    let configDocs: any[] = [];
+    if (db) {
+      configDocs = await db.select().from(schema.kycRequiredDocuments).where(eq(schema.kycRequiredDocuments.isActive, true));
+    }
+    const defaults = [
+      { documentType: 'VALID_ID', documentName: 'Primary Government ID (UMID / Driver License / Passport)', description: 'A valid, current government-issued photo ID.', isActive: true, sortOrder: 1 },
+      { documentType: 'PROOF_OF_ADDRESS', documentName: 'Barangay Clearance or Utility Bill', description: 'Recent proof of residence within the last 3 months.', isActive: true, sortOrder: 2 },
+      { documentType: 'PROOF_OF_INCOME', documentName: 'Payslip / Business Permit / Bank Statement', description: 'Evidence of regular income or business operations.', isActive: true, sortOrder: 3 },
+      { documentType: 'PHOTO_2X2', documentName: 'Recent 2x2 ID Photo', description: 'A recent photograph with white background.', isActive: true, sortOrder: 4 },
+    ];
+    const docs = configDocs.length > 0 ? configDocs : defaults;
+    res.json({ success: true, documents: docs });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get uploaded KYC documents for the current borrower
+clientMobileRouter.get('/kyc/documents', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const db = getDb();
+    let documents: any[] = [];
+    if (db) {
+      const docRows = await db.select().from(schema.kycDocuments)
+        .where(eq(schema.kycDocuments.borrowerId, borrowerId));
+      documents = docRows.map((d: any) => ({
+        id: d.id,
+        documentType: d.documentType,
+        documentName: d.documentName,
+        fileName: d.fileName,
+        status: d.status,
+        rejectionReason: d.rejectionReason,
+      }));
+    }
+    res.json({ success: true, documents });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const { documentType, documentName, fileName } = req.body || {};
+    if (!documentType || !documentName) {
+      return res.status(400).json({ success: false, error: 'documentType and documentName are required.' });
+    }
+    const now = new Date().toISOString();
+    const db = getDb();
+    const docId = `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    if (db) {
+      const subRows = await db.select().from(schema.kycSubmissions)
+        .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+        .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+      const subId = subRows.length > 0 ? subRows[0].id : 'PENDING';
+      await db.insert(schema.kycDocuments).values({
+        id: docId,
+        kycSubmissionId: subId,
+        borrowerId,
+        documentType,
+        documentName,
+        fileName: fileName || `uploaded_${docId}.pdf`,
+        status: 'PENDING',
+        createdAt: now,
+      });
+    }
+    res.json({ success: true, document: { id: docId, documentType, documentName, fileName: fileName || `uploaded_${docId}.pdf`, status: 'PENDING' } });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -676,6 +871,22 @@ clientMobileRouter.post('/calculate-loan', (req: Request, res: Response) => {
 clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
+
+    // --- KYC verification gate ---
+    const db = getDb();
+    let kycStatus = 'NOT_STARTED';
+    if (db) {
+      const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+      if (bRows.length > 0) kycStatus = bRows[0].kycStatus || 'NOT_STARTED';
+      const subRows = await db.select().from(schema.kycSubmissions)
+        .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+        .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+      if (subRows.length > 0) kycStatus = subRows[0].status || kycStatus;
+    }
+    if (kycStatus !== 'VERIFIED') {
+      return res.status(403).json({ success: false, error: 'KYC verification is required before applying for a loan.', kycStatus });
+    }
+
     const {
       productId,
       productName,
@@ -726,7 +937,6 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
       submittedVia: 'MOBILE_APP',
     };
 
-    const db = getDb();
     if (db) {
       try {
         await db.insert(schema.loans).values({
@@ -1093,4 +1303,396 @@ clientMobileRouter.post('/notifications/mark-all-read', requireAuth(), (req: Req
     n.isRead = true;
   });
   res.json({ success: true, message: 'All notifications marked as read' });
+});
+
+// -------------------------------------------------------------
+// 8. Client Savings
+// -------------------------------------------------------------
+clientMobileRouter.get('/savings', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const db = getDb();
+    let account: any = null;
+
+    if (db) {
+      const rows = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId)).limit(1);
+      if (rows.length > 0) {
+        const acc = rows[0];
+        account = {
+          id: acc.id,
+          memberId: borrowerId,
+          balance: Number(acc.balance) || 0,
+          totalDeposits: Number(acc.balance) || 0,
+          totalWithdrawals: 0,
+          goal: 30000,
+          goalName: 'Emergency Fund',
+        };
+      }
+    }
+
+    if (!account) {
+      account = {
+        id: 'sav-1',
+        memberId: borrowerId,
+        balance: 18500,
+        totalDeposits: 23500,
+        totalWithdrawals: 5000,
+        goal: 30000,
+        goalName: 'Emergency Fund',
+      };
+    }
+
+    res.json({ success: true, account });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.get('/savings/transactions', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const db = getDb();
+    let transactions: any[] = [];
+
+    if (db) {
+      try {
+        const accRows = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId)).limit(1);
+        if (accRows.length > 0) {
+          transactions = await db.select().from(schema.savingsTransactions).where(eq(schema.savingsTransactions.savingsAccountId, accRows[0].id)).orderBy(desc(schema.savingsTransactions.createdAt));
+        }
+      } catch {}
+    }
+
+    if (transactions.length === 0) {
+      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+      transactions = [
+        { id: 'st-1', date: daysAgo(6), type: 'DEPOSIT', amount: 1500, referenceNumber: 'DEP-2026-0422', balanceAfter: 18500, status: 'COMPLETED', notes: 'Over-the-counter deposit' },
+        { id: 'st-2', date: daysAgo(36), type: 'DEPOSIT', amount: 1500, referenceNumber: 'DEP-2026-0391', balanceAfter: 17000, status: 'COMPLETED', notes: 'Weekly savings' },
+        { id: 'st-3', date: daysAgo(66), type: 'WITHDRAWAL', amount: 5000, referenceNumber: 'WDL-2026-0102', balanceAfter: 15500, status: 'COMPLETED', notes: 'Medical emergency withdrawal' },
+        { id: 'st-4', date: daysAgo(96), type: 'DEPOSIT', amount: 1500, referenceNumber: 'DEP-2026-0330', balanceAfter: 20500, status: 'COMPLETED', notes: 'Weekly savings' },
+        { id: 'st-5', date: daysAgo(126), type: 'INTEREST', amount: 12, referenceNumber: 'ITR-2026-001', balanceAfter: 19000, status: 'COMPLETED', notes: '1% p.a. crediting' },
+      ];
+    }
+
+    res.json({ success: true, transactions });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.post('/savings/withdraw', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const { amount, reason } = req.body;
+
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, error: 'Valid withdrawal amount is required.' });
+    }
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'Please provide a reason for withdrawal.' });
+    }
+
+    const request = {
+      id: `WDRQ-${Date.now()}`,
+      borrowerId,
+      amount: Number(amount),
+      requestDate: new Date().toISOString().split('T')[0],
+      reason,
+      status: 'PENDING',
+    };
+
+    mockClientNotifications.unshift({
+      id: `notif-${Date.now()}`,
+      borrowerId,
+      title: 'Savings Withdrawal Request',
+      message: `Your withdrawal request of ₱${Number(amount).toLocaleString()} has been submitted and is pending manager approval.`,
+      category: 'announcement',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.json({ success: true, request });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 9. Client Financial Transactions (History)
+// -------------------------------------------------------------
+clientMobileRouter.get('/transactions', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const db = getDb();
+    let transactions: any[] = [];
+
+    if (db) {
+      try {
+        transactions = await db.select().from(schema.financialTransactions).where(eq(schema.financialTransactions.clientId, borrowerId)).orderBy(desc(schema.financialTransactions.createdAt));
+      } catch {}
+    }
+
+    if (transactions.length === 0) {
+      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+      transactions = [
+        { id: 'tx-1', type: 'REPAYMENT', amount: 4850, date: daysAgo(8), referenceNumber: 'OR-2026-0091', paymentMethod: 'GCASH', status: 'COMPLETED', description: 'Loan payment — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
+        { id: 'tx-2', type: 'SAVINGS_DEPOSIT', amount: 1500, date: daysAgo(6), referenceNumber: 'DEP-2026-0422', paymentMethod: 'OVER_THE_COUNTER', status: 'COMPLETED', description: 'Savings deposit' },
+        { id: 'tx-3', type: 'LOAN_DISBURSEMENT', amount: 50000, date: daysAgo(150), referenceNumber: 'DISB-2026-011', paymentMethod: 'BANK_TRANSFER', status: 'COMPLETED', description: 'Loan disbursement — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
+        { id: 'tx-4', type: 'SAVINGS_WITHDRAWAL', amount: 5000, date: daysAgo(66), referenceNumber: 'WDL-2026-0102', paymentMethod: 'OVER_THE_COUNTER', status: 'COMPLETED', description: 'Savings withdrawal' },
+        { id: 'tx-5', type: 'FEE', amount: 1000, date: daysAgo(150), referenceNumber: 'FEE-2026-003', paymentMethod: 'CASH', status: 'COMPLETED', description: 'Processing fee — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
+        { id: 'tx-6', type: 'ADJUSTMENT', amount: -250, date: daysAgo(200), referenceNumber: 'ADJ-2026-014', paymentMethod: 'CASH', status: 'COMPLETED', description: 'Round-off adjustment' },
+      ];
+    }
+
+    res.json({ success: true, transactions });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.get('/transactions/:id', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const borrowerId = getClientBorrowerId(req);
+    const db = getDb();
+    let transaction: any = null;
+
+    if (db) {
+      try {
+        const rows = await db.select().from(schema.financialTransactions).where(and(eq(schema.financialTransactions.id, id), eq(schema.financialTransactions.clientId, borrowerId))).limit(1);
+        if (rows.length > 0) transaction = rows[0];
+      } catch {}
+    }
+
+    if (!transaction) {
+      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+      const mockTx = [
+        { id: 'tx-1', type: 'REPAYMENT', amount: 4850, date: daysAgo(8), referenceNumber: 'OR-2026-0091', paymentMethod: 'GCASH', status: 'COMPLETED', description: 'Loan payment — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
+        { id: 'tx-2', type: 'SAVINGS_DEPOSIT', amount: 1500, date: daysAgo(6), referenceNumber: 'DEP-2026-0422', paymentMethod: 'OVER_THE_COUNTER', status: 'COMPLETED', description: 'Savings deposit' },
+        { id: 'tx-3', type: 'LOAN_DISBURSEMENT', amount: 50000, date: daysAgo(150), referenceNumber: 'DISB-2026-011', paymentMethod: 'BANK_TRANSFER', status: 'COMPLETED', description: 'Loan disbursement — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
+      ];
+      transaction = mockTx.find((t) => t.id === id) || mockTx[0];
+    }
+
+    res.json({ success: true, transaction });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 10. Client Group Lending
+// -------------------------------------------------------------
+clientMobileRouter.get('/groups/my', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const db = getDb();
+    let group: any = null;
+
+    if (db) {
+      try {
+        const rows = await db.select().from(schema.solidarityGroups).limit(1);
+        if (rows.length > 0) group = rows[0];
+      } catch {}
+    }
+
+    if (!group) {
+      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+      group = {
+        id: 'grp-201',
+        name: 'Mater Dei Solidarity Circle',
+        leaderName: 'Teresa Alcantara',
+        memberCount: 6,
+        status: 'ACTIVE',
+        centerName: 'Poblacion Center',
+        branch: 'Tacloban Main',
+        members: [
+          { borrowerId: 'b-1', name: 'Teresa Alcantara', role: 'Leader', contributionStatus: 'PAID', loanStatus: 'ACTIVE' },
+          { borrowerId: 'b-2', name: 'Rolando Dela Cruz', contributionStatus: 'PAID' },
+          { borrowerId: 'b-3', name: 'Mary Jane Ramos', contributionStatus: 'PENDING' },
+          { borrowerId: 'b-4', name: 'Antonio Batula', contributionStatus: 'PAID' },
+          { borrowerId: 'b-5', name: 'Elena Soriano', contributionStatus: 'PAID' },
+          { borrowerId: 'b-6', name: 'Fernando Gabaldon', contributionStatus: 'LATE' },
+        ],
+        groupLoan: {
+          id: 'GL-2026-014',
+          totalAmount: 120000,
+          outstandingBalance: 72000,
+          nextPayment: 9000,
+          nextPaymentDate: daysAgo(-5),
+          paidAmount: 48000,
+          repaymentProgress: 40,
+          schedule: Array.from({ length: 12 }, (_, i) => ({
+            installmentNumber: i + 1,
+            dueDate: new Date(Date.now() + i * 30 * 86400000).toISOString().split('T')[0],
+            amountDue: 9000,
+            principal: 6000,
+            interest: 3000,
+            remainingBalance: Math.max(0, 120000 - (i + 1) * 10000),
+            status: i < 5 ? 'PAID' : i === 5 ? 'DUE' : 'UPCOMING',
+          })),
+        },
+      };
+    }
+
+    res.json({ success: true, group });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 11. Client Documents
+// -------------------------------------------------------------
+clientMobileRouter.get('/documents', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
+    const documents = [
+      { id: 'doc-1', name: 'Loan Agreement — LN-2026-001', type: 'Loan Agreement', date: '2026-01-15', relatedLoanNumber: 'LN-2026-001' },
+      { id: 'doc-2', name: 'Official Receipt OR-2026-0091', type: 'Payment Receipt', date: daysAgo(8), relatedLoanNumber: 'LN-2026-001' },
+      { id: 'doc-3', name: 'Account Statement — August 2026', type: 'Account Statement', date: daysAgo(1) },
+      { id: 'doc-4', name: 'Loan Statement — LN-2026-001', type: 'Loan Statement', date: daysAgo(1), relatedLoanNumber: 'LN-2026-001' },
+      { id: 'doc-5', name: 'Truth in Lending Disclosure', type: 'Disclosure', date: '2026-01-15', relatedLoanNumber: 'LN-2026-001' },
+      { id: 'doc-6', name: 'Membership Certificate', type: 'Certificate', date: '2024-01-18' },
+    ];
+
+    res.json({ success: true, documents });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 12. Client Settings
+// -------------------------------------------------------------
+clientMobileRouter.get('/settings/notifications', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      preferences: {
+        paymentReminders: true,
+        loanUpdates: true,
+        savingsUpdates: true,
+        announcements: false,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.patch('/settings/notifications', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    res.json({ success: true, preferences: req.body });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.get('/settings/sessions', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      sessions: [
+        { id: 'sess-1', device: 'Chrome on Windows', location: 'Tacloban City, PH', time: new Date().toISOString(), ip: '192.168.1.10', status: 'ACTIVE' },
+        { id: 'sess-2', device: 'Safari on iPhone', location: 'Tacloban City, PH', time: new Date(Date.now() - 3 * 86400000).toISOString(), ip: '192.168.1.24', status: 'EXPIRED' },
+      ],
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.get('/settings/privacy', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      preferences: {
+        shareDataAnalytics: true,
+        allowSmsMarketing: false,
+        allowEmailAlerts: true,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.patch('/settings/privacy', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    res.json({ success: true, preferences: req.body });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 13. Client Help & Support
+// -------------------------------------------------------------
+clientMobileRouter.get('/support/faqs', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      faqs: [
+        { id: 'faq-l1', question: 'How do I know if my loan was approved?', answer: 'You will receive a notification once the Credit Committee makes a decision. You can also track the status on the "Loan Applications" page.' },
+        { id: 'faq-l2', question: 'When will my loan be disbursed?', answer: 'Approved loans are usually disbursed within 1-3 banking days after approval once all requirements are complete.' },
+        { id: 'faq-p1', question: 'What payment methods are accepted?', answer: 'You may pay over the counter at any branch, or via GCash, Maya, and bank transfer through the portal.' },
+        { id: 'faq-p2', question: 'Can I pay my loan in full early?', answer: 'Yes. Early settlement is allowed and may qualify for an interest rebate. Contact your branch for the exact amount.' },
+        { id: 'faq-s1', question: 'How do I make a savings deposit?', answer: 'You can deposit over the counter at any branch. Withdrawal requests can be filed from the Savings page.' },
+        { id: 'faq-s2', question: 'What is the interest rate on savings?', answer: 'Savings earn 1% per annum, credited quarterly.' },
+        { id: 'faq-a1', question: 'How do I reset my password?', answer: 'Use the "Forgot password" option on the login page. A verification code will be sent to your registered email.' },
+        { id: 'faq-a2', question: 'How do I update my contact details?', answer: 'Go to My Profile and click "Update Profile". Changes are reviewed by staff when required.' },
+        { id: 'faq-g1', question: 'What is a solidarity group?', answer: 'A solidarity group is a circle of members who mutually guarantee each other\'s loans. Group members support timely repayments together.' },
+      ],
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.get('/support/tickets', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      tickets: [
+        { id: 'TKT-2026-031', subject: 'Question about my loan balance', category: 'Loans', message: 'I would like to confirm my remaining balance.', createdAt: '2026-08-10', status: 'IN_PROGRESS', lastUpdate: '2026-08-12' },
+        { id: 'TKT-2026-027', subject: 'Update savings passbook records', category: 'Savings', message: 'Please update my passbook records.', createdAt: '2026-07-20', status: 'RESOLVED', lastUpdate: '2026-07-22' },
+      ],
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.post('/support/submit', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const { subject, category, message } = req.body;
+    if (!subject || !message) {
+      return res.status(400).json({ success: false, error: 'Subject and message are required.' });
+    }
+
+    const ticket = {
+      id: `TKT-${Date.now()}`,
+      subject,
+      category: category || 'General',
+      message,
+      createdAt: new Date().toISOString().split('T')[0],
+      status: 'OPEN',
+      lastUpdate: new Date().toISOString().split('T')[0],
+    };
+
+    mockClientNotifications.unshift({
+      id: `notif-${Date.now()}`,
+      borrowerId: getClientBorrowerId(req),
+      title: 'Support Ticket Created',
+      message: `Your support ticket "${subject}" has been created. Our team will respond shortly.`,
+      category: 'announcement',
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.status(201).json({ success: true, ticket });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });

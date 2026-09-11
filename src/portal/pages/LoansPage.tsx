@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FilePlus2, CheckCircle2, ChevronRight, Clock, HandCoins, Search, XCircle } from 'lucide-react';
+import { FilePlus2, CheckCircle2, ChevronRight, Clock, HandCoins, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { loanService, LoanSummary } from '../services/loans';
-import { ClientLoan, LoanApplication } from '../types';
+import { profileService } from '../services/profile';
+import { ClientLoan, KYCStatus, LoanApplication } from '../types';
 import { formatCurrency, formatDate } from '../../utils/loanMath';
 import {
   Amount,
@@ -25,6 +26,7 @@ const LoansPage: React.FC = () => {
   const navigate = useNavigate();
   const [summary, setSummary] = useState<LoanSummary | null>(null);
   const [applications, setApplications] = useState<LoanApplication[]>([]);
+  const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'active' | 'applications' | 'completed'>('active');
@@ -33,9 +35,10 @@ const LoansPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [s, apps] = await Promise.all([loanService.list(), loanService.applications()]);
+      const [s, apps, k] = await Promise.all([loanService.list(), loanService.applications(), profileService.kycStatus()]);
       setSummary(s);
       setApplications(apps);
+      if (k) setKycStatus(k.kycStatus as KYCStatus);
     } catch (err: any) {
       setError(err.message || 'Unable to load loans.');
     } finally {
@@ -53,6 +56,36 @@ const LoansPage: React.FC = () => {
   const active = summary.activeLoans;
   const completed = summary.completedLoans;
 
+  const applyLabel = (): { to: string; label: string; disabled?: boolean } => {
+    switch (kycStatus) {
+      case 'VERIFIED':
+        return { to: '/portal/apply', label: 'Apply for a loan' };
+      case 'NOT_STARTED':
+        return { to: '/portal/kyc', label: 'Complete KYC First' };
+      case 'PENDING':
+      case 'UNDER_REVIEW':
+        return { to: '/portal/kyc', label: 'KYC Under Review', disabled: true };
+      case 'CORRECTION_REQUIRED':
+      case 'EXPIRED':
+        return { to: '/portal/kyc', label: 'Update KYC' };
+      case 'REJECTED':
+        return { to: '/portal/kyc', label: 'Review KYC' };
+      default:
+        return { to: '/portal/kyc', label: 'Complete KYC First' };
+    }
+  };
+
+  const apply = applyLabel();
+
+  const ApplyButton: React.FC = () => (
+    <Link to={apply.to}>
+      <Button disabled={apply.disabled}>
+        {apply.disabled ? <Clock className="h-4 w-4" /> : kycStatus === 'VERIFIED' ? <FilePlus2 className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}{' '}
+        {apply.label}
+      </Button>
+    </Link>
+  );
+
   const tabs = [
     { id: 'active' as const, label: 'Active Loans', badge: active.length },
     { id: 'applications' as const, label: 'Applications', badge: applications.length },
@@ -66,11 +99,7 @@ const LoansPage: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">My Loans</h1>
           <p className="text-sm text-slate-500">Track your loans, applications, and payment schedules.</p>
         </div>
-        <Link to="/portal/apply">
-          <Button>
-            <FilePlus2 className="h-4 w-4" /> Apply for a loan
-          </Button>
-        </Link>
+        <ApplyButton />
       </div>
 
       {/* Tabs */}
@@ -105,8 +134,10 @@ const LoansPage: React.FC = () => {
               title="No active loans"
               description="When your loan is approved and disbursed, it will appear here."
               action={
-                <Link to="/portal/apply">
-                  <Button size="sm">Apply for a loan</Button>
+                <Link to={apply.to}>
+                  <Button size="sm" disabled={apply.disabled}>
+                    {apply.label}
+                  </Button>
                 </Link>
               }
             />

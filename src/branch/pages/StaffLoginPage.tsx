@@ -36,14 +36,14 @@ const StaffLoginPage: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 p-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900 p-6">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-white">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20 backdrop-blur">
             <Building2 className="h-7 w-7" />
           </div>
           <h1 className="mt-4 text-xl font-bold">HOSCOMO Branch Portal</h1>
-          <p className="mt-1 text-sm text-blue-200">Branch personnel sign in</p>
+          <p className="mt-1 text-sm text-emerald-200">Branch personnel sign in</p>
         </div>
 
         <div className="rounded-2xl bg-white p-7 shadow-2xl">
@@ -80,7 +80,7 @@ const StaffLoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-70"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               <LockKeyhole className="h-4 w-4" />
@@ -88,8 +88,8 @@ const StaffLoginPage: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-5 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+          <div className="mt-5 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <p className="text-xs text-slate-600">
               Access is restricted to branch-assigned personnel. All actions are recorded in the branch audit trail.
             </p>

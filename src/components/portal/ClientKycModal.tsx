@@ -86,7 +86,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
   };
 
   const uploadedDocs = member.kycDocuments || [];
-  const isFullyVerified = member.kycStatus === 'Verified';
+  const isFullyVerified = member.kycStatus === 'VERIFIED';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -123,14 +123,14 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
                 </span>
                 <span
                   className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                    member.kycStatus === 'Verified'
+                    member.kycStatus === 'VERIFIED'
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      : member.kycStatus === 'Correction Requested'
+                      : member.kycStatus === 'CORRECTION_REQUIRED'
                       ? 'bg-amber-100 text-amber-800 border border-amber-200'
                       : 'bg-blue-100 text-blue-800 border border-blue-200'
                   }`}
                 >
-                  {member.kycStatus || 'Verified'}
+                  {member.kycStatus || 'VERIFIED'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
@@ -142,7 +142,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
             <div className="text-left sm:text-right">
               <span className="text-xs text-slate-500 block">Verified Documents</span>
               <span className="text-xl font-bold text-teal-700">
-                {uploadedDocs.filter((d) => d.status === 'Verified').length} / {uploadedDocs.length || 3}
+                {uploadedDocs.filter((d) => d.status === 'VERIFIED').length} / {uploadedDocs.length || 3}
               </span>
             </div>
           </div>
@@ -271,14 +271,14 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
                     <div className="flex items-center gap-2 shrink-0">
                       <span
                         className={`px-2 py-0.5 rounded-md text-[11px] font-semibold flex items-center gap-1 ${
-                          doc.status === 'Verified'
+                          doc.status === 'VERIFIED'
                             ? 'bg-emerald-100 text-emerald-800'
-                            : doc.status === 'Correction Requested'
+                            : doc.status === 'CORRECTION_REQUIRED'
                             ? 'bg-amber-100 text-amber-800'
                             : 'bg-blue-100 text-blue-800'
                         }`}
                       >
-                        {doc.status === 'Verified' ? (
+                        {doc.status === 'VERIFIED' ? (
                           <CheckCircle2 className="w-3 h-3" />
                         ) : (
                           <Clock className="w-3 h-3" />

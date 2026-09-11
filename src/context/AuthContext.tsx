@@ -20,6 +20,7 @@ interface RegisterData {
   borrowerNumber?: string;
   address?: string;
   occupation?: string;
+  employerOrBusiness?: string;
   monthlyIncome?: number;
 }
 

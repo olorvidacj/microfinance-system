@@ -277,7 +277,7 @@ branchRouter.get('/dashboard', requireBranch([]), async (req, res) => {
 
   const activeClients = (data.borrowers as any[]).filter((b) => b.memberStatus === 'Active');
   const pendingVerification = (data.borrowers as any[]).filter(
-    (b) => b.kycStatus !== 'Verified' || b.memberStatus === 'Pending'
+    (b) => b.kycStatus !== 'VERIFIED' || b.memberStatus === 'Pending'
   );
   const activeLoans = (data.loans as any[]).filter((l) => ['Disbursed', 'Active', 'In Arrears'].includes(l.status));
   const outstandingBalance = activeLoans.reduce((s, l) => s + (l.remainingBalance || 0), 0);
@@ -513,7 +513,7 @@ branchRouter.post('/clients', requireBranch(['register_clients', 'manage_kyc', '
     monthlyExpenses: Number(body.monthlyExpenses) || 0,
     creditScore: Number(body.creditScore) || 600,
     creditTier: String(body.creditTier || 'Standard'),
-    kycStatus: String(body.kycStatus || 'Pending Review'),
+    kycStatus: String(body.kycStatus || 'PENDING'),
     memberStatus: String(body.memberStatus || 'Pending'),
     membershipDate: String(body.membershipDate || nowDate),
     savingsBalance: 0,
@@ -570,6 +570,11 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
   const db = getDb();
   if (!db) return res.json({ success: true, data: [] });
   const rows = await db.select().from(schema.borrowers).where(scopeCond(ctx, schema.borrowers.branchId, req.query.branchId ? String(req.query.branchId) : undefined));
+  const subRows = await db.select().from(schema.kycSubmissions);
+  const subsByBorrower = new Map<string, any>();
+  subRows.forEach((s: any) => {
+    if (!subsByBorrower.has(s.borrowerId)) subsByBorrower.set(s.borrowerId, s);
+  });
   const queue = rows.filter((b: any) => {
     const k = String(b.kycStatus).toLowerCase();
     return !['verified', 'rejected'].includes(k) || String(b.memberStatus).toLowerCase() === 'pending';
@@ -581,7 +586,27 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
   });
   res.json({
     success: true,
-    data: queue.map((b: any) => ({ ...b, submittedDocuments: docCounts.get(b.id) || 0 })),
+    data: queue.map((b: any) => {
+      const sub = subsByBorrower.get(b.id);
+      return {
+        ...b,
+        submittedDocuments: docCounts.get(b.id) || 0,
+        kycSubmission: sub
+          ? {
+              id: sub.id,
+              status: sub.status || b.kycStatus,
+              submittedAt: sub.submittedAt,
+              reviewedAt: sub.reviewedAt,
+              reviewedByName: sub.reviewedByName,
+              correctionReason: sub.correctionReason,
+              rejectionReason: sub.rejectionReason,
+              personalInfo: sub.personalInfo,
+              address: sub.address,
+              employment: sub.employment,
+            }
+          : null,
+      };
+    }),
   });
 });
 
@@ -591,25 +616,58 @@ branchRouter.post('/kyc/:id/review', requireBranch(['manage_kyc']), async (req, 
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
   const { decision, notes } = req.body || {};
   const decisionMap: Record<string, string> = {
-    APPROVED: 'Verified',
-    REJECTED: 'Rejected',
-    CORRECTION_REQUESTED: 'Correction Requested',
-    UNDER_REVIEW: 'Under Review',
+    APPROVED: 'VERIFIED',
+    REJECTED: 'REJECTED',
+    CORRECTION_REQUESTED: 'CORRECTION_REQUIRED',
+    UNDER_REVIEW: 'UNDER_REVIEW',
   };
   const targetStatus = decisionMap[String(decision || '').toUpperCase()];
   if (!targetStatus) return res.status(400).json({ error: 'decision must be APPROVED, REJECTED, CORRECTION_REQUESTED, or UNDER_REVIEW' });
   if (['REJECTED', 'CORRECTION_REQUESTED'].includes(String(decision || '').toUpperCase()) && !notes) {
     return res.status(400).json({ error: 'A reason is required when rejecting or requesting correction.' });
   }
+  const now = nowIso();
+  const borrowerRows = await db
+    .select()
+    .from(schema.borrowers)
+    .where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any))
+    .limit(1);
+  const prevStatus = borrowerRows.length > 0 ? borrowerRows[0].kycStatus : 'NOT_STARTED';
   await db
     .update(schema.borrowers)
     .set({
       kycStatus: targetStatus,
       notes: notes
-        ? `${String(notes)} | Reviewed by ${ctx.staffName} (${ctx.staffRole}) on ${nowIso()}`
-        : `KYC marked '${targetStatus}' by ${ctx.staffName} (${ctx.staffRole}) on ${nowIso()}`,
+        ? `${String(notes)} | Reviewed by ${ctx.staffName} (${ctx.staffRole}) on ${now}`
+        : `KYC marked '${targetStatus}' by ${ctx.staffName} (${ctx.staffRole}) on ${now}`,
     })
     .where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any));
+
+  const subRows = await db.select().from(schema.kycSubmissions).where(eq(schema.kycSubmissions.borrowerId, req.params.id)).limit(1);
+  if (subRows.length > 0) {
+    await db.update(schema.kycSubmissions).set({
+      status: targetStatus,
+      reviewedAt: now,
+      reviewedBy: ctx.staffId || null,
+      reviewedByName: ctx.staffName,
+      verifiedAt: targetStatus === 'VERIFIED' ? now : null,
+      correctionReason: targetStatus === 'CORRECTION_REQUIRED' ? (notes ? String(notes) : null) : null,
+      rejectionReason: targetStatus === 'REJECTED' ? (notes ? String(notes) : null) : null,
+      updatedAt: now,
+    }).where(eq(schema.kycSubmissions.id, subRows[0].id));
+  }
+  await db.insert(schema.kycAuditLog).values({
+    id: `KYC-AUDIT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    borrowerId: req.params.id,
+    kycSubmissionId: subRows.length > 0 ? subRows[0].id : null,
+    staffUserId: ctx.staffId || null,
+    staffName: ctx.staffName,
+    action: targetStatus === 'VERIFIED' ? 'APPROVED' : targetStatus === 'REJECTED' ? 'REJECTED' : targetStatus === 'CORRECTION_REQUIRED' ? 'CORRECTION_REQUESTED' : 'UNDER_REVIEW',
+    previousStatus: prevStatus,
+    newStatus: targetStatus,
+    reason: notes ? String(notes) : null,
+    createdAt: now,
+  });
   await audit(ctx, 'KYC_REVIEWED', `KYC decision '${targetStatus}' for client ${req.params.id}. ${notes ? 'Reason: ' + notes : ''}`, 'BORROWER', { targetType: 'Borrower', targetId: req.params.id });
   await notify(ctx, 'KYC', `KYC ${targetStatus}`, `The KYC verification for client ${req.params.id} was marked '${targetStatus}'.`, { relatedType: 'Borrower', relatedId: req.params.id });
   res.json({ success: true, status: targetStatus });
@@ -830,7 +888,7 @@ branchRouter.post('/loans/:id/assessment', requireBranch(['process_loan_applicat
   const riskIndicators: string[] = [];
   if (!borrower) riskIndicators.push('No client record found for this application');
   else {
-    if ((borrower as any).kycStatus !== 'Verified') riskIndicators.push('Client KYC is not yet verified');
+    if ((borrower as any).kycStatus !== 'VERIFIED') riskIndicators.push('Client KYC is not yet verified');
     if (existingObligations / Math.max(1, monthlyIncome) > 0.4) riskIndicators.push('Existing obligations exceed 40% of declared income');
     if ((borrower as any).memberStatus !== 'Active') riskIndicators.push(`Client is not an active member (${(borrower as any).memberStatus})`);
     if (debtRatio > 0.6) riskIndicators.push('Repayment debt ratio exceeds 60%');

@@ -55,9 +55,9 @@ const GroupDetailPage: React.FC = () => {
           </Card>
 
           <div className="grid grid-cols-2 gap-3">
-            <CardBody className="rounded-2xl border border-blue-100 bg-blue-50/60">
+            <CardBody className="rounded-2xl border border-emerald-100 bg-emerald-50/60">
               <p className="text-xs text-slate-500">Active loans</p>
-              <p className="text-xl font-bold tabular-nums text-blue-800">{group.totalActiveLoans ?? 0}</p>
+              <p className="text-2xl font-bold tabular-nums text-emerald-900">{group.totalActiveLoans ?? 0}</p>
             </CardBody>
             <CardBody className="rounded-2xl border border-emerald-100 bg-emerald-50/60">
               <p className="text-xs text-slate-500">Repayment rate</p>
@@ -104,7 +104,7 @@ const GroupDetailPage: React.FC = () => {
                       <tr key={m.borrowerId} className="hover:bg-slate-50">
                         <td className="whitespace-nowrap px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-xs font-bold text-white">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-xs font-bold text-white">
                               {(m.fullName || '?').slice(0, 2).toUpperCase()}
                             </div>
                             <div>

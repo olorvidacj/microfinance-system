@@ -96,7 +96,7 @@ const Avatar: React.FC<{ src?: string; name?: string; size?: number }> = ({ src,
     return (
       <div
         style={style}
-        className="flex shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-blue-700 to-indigo-600 text-white"
+        className="flex shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white"
         title={name}
       >
         <span className="text-xs font-bold">{getInitials(name)}</span>
@@ -126,19 +126,19 @@ const SidebarLink: React.FC<{ item: NavItem; badge?: number; onNavigate?: () => 
     className={({ isActive }) =>
       `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
         isActive
-          ? 'bg-blue-700 text-white shadow-sm'
-          : 'text-slate-600 hover:bg-blue-50 hover:text-blue-800'
+          ? 'bg-emerald-600 text-white shadow-sm'
+          : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-800'
       }`
     }
   >
     {({ isActive }) => (
       <>
-        <item.icon className={`h-[18px] w-[18px] ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-700'}`} />
+        <item.icon className={`h-[18px] w-[18px] ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-emerald-600'}`} />
         <span className="flex-1">{item.label}</span>
         {badge !== undefined && badge > 0 && (
           <span
             className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
-              isActive ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-700'
+              isActive ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'
             }`}
           >
             {badge}
@@ -166,7 +166,7 @@ const SidebarContent: React.FC<{ unread: number; onNavigate?: () => void }> = ({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 px-5 pb-6 pt-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 text-white shadow-md">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md">
           <Building2 className="h-5 w-5" />
         </div>
         <div className="min-w-0">
@@ -240,7 +240,7 @@ const BranchLayoutInner: React.FC = () => {
   }, [refreshBadge, location.pathname]);
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-800 antialiased">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white lg:block">
         <SidebarContent unread={unread} />
       </aside>
@@ -279,7 +279,7 @@ const BranchLayoutInner: React.FC = () => {
               <span className="text-sm text-slate-500">
                 Good day, <span className="font-semibold text-slate-800">{personnel?.name || user?.fullName}</span>
               </span>
-              <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-200">
+              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
                 {personnel?.title || personnel?.role || 'Staff'}
               </span>
             </div>
@@ -288,7 +288,7 @@ const BranchLayoutInner: React.FC = () => {
           <div className="flex items-center gap-2">
             <Link
               to="/staff/app/notifications"
-              className="relative rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-blue-700"
+              className="relative rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-700"
               aria-label="Notifications"
             >
               <Bell className="h-5 w-5" />
@@ -320,13 +320,13 @@ const BranchLayoutInner: React.FC = () => {
               end={item.matchEnd}
               className={({ isActive }) =>
                 `flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 text-[10px] font-medium transition-colors ${
-                  isActive ? 'text-blue-700' : 'text-slate-400 hover:text-slate-600'
+                  isActive ? 'text-emerald-700' : 'text-slate-400 hover:text-slate-600'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-700' : ''}`} />
+                  <item.icon className={`h-5 w-5 ${isActive ? 'text-emerald-600' : ''}`} />
                   {item.label}
                 </>
               )}

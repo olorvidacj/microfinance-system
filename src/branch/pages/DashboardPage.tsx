@@ -64,7 +64,7 @@ const DashboardPage: React.FC = () => {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Today&apos;s collections</CardTitle>
-            <Link to="/staff/app/collections" className="text-xs font-medium text-blue-700 hover:text-blue-800">
+            <Link to="/staff/app/collections" className="text-xs font-medium text-emerald-700 hover:text-emerald-800">
               View all
             </Link>
           </CardHeader>
@@ -72,12 +72,12 @@ const DashboardPage: React.FC = () => {
             {s.todayTransactionCount === 0 ? (
               <p className="py-8 text-center text-sm text-slate-400">No payments recorded today yet.</p>
             ) : (
-              <div className="flex items-center justify-between rounded-xl bg-blue-50 p-4">
+              <div className="flex items-center justify-between rounded-xl bg-emerald-50 p-4">
                 <div>
-                  <p className="text-xs font-medium text-blue-700">Collected today</p>
-                  <p className="text-2xl font-bold tabular-nums text-blue-900">{formatCurrency(s.todayCollections)}</p>
+                  <p className="text-xs font-medium text-emerald-700">Collected today</p>
+                  <p className="text-2xl font-bold tabular-nums text-emerald-900">{formatCurrency(s.todayCollections)}</p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-blue-600" />
+                <TrendingUp className="h-8 w-8 text-emerald-600" />
               </div>
             )}
           </CardBody>

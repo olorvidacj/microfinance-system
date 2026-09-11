@@ -502,6 +502,87 @@ app.get('/api/admin/roles', (req, res) => {
   });
 });
 
+// KYC required documents management (institution-configurable)
+app.get('/api/admin/kyc/required-documents', requirePermission(['manage_settings', 'view_all_records']), async (req, res) => {
+  try {
+    const db = getDb();
+    if (db) {
+      const rows = await db.select().from(schema.kycRequiredDocuments).orderBy(schema.kycRequiredDocuments.sortOrder);
+      return res.json({ success: true, documents: rows });
+    }
+    return res.json({
+      success: true,
+      documents: [
+        { id: 'REQ-VALID_ID', documentType: 'VALID_ID', documentName: 'Primary Government ID (UMID / Driver License / Passport)', description: 'A valid, current government-issued photo ID.', isActive: true, sortOrder: 1, createdAt: new Date().toISOString() },
+        { id: 'REQ-PROOF_OF_ADDRESS', documentType: 'PROOF_OF_ADDRESS', documentName: 'Barangay Clearance or Utility Bill', description: 'Recent proof of residence within the last 3 months.', isActive: true, sortOrder: 2, createdAt: new Date().toISOString() },
+        { id: 'REQ-PROOF_OF_INCOME', documentType: 'PROOF_OF_INCOME', documentName: 'Payslip / Business Permit / Bank Statement', description: 'Evidence of regular income or business operations.', isActive: true, sortOrder: 3, createdAt: new Date().toISOString() },
+        { id: 'REQ-PHOTO_2X2', documentType: 'PHOTO_2X2', documentName: 'Recent 2x2 ID Photo', description: 'A recent photograph with white background.', isActive: true, sortOrder: 4, createdAt: new Date().toISOString() },
+      ],
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Create a KYC required document
+app.post('/api/admin/kyc/required-documents', requirePermission('manage_settings'), async (req: AuthedRequest, res) => {
+  try {
+    const { documentType, documentName, description, sortOrder } = req.body || {};
+    if (!documentType || !documentName) {
+      return res.status(400).json({ success: false, error: 'documentType and documentName are required.' });
+    }
+    const db = getDb();
+    if (db) {
+      const id = `REQ-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      await db.insert(schema.kycRequiredDocuments).values({
+        id,
+        documentType: String(documentType),
+        documentName: String(documentName),
+        description: description ? String(description) : null,
+        isActive: true,
+        sortOrder: Number(sortOrder) || 0,
+        createdAt: new Date().toISOString(),
+      });
+      return res.json({ success: true, id });
+    }
+    res.status(503).json({ success: false, error: 'Database unavailable' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Update / toggle a KYC required document
+app.patch('/api/admin/kyc/required-documents/:id', requirePermission('manage_settings'), async (req: AuthedRequest, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    const { isActive, documentName, description, sortOrder } = req.body || {};
+    await db.update(schema.kycRequiredDocuments)
+      .set({
+        ...(documentName !== undefined ? { documentName: String(documentName) } : {}),
+        ...(description !== undefined ? { description: description ? String(description) : null } : {}),
+        ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+        ...(sortOrder !== undefined ? { sortOrder: Number(sortOrder) } : {}),
+      })
+      .where(eq(schema.kycRequiredDocuments.id, req.params.id));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete a KYC required document
+app.delete('/api/admin/kyc/required-documents/:id', requirePermission('manage_settings'), async (req: AuthedRequest, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    await db.delete(schema.kycRequiredDocuments).where(eq(schema.kycRequiredDocuments.id, req.params.id));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 2. User Accounts List (Staff & Clients) [Requires 'manage_users' or 'view_all_records']
 app.get('/api/admin/users', requirePermission(['manage_users', 'view_all_records']), async (req: AuthedRequest, res) => {
   try {

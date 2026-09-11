@@ -102,7 +102,7 @@ const LoansPage: React.FC = () => {
                 {rows.map((loan) => (
                   <tr key={loan.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-3">
-                      <Link to={`/staff/app/loans/${loan.id}`} className="text-sm font-semibold text-blue-700 hover:text-blue-900">
+                      <Link to={`/staff/app/loans/${loan.id}`} className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">
                         {loan.loanNumber}
                       </Link>
                     </td>
@@ -120,7 +120,7 @@ const LoansPage: React.FC = () => {
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{loan.loanOfficerName || '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={loan.status} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <Link to={`/staff/app/loans/${loan.id}`} className="text-xs font-medium text-blue-700 hover:text-blue-900">
+                      <Link to={`/staff/app/loans/${loan.id}`} className="text-xs font-medium text-emerald-700 hover:text-emerald-900">
                         Details →
                       </Link>
                     </td>

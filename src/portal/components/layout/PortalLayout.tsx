@@ -17,9 +17,11 @@ import {
   X,
   Building2,
   UserRound,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { ToastProvider } from '../ui/Toast';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { notificationService } from '../../services/notifications';
 
 export interface NavItem {
@@ -40,6 +42,7 @@ const MAIN_NAV: NavItem[] = [
 ];
 
 const ACCOUNT_NAV: NavItem[] = [
+  { to: '/portal/kyc', label: 'KYC Verification', icon: ShieldCheck },
   { to: '/portal/notifications', label: 'Notifications', icon: Bell },
   { to: '/portal/documents', label: 'Documents', icon: Files },
   { to: '/portal/support', label: 'Help & Support', icon: LifeBuoy },
@@ -315,7 +318,9 @@ export const PortalLayout: React.FC = () => {
 
   return (
     <ToastProvider>
-      <PortalLayoutInner />
+      <ErrorBoundary fallbackTitle="Portal Error" fallbackMessage="Something went wrong in the client portal. Please try again.">
+        <PortalLayoutInner />
+      </ErrorBoundary>
     </ToastProvider>
   );
 };

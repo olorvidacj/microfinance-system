@@ -136,10 +136,10 @@ export const LoanAssessmentPanel: React.FC<{
                 <StatBox label="Debt ratio" value={`${Math.round(assessment.debtRatio * 100)}%`} />
                 <StatBox label="Estimated installment" value={formatCurrency(assessment.estimatedInstallment)} />
               </div>
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-                <p className="text-xs font-semibold text-blue-800">Recommended loan amount</p>
-                <p className="mt-1 text-2xl font-bold tabular-nums text-blue-800">{formatCurrency(assessment.recommendedAmount)}</p>
-                <p className="mt-1 text-xs text-blue-600">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-semibold text-emerald-800">Recommended loan amount</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-800">{formatCurrency(assessment.recommendedAmount)}</p>
+                <p className="mt-1 text-xs text-emerald-600">
                   {assessment.recommendedAmount < loan.principalAmount
                     ? 'Below the requested amount — consider offering this lower limit.'
                     : 'Within the approved credit capacity.'}

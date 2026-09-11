@@ -70,7 +70,7 @@ const LoanDetailsPage: React.FC = () => {
               <SectionDivider />
               <div className="flex items-center justify-between pt-1">
                 <span className="text-sm text-slate-500">Remaining balance</span>
-                <Amount value={loan.remainingBalance} className="text-lg font-bold text-blue-800" />
+                <Amount value={loan.remainingBalance} className="text-lg font-bold text-emerald-800" />
               </div>
             </CardBody>
           </Card>
@@ -95,7 +95,7 @@ const LoanDetailsPage: React.FC = () => {
                 <CardTitle className="flex items-center gap-2"><UserCircle2 className="h-4 w-4" /> Borrower</CardTitle>
               </CardHeader>
               <CardBody>
-                <Link to={`/staff/app/clients/${borrower.id}`} className="text-sm font-semibold text-blue-700 hover:text-blue-900">
+                <Link to={`/staff/app/clients/${borrower.id}`} className="text-sm font-semibold text-emerald-700 hover:text-emerald-900">
                   {borrower.fullName}
                 </Link>
                 <p className="mt-0.5 text-xs text-slate-400">{borrower.borrowerNumber} · {borrower.phone}</p>
@@ -123,9 +123,9 @@ const LoanDetailsPage: React.FC = () => {
         <div className="space-y-6 lg:col-span-2">
           {isActive && (
             <div className="grid grid-cols-2 gap-4">
-              <Card className="border-blue-100 bg-blue-50/50">
+              <Card className="border-emerald-100 bg-emerald-50/50">
                 <CardBody className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                     <CalendarClock className="h-5 w-5" />
                   </div>
                   <div>

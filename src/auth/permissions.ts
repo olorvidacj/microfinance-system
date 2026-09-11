@@ -46,7 +46,11 @@ export type SystemPermission =
   | 'client_view_loans'
   | 'client_apply_services'
   | 'client_view_savings'
-  | 'client_view_transactions_receipts';
+  |       'client_view_transactions_receipts'
+    
+    // Analytics & Compliance Permissions
+    | 'add_advisory_notes'
+    | 'manage_legal_records';
 
 export interface RoleDefinition {
   id: SystemRole;
@@ -92,6 +96,8 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'process_savings_withdrawals',
       'generate_receipts',
       'view_transaction_records',
+      'add_advisory_notes',
+      'manage_legal_records',
     ],
     badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
     iconName: 'ShieldCheck',
@@ -265,6 +271,8 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'process_savings_withdrawals',
       'generate_receipts',
       'view_transaction_records',
+      'add_advisory_notes',
+      'manage_legal_records',
     ],
     badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
     iconName: 'ShieldCheck',
@@ -313,6 +321,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'process_savings_withdrawals',
       'generate_receipts',
       'view_transaction_records',
+      'add_advisory_notes',
     ],
     badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
     iconName: 'Building2',
@@ -704,6 +713,14 @@ export const PERMISSION_CATEGORIES: {
       { key: 'client_apply_services', label: 'Apply For Permitted Services', description: 'Submit online loan applications and savings withdrawal requests' },
       { key: 'client_view_savings', label: 'View Own Savings', description: 'View passbook savings, time deposits, and share capital dividends' },
       { key: 'client_view_transactions_receipts', label: 'View Own Receipts', description: 'Download payment receipts and review payment history' },
+    ],
+  },
+  {
+    category: 'Analytics, Advisory & Compliance',
+    description: 'Portfolio analytics, advisory note management, and legal compliance tracking',
+    permissions: [
+      { key: 'add_advisory_notes', label: 'Add Advisory Notes', description: 'Create and manage portfolio advisory notes, risk assessments, and guidance records' },
+      { key: 'manage_legal_records', label: 'Manage Legal Records', description: 'Manage legal compliance records, collateral documentation, and legal action logs' },
     ],
   },
 ];

@@ -58,7 +58,7 @@ const KycQueuePage: React.FC = () => {
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  {['Client', 'Borrower No.', 'KYC status', 'Member status', 'Docs submitted', 'Member since', ''].map((h) => (
+                  {['Client', 'Borrower No.', 'KYC status', 'Member status', 'Docs submitted', 'Submitted', 'Member since', ''].map((h) => (
                     <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       {h}
                     </th>
@@ -66,33 +66,41 @@ const KycQueuePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-xs font-bold text-white">
-                          {(c.fullName || '?').slice(0, 2).toUpperCase()}
+                {rows.map((c) => {
+                  const submission = (c as any).kycSubmission;
+                  return (
+                    <tr key={c.id} className="hover:bg-slate-50">
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-xs font-bold text-white">
+                            {(c.fullName || '?').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-slate-800">{c.fullName}</div>
+                            <Link to={`/staff/app/clients/${c.id}`} className="text-xs text-emerald-700 hover:text-emerald-900">
+                              View profile
+                            </Link>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-sm font-semibold text-slate-800">{c.fullName}</div>
-                          <Link to={`/staff/app/clients/${c.id}`} className="text-xs text-blue-700 hover:text-blue-900">
-                            View profile
-                          </Link>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{c.borrowerNumber}</td>
-                    <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={c.kycStatus} /></td>
-                    <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={c.memberStatus} /></td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{c.submittedDocuments || 0}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{c.membershipDate}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <Button variant="brand" size="sm" onClick={() => setSelected(c as unknown as ClientDetail)}>
-                        <ShieldCheck className="h-3.5 w-3.5" /> Review
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{c.borrowerNumber}</td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <StatusBadge status={submission?.status || c.kycStatus} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={c.memberStatus} /></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{c.submittedDocuments || 0}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">
+                        {submission?.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{c.membershipDate}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <Button variant="brand" size="sm" onClick={() => setSelected({ ...(c as unknown as ClientDetail), kycSubmission: submission } as any)}>
+                          <ShieldCheck className="h-3.5 w-3.5" /> Review
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

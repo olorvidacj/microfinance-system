@@ -90,7 +90,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
 
     // Step 4: KYC & Initial Setup
     clientStatus: 'Pending' as ClientStatus,
-    kycStatus: 'Pending Review' as KycStatus,
+    kycStatus: 'PENDING' as KycStatus,
     initialSavingsDeposit: 2000,
     initialShareCapital: 2000,
     notes: 'Registered via authorized staff portal.',
@@ -103,7 +103,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
       docType: KycDocumentType;
       fileName: string;
       fileSize: string;
-      status: 'Pending Review' | 'Verified';
+      status: 'PENDING' | 'VERIFIED';
     }>
   >([
     {
@@ -111,14 +111,14 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
       docType: 'Government ID (Primary)',
       fileName: 'Primary_Government_ID_FrontBack.pdf',
       fileSize: '2.4 MB',
-      status: 'Pending Review',
+      status: 'PENDING',
     },
     {
       id: 'doc-init-2',
       docType: 'Proof of Income / Payslip / ITR',
       fileName: 'Income_Certificate_Business_Log.pdf',
       fileSize: '1.8 MB',
-      status: 'Pending Review',
+      status: 'PENDING',
     },
   ]);
 
@@ -141,7 +141,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
         docType: newDocType,
         fileName: newDocFileName,
         fileSize: `${(Math.random() * 2 + 0.8).toFixed(1)} MB`,
-        status: 'Pending Review',
+        status: 'PENDING',
       },
     ]);
     setNewDocFileName('');
@@ -905,11 +905,11 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     onChange={(e) => setFormData({ ...formData, kycStatus: e.target.value as any })}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900"
                   >
-                    <option value="Pending Review">Pending Review</option>
-                    <option value="Verified">Verified & Approved</option>
-                    <option value="Correction Requested">Correction Requested</option>
-                    <option value="Incomplete">Incomplete</option>
-                    <option value="Rejected">Rejected</option>
+                    <option value="PENDING">Pending Review</option>
+                    <option value="VERIFIED">Verified & Approved</option>
+                    <option value="CORRECTION_REQUIRED">Correction Requested</option>
+                    <option value="NOT_STARTED">Incomplete</option>
+                    <option value="REJECTED">Rejected</option>
                   </select>
                 </div>
 

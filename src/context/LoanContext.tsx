@@ -1316,7 +1316,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       monthlyExpenses: Math.round(targetApp.monthlyIncome * 0.45),
       creditScore: 720,
       creditTier: 'Good',
-      kycStatus: 'Verified',
+      kycStatus: 'VERIFIED',
       memberStatus: 'Active',
       membershipDate: new Date().toISOString().split('T')[0],
       savingsBalance: targetApp.initialShareCapital || 2000, // Starts above ₱1,000 maintaining balance
@@ -2331,7 +2331,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       emergencyContactRelation: clientData.emergencyContactRelation || '',
       creditScore: clientData.creditScore || 670,
       creditTier: clientData.creditTier || 'Good',
-      kycStatus: clientData.kycStatus || 'Pending Review',
+      kycStatus: clientData.kycStatus || 'PENDING',
       memberStatus: initialStatus,
       clientStatus: initialStatus,
       kycDocuments: clientData.kycDocuments || [],
@@ -2415,7 +2415,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       fileUrl: doc.fileUrl,
       uploadedAt: today,
       uploadedBy: `${currentUser.name} (${currentUser.title})`,
-      status: 'Pending Review',
+      status: 'PENDING',
     };
 
     setBorrowers((prev) =>
@@ -2425,7 +2425,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
           return {
             ...b,
             kycDocuments: [newDoc, ...currentDocs],
-            kycStatus: b.kycStatus === 'Verified' ? 'Verified' : 'Pending Review',
+            kycStatus: b.kycStatus === 'VERIFIED' ? 'VERIFIED' : 'PENDING',
             lastActivityDate: today,
           };
         }
@@ -2446,16 +2446,16 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     const client = borrowers.find((b) => b.id === clientId);
     if (!client) return;
 
-    let newKycStatus: KycStatus = 'Verified';
+    let newKycStatus: KycStatus = 'VERIFIED';
     let newClientStatus: ClientStatus = client.clientStatus || client.memberStatus;
 
     if (decision === 'APPROVED') {
-      newKycStatus = 'Verified';
+      newKycStatus = 'VERIFIED';
       if (newClientStatus === 'Pending') newClientStatus = 'Active';
     } else if (decision === 'CORRECTION_REQUESTED') {
-      newKycStatus = 'Correction Requested';
+      newKycStatus = 'CORRECTION_REQUIRED';
     } else if (decision === 'REJECTED') {
-      newKycStatus = 'Rejected';
+      newKycStatus = 'REJECTED';
       newClientStatus = 'Rejected';
     }
 
@@ -2473,8 +2473,8 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       prev.map((b) => {
         if (b.id === clientId) {
           const updatedDocs = (b.kycDocuments || []).map((doc) => {
-            if (decision === 'APPROVED') return { ...doc, status: 'Verified' as const, verifiedAt: today, verifiedBy: currentUser.name };
-            if (decision === 'REJECTED') return { ...doc, status: 'Rejected' as const, rejectionReason: notes };
+            if (decision === 'APPROVED') return { ...doc, status: 'VERIFIED' as const, verifiedAt: today, verifiedBy: currentUser.name };
+            if (decision === 'REJECTED') return { ...doc, status: 'REJECTED' as const, rejectionReason: notes };
             return doc;
           });
 
@@ -2553,7 +2553,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       monthlyExpenses: borrowerData.monthlyExpenses || 12000,
       creditScore: borrowerData.creditScore || 700,
       creditTier: borrowerData.creditTier || 'Good',
-      kycStatus: borrowerData.kycStatus || 'Verified',
+      kycStatus: borrowerData.kycStatus || 'VERIFIED',
       memberStatus: borrowerData.clientStatus || borrowerData.memberStatus || 'Active',
       clientStatus: borrowerData.clientStatus || borrowerData.memberStatus || 'Active',
       membershipDate: borrowerData.membershipDate || new Date().toISOString().split('T')[0],

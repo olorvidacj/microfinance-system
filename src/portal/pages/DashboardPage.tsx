@@ -1,18 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  AlertTriangle,
   ArrowUpRight,
   BadgeCheck,
   Bell,
   ChevronRight,
+  Clock,
+  Eye,
   FilePlus2,
   HandCoins,
   PiggyBank,
   ReceiptText,
+  ShieldCheck,
   Wallet,
+  XCircle,
 } from 'lucide-react';
 import { dashboardService } from '../services/dashboard';
-import { ClientDashboard } from '../types';
+import { profileService } from '../services/profile';
+import { ClientDashboard, KYCStatus, KycStatusData } from '../types';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate } from '../../utils/loanMath';
 import {
@@ -33,6 +39,7 @@ import { InfoRow, StatCard, transactionIcon, transactionTone } from '../componen
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState<ClientDashboard | null>(null);
+  const [kyc, setKyc] = useState<KycStatusData | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +47,9 @@ const DashboardPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      setDashboard(await dashboardService.get());
+      const [d, k] = await Promise.all([dashboardService.get(), profileService.kycStatus()]);
+      setDashboard(d);
+      setKyc(k);
     } catch (err: any) {
       setError(err.message || 'Unable to load dashboard.');
     } finally {
@@ -57,6 +66,7 @@ const DashboardPage: React.FC = () => {
     return <ErrorState message={error || 'No data available.'} onRetry={load} />;
 
   const firstName = (user?.fullName || dashboard.borrowerName).split(' ')[0];
+  const kycStatus = kyc?.kycStatus || 'NOT_STARTED';
 
   const repaymentData = [
     { name: 'Feb', value: 4850 },
@@ -79,17 +89,14 @@ const DashboardPage: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Hi, {firstName} 👋</h1>
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-slate-500">
             Member <span className="font-mono text-xs font-medium text-slate-600">{dashboard.memberNumber}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-              <BadgeCheck className="h-3.5 w-3.5" /> KYC Verified
-            </span>
+            <StatusBadge status={kycStatus} />
           </p>
         </div>
-        <Link to="/portal/apply">
-          <Button>
-            <FilePlus2 className="h-4 w-4" /> Apply for a loan
-          </Button>
-        </Link>
+        <KycApplyButton status={kycStatus} />
       </div>
+
+      {/* KYC alert card */}
+      {kycStatus !== 'VERIFIED' && <KycAlertCard kyc={kyc} status={kycStatus} />}
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -215,7 +222,11 @@ const DashboardPage: React.FC = () => {
               <CardTitle>Quick actions</CardTitle>
             </CardHeader>
             <CardBody className="space-y-2">
-              <QuickLink to="/portal/apply" icon={FilePlus2} label="Apply for a loan" desc="Start a new application" />
+              {kycStatus === 'VERIFIED' ? (
+                <QuickLink to="/portal/apply" icon={FilePlus2} label="Apply for a loan" desc="Start a new application" />
+              ) : (
+                <QuickLink to="/portal/kyc" icon={ShieldCheck} label="Complete KYC first" desc="Verification required to apply" />
+              )}
               <QuickLink to="/portal/payments" icon={ReceiptText} label="Make a payment" desc="Submit payment proof" />
               <QuickLink to="/portal/savings" icon={PiggyBank} label="Manage savings" desc="Deposits & withdrawals" />
               <QuickLink to="/portal/documents" icon={Bell} label="Documents" desc="Statements & receipts" />
@@ -279,5 +290,99 @@ const QuickLink: React.FC<{ to: string; icon: React.ElementType; label: string; 
     <ChevronRight className="h-4 w-4 text-slate-300" />
   </Link>
 );
+
+const KYC_ACTIONS: Record<KYCStatus, { to: string; label: string; disabled?: boolean }> = {
+  VERIFIED: { to: '/portal/apply', label: 'Apply for a loan' },
+  NOT_STARTED: { to: '/portal/kyc', label: 'Complete KYC First' },
+  PENDING: { to: '/portal/kyc', label: 'KYC Under Review', disabled: true },
+  UNDER_REVIEW: { to: '/portal/kyc', label: 'KYC Under Review', disabled: true },
+  CORRECTION_REQUIRED: { to: '/portal/kyc', label: 'Update KYC' },
+  REJECTED: { to: '/portal/kyc', label: 'Review KYC' },
+  EXPIRED: { to: '/portal/kyc', label: 'Update KYC' },
+};
+
+const KycApplyButton: React.FC<{ status: KYCStatus }> = ({ status }) => {
+  const action = KYC_ACTIONS[status] || KYC_ACTIONS.NOT_STARTED;
+  if (status === 'VERIFIED') {
+    return (
+      <Link to={action.to}>
+        <Button>
+          <FilePlus2 className="h-4 w-4" /> {action.label}
+        </Button>
+      </Link>
+    );
+  }
+  return (
+    <Link to={action.to}>
+      <Button variant={status === 'REJECTED' ? 'outline' : 'primary'} disabled={action.disabled}>
+        <ShieldCheck className="h-4 w-4" /> {action.label}
+      </Button>
+    </Link>
+  );
+};
+
+const KycAlertCard: React.FC<{ kyc: KycStatusData | null; status: KYCStatus }> = ({ kyc, status }) => {
+  const base = 'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3';
+  const reason = kyc?.correctionReason || kyc?.rejectionReason;
+  const config: Record<KYCStatus, { cls: string; icon: React.ElementType; title: string; desc: string }> = {
+    NOT_STARTED: {
+      cls: 'border-amber-200 bg-amber-50',
+      icon: ShieldCheck,
+      title: 'KYC verification required',
+      desc: 'Complete your Know-Your-Customer verification to apply for a loan.',
+    },
+    PENDING: {
+      cls: 'border-blue-200 bg-blue-50',
+      icon: Clock,
+      title: 'KYC under review',
+      desc: 'Your KYC submission is being reviewed. You can apply for a loan once verified.',
+    },
+    UNDER_REVIEW: {
+      cls: 'border-blue-200 bg-blue-50',
+      icon: Eye,
+      title: 'KYC under review',
+      desc: 'Your information is being reviewed by our staff.',
+    },
+    CORRECTION_REQUIRED: {
+      cls: 'border-amber-200 bg-amber-50',
+      icon: AlertTriangle,
+      title: 'KYC correction required',
+      desc: reason ? `Correction needed: ${reason}` : 'Please update your KYC information.',
+    },
+    REJECTED: {
+      cls: 'border-rose-200 bg-rose-50',
+      icon: XCircle,
+      title: 'KYC rejected',
+      desc: reason ? `Reason: ${reason}` : 'Your KYC application was not approved.',
+    },
+    EXPIRED: {
+      cls: 'border-rose-200 bg-rose-50',
+      icon: Clock,
+      title: 'KYC expired',
+      desc: 'Your KYC verification has expired. Please update your information.',
+    },
+    VERIFIED: {
+      cls: 'border-emerald-200 bg-emerald-50',
+      icon: BadgeCheck,
+      title: 'KYC verified',
+      desc: 'Your identity has been verified. You are eligible to apply for a loan.',
+    },
+  };
+  const cfg = config[status] || config.NOT_STARTED;
+  const Icon = cfg.icon;
+  return (
+    <div className={`${base} ${cfg.cls}`}>
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/70">
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold">{cfg.title}</p>
+          <p className="text-xs opacity-80">{cfg.desc}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default DashboardPage;

@@ -637,12 +637,12 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   </span>
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      currentMember?.kycStatus === 'Verified'
+                      currentMember?.kycStatus === 'VERIFIED'
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                         : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                     }`}
                   >
-                    KYC {currentMember?.kycStatus || 'Verified'}
+                    KYC {currentMember?.kycStatus || 'VERIFIED'}
                   </span>
                 </div>
                 <h2 className="font-bold text-white text-lg leading-tight">{currentMember?.fullName}</h2>

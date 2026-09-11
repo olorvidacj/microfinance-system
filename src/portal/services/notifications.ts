@@ -33,10 +33,16 @@ export const notificationService = {
   },
 
   async markRead(id: string): Promise<void> {
-    await clientRequest(`/api/client/notifications/${id}/read`, { method: 'PATCH' });
+    await withMockFallback(
+      () => clientRequest(`/api/client/notifications/${id}/read`, { method: 'PATCH' }),
+      async () => { /* mock: no-op */ }
+    );
   },
 
   async markAllRead(): Promise<void> {
-    await clientRequest('/api/client/notifications/mark-all-read', { method: 'POST' });
+    await withMockFallback(
+      () => clientRequest('/api/client/notifications/mark-all-read', { method: 'POST' }),
+      async () => { /* mock: no-op */ }
+    );
   },
 };

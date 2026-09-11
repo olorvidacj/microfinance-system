@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, BadgeCheck, Building2, Check, Info, PackageCheck, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BadgeCheck, Building2, Check, Info, PackageCheck, ShieldCheck, Clock, Eye, AlertTriangle, XCircle } from 'lucide-react';
 import { loanService } from '../services/loans';
-import { LoanCalculation, LoanProduct } from '../types';
+import { profileService } from '../services/profile';
+import { KYCStatus, KycStatusData, LoanCalculation, LoanProduct } from '../types';
 import { formatCurrency } from '../../utils/loanMath';
 import {
   Button,
@@ -27,6 +28,8 @@ const ApplyLoanPage: React.FC = () => {
   const [products, setProducts] = useState<LoanProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null);
+  const [kyc, setKyc] = useState<KycStatusData | null>(null);
 
   const [step, setStep] = useState(0);
   const [productId, setProductId] = useState('');
@@ -46,6 +49,12 @@ const ApplyLoanPage: React.FC = () => {
     const load = async () => {
       setLoading(true);
       try {
+        const k = await profileService.kycStatus();
+        setKyc(k);
+        if (k.kycStatus !== 'VERIFIED') {
+          setKycStatus(k.kycStatus as KYCStatus);
+          return;
+        }
         const prods = await loanService.products();
         setProducts(prods);
         if (prods.length > 0) setProductId(prods[0].id);
@@ -93,6 +102,45 @@ const ApplyLoanPage: React.FC = () => {
 
   if (loading) return <LoadingState label="Loading loan products…" />;
   if (error) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
+
+  if (kycStatus && kycStatus !== 'VERIFIED') {
+    const cfg: Record<string, { icon: React.ElementType; title: string; desc: string; cls: string }> = {
+      NOT_STARTED: { icon: ShieldCheck, title: 'KYC verification required', desc: 'You must complete your KYC verification before you can apply for a loan.', cls: 'border-amber-200 bg-amber-50' },
+      PENDING: { icon: Clock, title: 'KYC under review', desc: 'Your KYC submission is being reviewed. You can apply for a loan once it is verified.', cls: 'border-blue-200 bg-blue-50' },
+      UNDER_REVIEW: { icon: Eye, title: 'KYC under review', desc: 'Your information is being reviewed by our staff. You can apply for a loan once verified.', cls: 'border-blue-200 bg-blue-50' },
+      CORRECTION_REQUIRED: { icon: AlertTriangle, title: 'KYC correction required', desc: kyc?.correctionReason ? `Correction needed: ${kyc.correctionReason}` : 'Please update your KYC information before applying for a loan.', cls: 'border-amber-200 bg-amber-50' },
+      REJECTED: { icon: XCircle, title: 'KYC rejected', desc: kyc?.rejectionReason ? `Reason: ${kyc.rejectionReason}` : 'Your KYC application was not approved. Please contact your branch.', cls: 'border-rose-200 bg-rose-50' },
+      EXPIRED: { icon: Clock, title: 'KYC expired', desc: 'Your KYC verification has expired. Please update your information to apply for a loan.', cls: 'border-rose-200 bg-rose-50' },
+      VERIFIED: { icon: BadgeCheck, title: '', desc: '', cls: '' },
+    };
+    const c = cfg[kycStatus];
+    const Icon = c.icon;
+    return (
+      <div className="mx-auto flex max-w-md flex-col items-center rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center">
+        <div className={`flex h-14 w-14 items-center justify-center rounded-full ${c.cls}`}>
+          <Icon className="h-7 w-7" />
+        </div>
+        <h2 className="mt-4 text-lg font-semibold text-slate-900">{c.title}</h2>
+        <p className="mt-2 text-sm text-slate-500">{c.desc}</p>
+        <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+          {kycStatus === 'PENDING' || kycStatus === 'UNDER_REVIEW' ? (
+            <Link to="/portal/dashboard">
+              <Button variant="outline">Back to dashboard</Button>
+            </Link>
+          ) : (
+            <>
+              <Link to="/portal/kyc">
+                <Button>{kycStatus === 'CORRECTION_REQUIRED' || kycStatus === 'EXPIRED' ? 'Update KYC' : 'Complete KYC'}</Button>
+              </Link>
+              <Link to="/portal/dashboard">
+                <Button variant="outline">Back to dashboard</Button>
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (

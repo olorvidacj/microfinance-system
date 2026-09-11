@@ -92,7 +92,7 @@ const ActivityLogPage: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                         entry.type === 'PAYMENT' ? 'bg-emerald-50 text-emerald-700' :
-                        entry.type === 'LOAN' ? 'bg-blue-50 text-blue-700' :
+                        entry.type === 'LOAN' ? 'bg-emerald-50 text-emerald-700' :
                         entry.type === 'BORROWER' ? 'bg-indigo-50 text-indigo-700' :
                         'bg-slate-100 text-slate-600'
                       }`}>

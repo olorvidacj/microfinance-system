@@ -67,7 +67,7 @@ const CollectionsPage: React.FC = () => {
                     <tr key={p.id} className="hover:bg-slate-50">
                       <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-slate-800">{p.receiptNumber}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-700">{p.borrowerName}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-blue-700">{p.loanNumber}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-emerald-700">{p.loanNumber}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{p.paymentMethod}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{p.collectedBy}</td>
                       <td className="whitespace-nowrap px-4 py-3 tabular-nums font-semibold text-emerald-700"><Amount value={p.amount} /></td>

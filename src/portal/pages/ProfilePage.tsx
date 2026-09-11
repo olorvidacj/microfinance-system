@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BadgeCheck,
   CreditCard,
@@ -8,9 +9,12 @@ import {
   ShieldCheck,
   TrendingUp,
   UserRound,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import { profileService } from '../services/profile';
-import { ClientProfile, KycStatusData } from '../types';
+import { ClientProfile, KYCStatus, KycStatusData } from '../types';
 import { formatCurrency, formatDate } from '../../utils/loanMath';
 import {
   Button,
@@ -28,6 +32,25 @@ import {
 } from '../components/ui';
 import { InfoRow, SectionDivider } from '../components/common';
 import { useToast } from '../components/ui/Toast';
+
+const KYC_STEPS = ['Information', 'Documents', 'Review', 'Verification', 'Loan Eligibility'];
+
+const kycStepIndex = (status?: string): number => {
+  switch (status) {
+    case 'PENDING':
+      return 1;
+    case 'UNDER_REVIEW':
+      return 2;
+    case 'VERIFIED':
+      return 3;
+    case 'CORRECTION_REQUIRED':
+    case 'REJECTED':
+    case 'EXPIRED':
+    case 'NOT_STARTED':
+    default:
+      return 0;
+  }
+};
 
 const ProfilePage: React.FC = () => {
   const toast = useToast();
@@ -173,23 +196,56 @@ const ProfilePage: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>Know Your Customer (KYC) verification</CardTitle>
-            {kyc && <StatusBadge status={kyc.kycStatus} tone={kyc.isVerified ? 'green' : 'amber'} />}
+            {kyc && <StatusBadge status={kyc.kycStatus} />}
           </CardHeader>
           <CardBody>
+            {/* Workflow progress indicator */}
+            <div className="mb-5 flex items-center gap-1 overflow-x-auto rounded-xl border border-slate-100 bg-slate-50 p-1.5">
+              {KYC_STEPS.map((label, i) => {
+                const active = i === kycStepIndex(kyc?.kycStatus);
+                const done = i < kycStepIndex(kyc?.kycStatus);
+                return (
+                  <div key={label} className={`flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium ${done ? 'bg-emerald-100 text-emerald-700' : active ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>
+                    {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1 === kycStepIndex(kyc?.kycStatus) && <Clock className="h-3.5 w-3.5" />}
+                    {done ? <span>{label}</span> : <span>{label}</span>}
+                  </div>
+                );
+              })}
+            </div>
+
             {kyc?.isVerified ? (
               <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                 <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                <p className="text-sm text-emerald-800">
-                  Your identity is verified. You are eligible to apply for all HOSCOMO loan products.
-                </p>
+                <div className="text-sm text-emerald-800">
+                  <p className="font-semibold">Your identity is verified.</p>
+                  <p className="mt-0.5">You are eligible to apply for all HOSCOMO loan products.</p>
+                  {kyc.verifiedAt && (
+                    <p className="mt-1 text-xs text-emerald-700">
+                      Verified on {formatDate(kyc.verifiedAt)}
+                      {kyc.reviewedByName ? ` by ${kyc.reviewedByName}` : ''}
+                    </p>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                <p className="text-sm text-amber-800">
-                  <span className="font-semibold">Verification pending.</span> Submit the documents below to unlock
-                  loan applications.
-                </p>
+                <div className="flex-1 text-sm text-amber-800">
+                  <p className="font-semibold">
+                    {kyc?.kycStatus === 'NOT_STARTED' ? 'Verification not yet started.' : 'Verification pending.'}
+                  </p>
+                  <p className="mt-0.5">Submit your information and documents to unlock loan applications.</p>
+                  {(kyc?.correctionReason || kyc?.rejectionReason) && (
+                    <p className="mt-1 text-xs">
+                      {kyc?.correctionReason ? `Correction needed: ${kyc.correctionReason}` : `Rejected: ${kyc.rejectionReason}`}
+                    </p>
+                  )}
+                </div>
+                <Link to="/portal/kyc">
+                  <Button size="sm">
+                    <ShieldCheck className="h-3.5 w-3.5" /> Start KYC
+                  </Button>
+                </Link>
               </div>
             )}
 
@@ -214,6 +270,16 @@ const ProfilePage: React.FC = () => {
                 <li className="text-sm text-slate-400">No documents required.</li>
               )}
             </ul>
+
+            {!kyc?.isVerified && (
+              <div className="mt-5 flex justify-end">
+                <Link to="/portal/kyc">
+                  <Button variant="outline">
+                    Continue KYC <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            )}
           </CardBody>
         </Card>
       )}

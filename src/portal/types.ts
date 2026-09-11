@@ -20,7 +20,7 @@ export type LoanStatus =
   | 'REJECTED'
   | 'CANCELLED';
 
-export type KYCStatus = 'PENDING' | 'UNDER_REVIEW' | 'VERIFIED' | 'REJECTED';
+export type KYCStatus = 'NOT_STARTED' | 'PENDING' | 'UNDER_REVIEW' | 'CORRECTION_REQUIRED' | 'VERIFIED' | 'REJECTED' | 'EXPIRED';
 
 export type NotificationCategory =
   | 'loan_update'
@@ -122,6 +122,73 @@ export interface KycStatusData {
   isVerified: boolean;
   requiredDocuments: KycDocumentItem[];
   uploadedDocuments: any[];
+  submissionId?: string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  correctionReason?: string;
+  rejectionReason?: string;
+  verifiedAt?: string;
+  reviewedByName?: string;
+}
+
+// ---------------------------------------------------------------------------
+// KYC Submission
+// ---------------------------------------------------------------------------
+
+export interface KycPersonalInfo {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: string;
+  civilStatus: string;
+  phone: string;
+  email: string;
+}
+
+export interface KycAddress {
+  houseUnit: string;
+  street: string;
+  barangay: string;
+  city: string;
+  province: string;
+  postalCode: string;
+}
+
+export interface KycEmployment {
+  occupation: string;
+  employmentStatus: string;
+  employer: string;
+  monthlyIncome: number;
+  sourceOfIncome: string;
+}
+
+export interface KycRequiredDocumentItem {
+  id: string;
+  documentType: string;
+  documentName: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface KycSubmissionFull {
+  id: string;
+  borrowerId: string;
+  status: KYCStatus;
+  personalInfo: KycPersonalInfo;
+  address: KycAddress;
+  employment: KycEmployment;
+  submittedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  correctionReason?: string;
+  rejectionReason?: string;
+  verifiedAt?: string;
+  documents: KycDocumentItem[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------

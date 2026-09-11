@@ -1,9 +1,11 @@
 import React from 'react';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import DashboardPage from '../pages/DashboardPage';
 import ProfilePage from '../pages/ProfilePage';
 import LoansPage from '../pages/LoansPage';
 import LoanDetailPage from '../pages/LoanDetailPage';
 import ApplyLoanPage from '../pages/ApplyLoanPage';
+import KycPage from '../pages/KycPage';
 import PaymentsPage from '../pages/PaymentsPage';
 import SavingsPage from '../pages/SavingsPage';
 import TransactionsPage from '../pages/TransactionsPage';
@@ -18,19 +20,24 @@ export interface PortalRouteDef {
   element: React.ReactNode;
 }
 
+const wrap = (page: React.ReactNode): React.ReactNode => (
+  <ErrorBoundary>{page}</ErrorBoundary>
+);
+
 // Authenticated client portal routes (mounted under "/portal").
 export const PORTAL_ROUTES: PortalRouteDef[] = [
-  { path: '', element: <DashboardPage /> },
-  { path: 'profile', element: <ProfilePage /> },
-  { path: 'loans', element: <LoansPage /> },
-  { path: 'loans/:id', element: <LoanDetailPage /> },
-  { path: 'apply', element: <ApplyLoanPage /> },
-  { path: 'payments', element: <PaymentsPage /> },
-  { path: 'savings', element: <SavingsPage /> },
-  { path: 'transactions', element: <TransactionsPage /> },
-  { path: 'groups', element: <GroupsPage /> },
-  { path: 'notifications', element: <NotificationsPage /> },
-  { path: 'documents', element: <DocumentsPage /> },
-  { path: 'support', element: <SupportPage /> },
-  { path: 'settings', element: <SettingsPage /> },
+  { path: '', element: wrap(<DashboardPage />) },
+  { path: 'profile', element: wrap(<ProfilePage />) },
+  { path: 'loans', element: wrap(<LoansPage />) },
+  { path: 'loans/:id', element: wrap(<LoanDetailPage />) },
+  { path: 'apply', element: wrap(<ApplyLoanPage />) },
+  { path: 'kyc', element: wrap(<KycPage />) },
+  { path: 'payments', element: wrap(<PaymentsPage />) },
+  { path: 'savings', element: wrap(<SavingsPage />) },
+  { path: 'transactions', element: wrap(<TransactionsPage />) },
+  { path: 'groups', element: wrap(<GroupsPage />) },
+  { path: 'notifications', element: wrap(<NotificationsPage />) },
+  { path: 'documents', element: wrap(<DocumentsPage />) },
+  { path: 'support', element: wrap(<SupportPage />) },
+  { path: 'settings', element: wrap(<SettingsPage />) },
 ];

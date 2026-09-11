@@ -118,8 +118,8 @@ export const BorrowersView: React.FC<BorrowersViewProps> = ({
               className="px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white text-slate-700 focus:outline-none"
             >
               <option value="ALL">All KYC & PMES</option>
-              <option value="Verified">Verified & PMES Completed</option>
-              <option value="Pending Review">Pending BI Investigation</option>
+              <option value="VERIFIED">Verified & PMES Completed</option>
+              <option value="PENDING">Pending BI Investigation</option>
             </select>
           </div>
         </div>

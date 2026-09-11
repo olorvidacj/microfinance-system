@@ -121,19 +121,19 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
 
   // Verification Queue (Pending Review or Correction Requested)
   const kycQueueClients = filteredBorrowers.filter(
-    (c) => c.kycStatus === 'Pending Review' || c.kycStatus === 'Correction Requested' || c.kycStatus === 'Incomplete'
+    (c) => c.kycStatus === 'PENDING' || c.kycStatus === 'CORRECTION_REQUIRED' || c.kycStatus === 'NOT_STARTED'
   );
 
   // Metrics Count
   const totalCount = filteredBorrowers.length;
   const activeCount = filteredBorrowers.filter((c) => (c.clientStatus || c.memberStatus) === 'Active').length;
   const pendingKycCount = filteredBorrowers.filter(
-    (c) => c.kycStatus === 'Pending Review' || c.kycStatus === 'Correction Requested'
+    (c) => c.kycStatus === 'PENDING' || c.kycStatus === 'CORRECTION_REQUIRED'
   ).length;
   const suspendedCount = filteredBorrowers.filter((c) => (c.clientStatus || c.memberStatus) === 'Suspended').length;
   const inactiveCount = filteredBorrowers.filter((c) => (c.clientStatus || c.memberStatus) === 'Inactive').length;
   const rejectedCount = filteredBorrowers.filter(
-    (c) => (c.clientStatus || c.memberStatus) === 'Rejected' || c.kycStatus === 'Rejected'
+    (c) => (c.clientStatus || c.memberStatus) === 'Rejected' || c.kycStatus === 'REJECTED'
   ).length;
 
   const getStatusBadge = (status?: ClientStatus) => {
@@ -155,15 +155,15 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
 
   const getKycBadge = (status?: KycStatus) => {
     switch (status) {
-      case 'Verified':
+      case 'VERIFIED':
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'Pending Review':
+      case 'PENDING':
         return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'Correction Requested':
+      case 'CORRECTION_REQUIRED':
         return 'bg-orange-50 text-orange-700 border-orange-200';
-      case 'Rejected':
+      case 'REJECTED':
         return 'bg-rose-50 text-rose-700 border-rose-200';
-      case 'Incomplete':
+      case 'NOT_STARTED':
         return 'bg-slate-50 text-slate-700 border-slate-200';
       default:
         return 'bg-slate-50 text-slate-700 border-slate-200';
@@ -386,11 +386,11 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
                   className="bg-transparent font-semibold text-slate-700 outline-none"
                 >
                   <option value="ALL">All KYC</option>
-                  <option value="Verified">Verified</option>
-                  <option value="Pending Review">Pending Review</option>
-                  <option value="Correction Requested">Correction Requested</option>
-                  <option value="Incomplete">Incomplete</option>
-                  <option value="Rejected">Rejected</option>
+                  <option value="VERIFIED">Verified</option>
+                  <option value="PENDING">Pending Review</option>
+                  <option value="CORRECTION_REQUIRED">Correction Requested</option>
+                  <option value="NOT_STARTED">Incomplete</option>
+                  <option value="REJECTED">Rejected</option>
                 </select>
               </div>
 
@@ -463,7 +463,7 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
                       <div className="flex items-center justify-between text-slate-600">
                         <span className="text-slate-400 text-[11px]">KYC Verification</span>
                         <span className={`px-2 py-0.2 rounded-md text-[10px] font-bold border ${getKycBadge(client.kycStatus)}`}>
-                          {client.kycStatus || 'Verified'}
+                          {client.kycStatus || 'VERIFIED'}
                         </span>
                       </div>
 
@@ -502,7 +502,7 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
                           View Profile
                         </button>
 
-                        {canReviewKyc && client.kycStatus !== 'Verified' && (
+                        {canReviewKyc && client.kycStatus !== 'VERIFIED' && (
                           <button
                             onClick={() => {
                               setQuickReviewClient(client);

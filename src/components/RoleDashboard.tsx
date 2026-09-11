@@ -119,7 +119,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> KYC Verified
         </div>
         <div className={statValue}>
-          {filteredBorrowers.filter((b) => (b as any).kycStatus === 'Verified').length}
+          {filteredBorrowers.filter((b) => (b as any).kycStatus === 'VERIFIED').length}
         </div>
         <div className="text-xs text-slate-500 mt-1">verified members</div>
       </div>

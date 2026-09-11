@@ -135,9 +135,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const pendingKycClients = useMemo(() => {
     return filteredBorrowers.filter(
       (b) =>
-        b.kycStatus === 'Pending Review' ||
-        b.kycStatus === 'Incomplete' ||
-        b.kycStatus === 'Correction Requested'
+        b.kycStatus === 'PENDING' ||
+        b.kycStatus === 'NOT_STARTED' ||
+        b.kycStatus === 'CORRECTION_REQUIRED'
     );
   }, [filteredBorrowers]);
   const pendingKycCount = pendingKycClients.length;
@@ -1210,7 +1210,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <td className="py-3 px-4 text-gray-600">{branch?.name || 'Main Branch'}</td>
                           <td className="py-3 px-4">
                             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
-                              {client.kycStatus || 'Pending Review'}
+                              {client.kycStatus || 'PENDING'}
                             </span>
                           </td>
                           <td className="py-3 px-4 font-mono text-gray-600">{client.phone}</td>

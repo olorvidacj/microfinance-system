@@ -49,12 +49,12 @@ const ClientProfilePage: React.FC = () => {
         <div className="space-y-6">
           <Card>
             <div className="flex flex-col items-center px-5 py-6 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-lg font-bold text-white">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-lg font-bold text-white">
                 {initials}
               </div>
               <h3 className="mt-3 text-base font-bold text-slate-900">{client.fullName}</h3>
               <p className="text-sm text-slate-400">{client.occupation || '—'}</p>
-              {client.kycStatus === 'Verified' ? (
+              {client.kycStatus === 'VERIFIED' ? (
                 <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
                   <ShieldCheck className="h-3.5 w-3.5" /> KYC verified
                 </span>
@@ -98,7 +98,7 @@ const ClientProfilePage: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><HandCoins className="h-4 w-4" /> Loans</CardTitle>
-              <Link to={`/staff/app/applications?client=${client.id}`} className="text-xs font-medium text-blue-700 hover:text-blue-900">
+              <Link to={`/staff/app/applications?client=${client.id}`} className="text-xs font-medium text-emerald-700 hover:text-emerald-900">
                 New loan application →
               </Link>
             </CardHeader>

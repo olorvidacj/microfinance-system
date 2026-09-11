@@ -108,7 +108,7 @@ const LoanApplicationsPage: React.FC = () => {
                 {rows.map((app) => (
                   <tr key={app.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-slate-800">
-                      <Link to={`/staff/app/loans/${app.id}`} className="text-blue-700 hover:text-blue-900">
+                      <Link to={`/staff/app/loans/${app.id}`} className="text-emerald-700 hover:text-emerald-900">
                         {app.loanNumber}
                       </Link>
                     </td>

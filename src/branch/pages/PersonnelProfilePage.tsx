@@ -18,7 +18,7 @@ const PersonnelProfilePage: React.FC = () => {
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
           <div className="flex flex-col items-center px-5 py-6 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-lg font-bold text-white">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-lg font-bold text-white">
               {(personnel.name || '?').split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
             </div>
             <h3 className="mt-3 text-base font-bold text-slate-900">{personnel.name}</h3>
@@ -66,7 +66,7 @@ const PersonnelProfilePage: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Permissions ({permissions.length})</CardTitle>
-          <Link to="/staff/app/activity" className="flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900">
+          <Link to="/staff/app/activity" className="flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-900">
             <History className="h-3.5 w-3.5" /> View activity log
           </Link>
         </CardHeader>

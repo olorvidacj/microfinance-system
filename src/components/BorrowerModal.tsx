@@ -30,7 +30,7 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
   );
   const [address, setAddress] = useState(editBorrower?.address || '452 Marketplace St');
   const [city, setCity] = useState(editBorrower?.city || 'Metropolis');
-  const [kycStatus, setKycStatus] = useState<any>(editBorrower?.kycStatus || 'Verified');
+  const [kycStatus, setKycStatus] = useState<any>(editBorrower?.kycStatus || 'VERIFIED');
 
   if (!isOpen) return null;
 
@@ -225,9 +225,9 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
                 onChange={(e: any) => setKycStatus(e.target.value)}
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl"
               >
-                <option value="Verified">Verified (Documents Checked)</option>
-                <option value="Pending Review">Pending Review</option>
-                <option value="Incomplete">Incomplete</option>
+                <option value="VERIFIED">Verified (Documents Checked)</option>
+                <option value="PENDING">Pending Review</option>
+                <option value="NOT_STARTED">Incomplete</option>
               </select>
             </div>
           </div>

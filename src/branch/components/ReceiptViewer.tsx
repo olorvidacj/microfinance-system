@@ -34,7 +34,7 @@ export const ReceiptViewer: React.FC<{
         <div className="border-b border-slate-100 p-5 text-center">
           <p className="text-base font-bold text-slate-900">HOSCOMO Microfinance Cooperative</p>
           <p className="text-xs text-slate-500">Los Baños Main Branch · Official Receipt</p>
-          <p className="mt-1 inline-flex rounded-full bg-blue-50 px-3 py-0.5 text-sm font-bold tabular-nums text-blue-800 ring-1 ring-inset ring-blue-200">
+          <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-3 py-0.5 text-sm font-bold tabular-nums text-emerald-800 ring-1 ring-inset ring-emerald-200">
             {receipt.receiptNumber}
           </p>
         </div>
@@ -73,7 +73,7 @@ export const ReceiptViewer: React.FC<{
             </div>
             <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
               <span className="font-semibold text-slate-700">Total payment</span>
-              <span className="text-lg font-bold tabular-nums text-blue-800">{formatCurrency(receipt.amount)}</span>
+              <span className="text-lg font-bold tabular-nums text-emerald-800">{formatCurrency(receipt.amount)}</span>
             </div>
           </div>
           <div className="flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">

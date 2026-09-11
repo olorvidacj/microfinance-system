@@ -63,7 +63,7 @@ const SavingsPage: React.FC = () => {
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-rose-700"><Amount value={acc.totalWithdrawals} /></td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-600"><Amount value={acc.maintainingBalance} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <Link to={`/staff/app/savings/${acc.id}`} className="text-xs font-medium text-blue-700 hover:text-blue-900">
+                      <Link to={`/staff/app/savings/${acc.id}`} className="text-xs font-medium text-emerald-700 hover:text-emerald-900">
                         Transactions →
                       </Link>
                     </td>

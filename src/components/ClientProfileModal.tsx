@@ -115,15 +115,15 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
 
   const getKycBadge = (status?: KycStatus) => {
     switch (status) {
-      case 'Verified':
+      case 'VERIFIED':
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'Pending Review':
+      case 'PENDING':
         return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'Correction Requested':
+      case 'CORRECTION_REQUIRED':
         return 'bg-orange-50 text-orange-700 border-orange-200';
-      case 'Rejected':
+      case 'REJECTED':
         return 'bg-rose-50 text-rose-700 border-rose-200';
-      case 'Incomplete':
+      case 'NOT_STARTED':
         return 'bg-slate-50 text-slate-700 border-slate-200';
       default:
         return 'bg-slate-50 text-slate-700 border-slate-200';
@@ -511,19 +511,19 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
 
               {/* Status Banner */}
               <div className={`p-4 rounded-xl border flex items-start gap-3 ${
-                client.kycStatus === 'Verified'
+                client.kycStatus === 'VERIFIED'
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                  : client.kycStatus === 'Correction Requested'
+                  : client.kycStatus === 'CORRECTION_REQUIRED'
                   ? 'bg-orange-50 border-orange-200 text-orange-900'
-                  : client.kycStatus === 'Rejected'
+                  : client.kycStatus === 'REJECTED'
                   ? 'bg-rose-50 border-rose-200 text-rose-900'
                   : 'bg-amber-50 border-amber-200 text-amber-900'
               }`}>
-                {client.kycStatus === 'Verified' ? (
+                {client.kycStatus === 'VERIFIED' ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                ) : client.kycStatus === 'Correction Requested' ? (
+                ) : client.kycStatus === 'CORRECTION_REQUIRED' ? (
                   <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
-                ) : client.kycStatus === 'Rejected' ? (
+                ) : client.kycStatus === 'REJECTED' ? (
                   <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                 ) : (
                   <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -581,11 +581,11 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                           </div>
 
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
-                            doc.status === 'Verified'
+                            doc.status === 'VERIFIED'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : doc.status === 'Correction Requested'
+                              : doc.status === 'CORRECTION_REQUIRED'
                               ? 'bg-orange-50 text-orange-700 border-orange-200'
-                              : doc.status === 'Rejected'
+                              : doc.status === 'REJECTED'
                               ? 'bg-rose-50 text-rose-700 border-rose-200'
                               : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}>

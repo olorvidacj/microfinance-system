@@ -27,11 +27,11 @@ const STATUS_OPTIONS = [
 
 const KYC_OPTIONS = [
   { value: '', label: 'All KYC' },
-  { value: 'Verified', label: 'Verified' },
-  { value: 'Pending Review', label: 'Pending Review' },
+  { value: 'VERIFIED', label: 'Verified' },
+  { value: 'PENDING', label: 'Pending Review' },
   { value: 'Under Review', label: 'Under Review' },
-  { value: 'Correction Requested', label: 'Correction Requested' },
-  { value: 'Rejected', label: 'Rejected' },
+  { value: 'CORRECTION_REQUIRED', label: 'Correction Requested' },
+  { value: 'REJECTED', label: 'Rejected' },
 ];
 
 const SORT_OPTIONS = [
@@ -178,7 +178,7 @@ const ClientsPage: React.FC = () => {
                   <tr key={row.id} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/staff/app/clients/${row.id}`)}>
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-xs font-bold text-white">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-xs font-bold text-white">
                           {(row.fullName || '?').slice(0, 2).toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -193,7 +193,7 @@ const ClientsPage: React.FC = () => {
                     <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={row.memberStatus} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-slate-700"><Amount value={row.savingsBalance} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <Link to={`/staff/app/clients/${row.id}`} className="text-xs font-medium text-blue-700 hover:text-blue-900">
+                      <Link to={`/staff/app/clients/${row.id}`} className="text-xs font-medium text-emerald-700 hover:text-emerald-900">
                         View →
                       </Link>
                     </td>

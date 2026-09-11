@@ -80,7 +80,7 @@ export interface LoanProduct {
   badgeColor: string;
 }
 
-export type KycStatus = 'Verified' | 'Pending Review' | 'Correction Requested' | 'Incomplete' | 'Rejected';
+export type KycStatus = 'NOT_STARTED' | 'PENDING' | 'UNDER_REVIEW' | 'CORRECTION_REQUIRED' | 'VERIFIED' | 'REJECTED' | 'EXPIRED';
 export type CreditTier = 'Excellent' | 'Good' | 'Fair' | 'High Risk';
 export type ClientStatus = 'Pending' | 'Active' | 'Inactive' | 'Suspended' | 'Rejected' | 'Irregular' | 'Under Review' | 'Resigned' | 'Probationary';
 export type MemberStatus = ClientStatus;
@@ -96,7 +96,7 @@ export type KycDocumentType =
   | 'Signature Specimen'
   | 'Other Document';
 
-export type KycDocumentStatus = 'Verified' | 'Pending Review' | 'Correction Requested' | 'Rejected';
+export type KycDocumentStatus = 'NOT_STARTED' | 'PENDING' | 'UNDER_REVIEW' | 'CORRECTION_REQUIRED' | 'VERIFIED' | 'REJECTED';
 
 export interface KycDocument {
   id: string;

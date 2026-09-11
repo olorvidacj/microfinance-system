@@ -305,7 +305,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto pr-1">
                     {filteredBorrowers.map((b) => {
                       const isSelected = b.id === selectedBorrowerId;
-                      const isKycVerified = b.kycStatus === 'Verified' || (b.kycDocuments && b.kycDocuments.some((d) => d.status === 'Verified'));
+                      const isKycVerified = b.kycStatus === 'VERIFIED' || (b.kycDocuments && b.kycDocuments.some((d) => d.status === 'VERIFIED'));
 
                       return (
                         <div
