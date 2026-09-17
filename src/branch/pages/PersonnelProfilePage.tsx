@@ -18,11 +18,13 @@ const PersonnelProfilePage: React.FC = () => {
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
           <div className="flex flex-col items-center px-5 py-6 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-lg font-bold text-white">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 text-slate-950 font-black text-xl shadow-lg ring-1 ring-amber-300/40">
               {(personnel.name || '?').split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
             </div>
             <h3 className="mt-3 text-base font-bold text-slate-900">{personnel.name}</h3>
-            <StatusBadge status={personnel.role} tone="teal" />
+            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-0.5 text-xs font-bold text-slate-800 border border-slate-200">
+              {personnel.role}
+            </span>
             <p className="mt-1 text-xs text-slate-400">{personnel.title}</p>
             {personnel.accountStatus && (
               <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">

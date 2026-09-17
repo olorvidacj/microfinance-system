@@ -45,9 +45,9 @@ const GroupLendingPage: React.FC = () => {
         <div className="grid gap-5 lg:grid-cols-2">
           {(data || []).map((g) => (
             <Link key={g.id} to={`/staff/app/groups/${g.id}`} className="block">
-              <Card className="h-full transition hover:border-emerald-300 hover:shadow-md">
+              <Card className="h-full transition hover:border-amber-300 hover:shadow-md">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#091527] text-amber-400 ring-1 ring-amber-400/30">
                     <UsersRound className="h-5 w-5" />
                   </div>
                   <StatusBadge status={g.status || 'Active'} />

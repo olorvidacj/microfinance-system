@@ -1,7 +1,7 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 
-type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success' | 'brand' | 'brandOutline';
+type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success' | 'brand' | 'brandOutline' | 'navy' | 'gold';
 type Size = 'sm' | 'md' | 'lg';
 
 const variants: Record<Variant, string> = {
@@ -11,8 +11,10 @@ const variants: Record<Variant, string> = {
   ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-800',
   danger: 'bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500',
   success: 'bg-emerald-600 text-white hover:bg-emerald-700',
-  brand: 'bg-blue-700 text-white hover:bg-blue-800 focus-visible:ring-blue-500 disabled:bg-blue-400',
-  brandOutline: 'border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 focus-visible:ring-blue-400',
+  brand: 'bg-[#091527] text-white hover:bg-slate-800 focus-visible:ring-slate-700 disabled:bg-slate-400',
+  brandOutline: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus-visible:ring-slate-400',
+  navy: 'bg-[#091527] text-white hover:bg-slate-800 focus-visible:ring-slate-800 disabled:bg-slate-500',
+  gold: 'bg-amber-400 text-slate-950 hover:bg-amber-300 font-bold focus-visible:ring-amber-400 disabled:bg-amber-200',
 };
 
 const sizes: Record<Size, string> = {

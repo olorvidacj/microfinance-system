@@ -80,7 +80,7 @@ const NotificationsPage: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-slate-800">{n.title}</p>
-                  {!n.isRead && <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-600" />}
+                  {!n.isRead && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />}
                 </div>
                 <p className="text-sm text-slate-600">{n.message}</p>
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
@@ -92,7 +92,7 @@ const NotificationsPage: React.FC = () => {
               {n.relatedId && n.relatedType === 'Loan' && (
                 <Link
                   to={`/staff/app/loans/${n.relatedId}`}
-                  className="shrink-0 self-center text-xs font-medium text-emerald-700 hover:text-emerald-900"
+                  className="shrink-0 self-center text-xs font-semibold text-amber-600 hover:text-amber-700"
                   onClick={(e) => e.stopPropagation()}
                 >
                   View →
@@ -101,7 +101,7 @@ const NotificationsPage: React.FC = () => {
               {n.relatedId && n.relatedType === 'Borrower' && (
                 <Link
                   to={`/staff/app/clients/${n.relatedId}`}
-                  className="shrink-0 self-center text-xs font-medium text-emerald-700 hover:text-emerald-900"
+                  className="shrink-0 self-center text-xs font-semibold text-amber-600 hover:text-amber-700"
                   onClick={(e) => e.stopPropagation()}
                 >
                   View →

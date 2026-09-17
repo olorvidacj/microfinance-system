@@ -178,7 +178,7 @@ const ClientsPage: React.FC = () => {
                   <tr key={row.id} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/staff/app/clients/${row.id}`)}>
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-xs font-bold text-white">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#091527] text-xs font-bold text-amber-400 ring-1 ring-amber-400/30">
                           {(row.fullName || '?').slice(0, 2).toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -193,8 +193,8 @@ const ClientsPage: React.FC = () => {
                     <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={row.memberStatus} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-slate-700"><Amount value={row.savingsBalance} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
-                      <Link to={`/staff/app/clients/${row.id}`} className="text-xs font-medium text-emerald-700 hover:text-emerald-900">
-                        View →
+                      <Link to={`/staff/app/clients/${row.id}`} className="text-xs font-semibold text-amber-600 hover:text-amber-700">
+                        View profile →
                       </Link>
                     </td>
                   </tr>

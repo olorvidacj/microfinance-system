@@ -72,13 +72,13 @@ const KycQueuePage: React.FC = () => {
                     <tr key={c.id} className="hover:bg-slate-50">
                       <td className="whitespace-nowrap px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-xs font-bold text-white">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#091527] text-xs font-bold text-amber-400 ring-1 ring-amber-400/30">
                             {(c.fullName || '?').slice(0, 2).toUpperCase()}
                           </div>
                           <div>
                             <div className="text-sm font-semibold text-slate-800">{c.fullName}</div>
-                            <Link to={`/staff/app/clients/${c.id}`} className="text-xs text-emerald-700 hover:text-emerald-900">
-                              View profile
+                            <Link to={`/staff/app/clients/${c.id}`} className="text-xs font-semibold text-amber-600 hover:text-amber-700">
+                              View profile →
                             </Link>
                           </div>
                         </div>
