@@ -32,6 +32,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<AuthUser>;
   register: (data: RegisterData) => Promise<AuthUser>;
   logout: () => void;
+  refreshUser: () => Promise<AuthUser | null>;
 }
 
 const TOKEN_KEY = 'hoscomo_auth_token';
@@ -158,8 +159,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback(async (): Promise<AuthUser | null> => {
+    const token = getStoredToken();
+    if (!token) return null;
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await parseJson(res);
+      if (res.ok && data.user) {
+        if (data.token) {
+          try {
+            localStorage.setItem(TOKEN_KEY, data.token);
+          } catch {}
+        }
+        setUser(data.user);
+        return data.user;
+      }
+    } catch {}
+    return null;
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isRestoring, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isRestoring, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

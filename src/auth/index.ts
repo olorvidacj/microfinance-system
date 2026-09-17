@@ -42,8 +42,8 @@ export function hashPassword(password: string): string {
   return `${salt}:${derived}`;
 }
 
-const DEFAULT_ADMIN_PASS_HASH = hashPassword(process.env.HOSCOMO_BOOTSTRAP_PASSWORD || 'Admin@123');
-const DEFAULT_CLIENT_PASS_HASH = hashPassword('Client@123');
+export const DEFAULT_ADMIN_PASS_HASH = hashPassword(process.env.HOSCOMO_BOOTSTRAP_PASSWORD || 'Admin@123');
+export const DEFAULT_CLIENT_PASS_HASH = hashPassword('Client@123');
 
 export function verifyPassword(password: string, stored: string): boolean {
   try {

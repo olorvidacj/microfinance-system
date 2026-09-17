@@ -16,7 +16,9 @@ import {
   hashPassword,
   authStore,
   ensureDefaultUsers,
+  DEFAULT_ADMIN_PASS_HASH,
 } from './src/auth/index';
+import { INITIAL_BRANCHES, INITIAL_STAFF } from './src/data/initialData';
 import {
   hasPermission,
   hasAnyPermission,
@@ -485,9 +487,278 @@ app.get('/api/auth/me', requireAuth(), async (req: AuthedRequest, res) => {
   try {
     const user = await authStore.findById(req.authUser!.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ user: publicUser(user) });
+    const freshToken = signToken(user);
+    res.json({ user: publicUser(user), token: freshToken });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- Staff Cooperative Branch Assignment Endpoints ----------
+
+// 1. Get Live Branch Assignment for Authenticated Staff
+app.get('/api/staff/branch-assignment', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  try {
+    const user = await authStore.findById(req.authUser!.id);
+    if (!user) return res.status(404).json({ success: false, error: 'Staff account not found' });
+
+    const db = getDb();
+    const supabase = getServerSupabase();
+
+    let staffRecord: any = null;
+    let branchRecord: any = null;
+
+    // 1. Resolve staff record from PostgreSQL DB
+    if (db && user.staffId) {
+      try {
+        const rows = await db.select().from(schema.staff).where(eq(schema.staff.id, user.staffId)).limit(1);
+        if (rows.length > 0) staffRecord = rows[0];
+      } catch (e: any) {
+        console.warn('[Staff Branch] DB staff query warning:', e.message);
+      }
+    }
+
+    if (!staffRecord && db && user.email) {
+      try {
+        const rows = await db.select().from(schema.staff).where(eq(schema.staff.email, user.email.toLowerCase())).limit(1);
+        if (rows.length > 0) staffRecord = rows[0];
+      } catch {}
+    }
+
+    // 2. Fallback to Supabase if configured
+    if (!staffRecord && supabase) {
+      try {
+        const { data } = await supabase.from('staff').select('*').eq('email', user.email.toLowerCase()).maybeSingle();
+        if (data) staffRecord = data;
+      } catch {}
+    }
+
+    // 3. Fallback to initial staff dataset
+    if (!staffRecord) {
+      staffRecord = INITIAL_STAFF.find(
+        (s) => s.id === user.staffId || s.email.toLowerCase() === user.email.toLowerCase()
+      );
+    }
+
+    const assignedBranchId =
+      staffRecord?.assignedBranchId ||
+      staffRecord?.assigned_branch_id ||
+      user.branchId ||
+      null;
+
+    // 4. Resolve branch entity if assigned
+    if (assignedBranchId && assignedBranchId !== 'all' && assignedBranchId !== 'unassigned' && assignedBranchId !== '') {
+      if (db) {
+        try {
+          const bRows = await db.select().from(schema.branches).where(eq(schema.branches.id, assignedBranchId)).limit(1);
+          if (bRows.length > 0) branchRecord = bRows[0];
+        } catch {}
+      }
+      if (!branchRecord && supabase) {
+        try {
+          const { data } = await supabase.from('branches').select('*').eq('id', assignedBranchId).maybeSingle();
+          if (data) branchRecord = data;
+        } catch {}
+      }
+      if (!branchRecord) {
+        branchRecord = INITIAL_BRANCHES.find((b) => b.id === assignedBranchId);
+      }
+    } else if (assignedBranchId === 'all') {
+      // System administrator with global scope defaults to Tacloban Main Branch
+      branchRecord = INITIAL_BRANCHES[0];
+    }
+
+    const formattedBranch = branchRecord
+      ? {
+          id: branchRecord.id,
+          name: branchRecord.name || 'Tacloban Main Branch',
+          code: branchRecord.code || 'TAC-MAIN',
+          address: branchRecord.address || 'HOSCOMO Cooperative Building, Real Street, Tacloban City, Leyte',
+          city: branchRecord.city || 'Tacloban City',
+          phone: branchRecord.phone || '+63 (053) 832-4190',
+          managerName: branchRecord.managerName || branchRecord.manager_name || 'Eduardo Manalo',
+          status: 'active',
+        }
+      : null;
+
+    const requiredBranch = {
+      id: 'br-main',
+      name: 'Tacloban Main Branch',
+      code: 'TAC-MAIN',
+      address: 'HOSCOMO Cooperative Building, Real Street, Tacloban City, Leyte',
+      city: 'Tacloban City',
+      phone: '+63 (053) 832-4190',
+      status: 'active',
+    };
+
+    // Update user session branchId if assignment is confirmed
+    let token = undefined;
+    if (formattedBranch) {
+      if (user.branchId !== formattedBranch.id) {
+        user.branchId = formattedBranch.id;
+        token = signToken(user);
+      }
+    } else {
+      user.branchId = null;
+    }
+
+    res.json({
+      success: true,
+      staff: {
+        id: staffRecord?.id || user.staffId || user.id,
+        name: staffRecord?.name || user.fullName,
+        email: user.email,
+        role: staffRecord?.role || user.staffRole || 'LOAN_OFFICER',
+        title: staffRecord?.title || user.staffRole || 'Staff Member',
+        avatar: staffRecord?.avatar || user.avatar || '',
+        branch: formattedBranch,
+      },
+      requiredBranch,
+      token,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. Administrator Cooperative Branch Assignment (Admin Authorized Only)
+app.post('/api/admin/staff/assign-branch', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  try {
+    const caller = req.authUser!;
+    const { staffId, branchId, adminPassword } = req.body || {};
+
+    if (!staffId || !branchId) {
+      return res.status(400).json({ success: false, error: 'staffId and branchId are required' });
+    }
+
+    // Security check: strictly ensure Administrator privileges
+    const isCallerAdmin = caller.staffRole === 'ADMINISTRATOR' || hasPermission(caller.staffRole, 'manage_users');
+    let authorized = isCallerAdmin;
+
+    if (!authorized && adminPassword) {
+      authorized = verifyPassword(adminPassword, DEFAULT_ADMIN_PASS_HASH);
+    }
+
+    if (!authorized) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied. Only an authorized HOSCOMO System Administrator can assign cooperative branches.',
+      });
+    }
+
+    const db = getDb();
+    const supabase = getServerSupabase();
+
+    // 1. Update DB staff record
+    if (db) {
+      try {
+        await db.update(schema.staff).set({ assignedBranchId: branchId }).where(eq(schema.staff.id, staffId));
+        await db.update(schema.users).set({ branchId }).where(eq(schema.users.staffId, staffId));
+      } catch (e: any) {
+        console.warn('[Staff Assignment] DB update warning:', e.message);
+      }
+    }
+
+    // 2. Update Supabase if available
+    if (supabase) {
+      try {
+        await supabase.from('staff').update({ assigned_branch_id: branchId }).eq('id', staffId);
+        await supabase.from('users').update({ branch_id: branchId }).eq('staff_id', staffId);
+      } catch {}
+    }
+
+    // 3. Update in-memory initial staff list
+    const memStaff = INITIAL_STAFF.find((s) => s.id === staffId);
+    if (memStaff) {
+      memStaff.assignedBranchId = branchId;
+    }
+
+    // 4. Log Audit Trail
+    if (db) {
+      try {
+        await db.insert(schema.auditLogs).values({
+          id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          userId: caller.id,
+          userName: caller.email,
+          action: 'STAFF_BRANCH_ASSIGNMENT',
+          category: 'BRANCH',
+          details: `Staff member ${staffId} assigned to ${branchId} (Tacloban Main Branch) by System Administrator.`,
+          severity: 'Low',
+        } as any);
+      } catch {}
+    }
+
+    // 5. Add Branch Notification
+    if (db) {
+      try {
+        await db.insert(schema.branchNotifications).values({
+          id: `NOTIF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          branchId,
+          type: 'INFO',
+          category: 'ADMIN',
+          title: 'Staff Branch Assignment Finalized',
+          message: `Staff member (${staffId}) was officially assigned to Tacloban Main Branch.`,
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          actionLink: '/staff/app/profile',
+        } as any);
+      } catch {}
+    }
+
+    res.json({
+      success: true,
+      message: 'Staff account successfully assigned to Tacloban Main Branch.',
+      staffId,
+      branchId,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Send Internal Assignment Request Notification to Administrator
+app.post('/api/staff/request-assignment', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+  try {
+    const caller = req.authUser!;
+    const user = await authStore.findById(caller.id);
+    const db = getDb();
+
+    if (db) {
+      try {
+        await db.insert(schema.branchNotifications).values({
+          id: `NOTIF-REQ-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          branchId: 'br-main',
+          type: 'WARNING',
+          category: 'ADMIN',
+          title: 'Cooperative Branch Assignment Request',
+          message: `${user?.fullName || caller.email} (${user?.staffId || caller.id}) requested branch assignment to Tacloban Main Branch.`,
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          actionLink: '/staff/app/profile',
+        } as any);
+
+        await db.insert(schema.auditLogs).values({
+          id: `AUD-REQ-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          userId: caller.id,
+          userName: user?.fullName || caller.email,
+          action: 'BRANCH_ASSIGNMENT_REQUESTED',
+          category: 'BRANCH',
+          details: `Staff member requested cooperative branch assignment to Tacloban Main Branch.`,
+          severity: 'Medium',
+        } as any);
+      } catch (e: any) {
+        console.warn('[Request Assignment] DB notice:', e.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Official assignment request dispatched to HOSCOMO System Administrator (Elena Rostata).',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

@@ -46,17 +46,17 @@ import { calculateLoanSchedule } from '../utils/loanMath';
 export const INITIAL_BRANCHES: Branch[] = [
   {
     id: 'br-main',
-    code: 'MB-01',
-    name: 'San Jose Cooperative Main Branch',
-    city: 'San Jose, Bulacan',
-    address: '108 Maharlika Highway, Poblacion',
-    phone: '+63 (044) 791-2384',
+    code: 'TAC-MAIN',
+    name: 'Tacloban Main Branch',
+    city: 'Tacloban City',
+    address: 'HOSCOMO Cooperative Building, Real Street, Tacloban City, Leyte',
+    phone: '+63 (053) 832-4190',
     managerName: 'Eduardo Manalo',
-    managerEmail: 'e.manalo@sanjosecoop.ph',
+    managerEmail: 'e.manalo@hoscomo.coop',
     activeDisbursedPool: 4850000,
     cashVaultBalance: 320500,
     activeLoansCount: 42,
-    color: '#3B82F6',
+    color: '#F59E0B',
   },
   {
     id: 'br-west',
@@ -89,6 +89,16 @@ export const INITIAL_BRANCHES: Branch[] = [
 ];
 
 export const INITIAL_STAFF: UserStaff[] = [
+  {
+    id: 'staff-10',
+    name: 'Danilo Aquino',
+    email: 'unassigned.staff@hoscomo.coop',
+    role: 'LOAN_OFFICER',
+    assignedBranchId: '',
+    title: 'Field Credit Officer (Pending Assignment)',
+    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80',
+    committee: 'Operations',
+  },
   {
     id: 'staff-08',
     name: 'Elena Rostata',

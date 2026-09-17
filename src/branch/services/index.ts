@@ -19,6 +19,7 @@ import {
   SavingsTransactionRow,
   SolidarityGroup,
   TodayCollections,
+  StaffBranchAssignmentResponse,
 } from '../types';
 import {
   mockBranchContext,
@@ -69,6 +70,27 @@ export const branchService = {
       },
       async () => ({ personnel: mockBranchContext.personnel, branch: mockBranchContext.branch, permissions: mockBranchContext.permissions })
     ),
+
+  getBranchAssignment: async (): Promise<StaffBranchAssignmentResponse> => {
+    return branchRequest('/api/staff/branch-assignment');
+  },
+
+  assignBranch: async (
+    staffId: string,
+    branchId: string,
+    adminPassword?: string
+  ): Promise<{ success: boolean; message: string; staffId: string; branchId: string }> => {
+    return branchRequest('/api/admin/staff/assign-branch', {
+      method: 'POST',
+      body: JSON.stringify({ staffId, branchId, adminPassword }),
+    });
+  },
+
+  requestAssignment: async (): Promise<{ success: boolean; message: string }> => {
+    return branchRequest('/api/staff/request-assignment', {
+      method: 'POST',
+    });
+  },
 };
 
 export const dashboardService = {

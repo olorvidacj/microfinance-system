@@ -33,11 +33,11 @@ export const mockBranchContext: BranchContextData = {
   personnel,
   branch: {
     id: 'br-main',
-    name: 'Los Baños Main Branch',
-    code: 'LB-MAIN',
-    address: '122 Grove St, Los Baños, Laguna',
-    branchManager: 'Carla Reyes',
-    contactPhone: '0917 000 1234',
+    name: 'Tacloban Main Branch',
+    code: 'TAC-MAIN',
+    address: 'HOSCOMO Cooperative Building, Real Street, Tacloban City, Leyte',
+    branchManager: 'Eduardo Manalo',
+    contactPhone: '+63 (053) 832-4190',
     status: 'Active',
   },
   permissions: [

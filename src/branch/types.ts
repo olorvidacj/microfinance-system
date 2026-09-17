@@ -28,6 +28,36 @@ export interface BranchContextData {
   viewAll: boolean;
 }
 
+export interface StaffBranchAssignmentResponse {
+  success: boolean;
+  staff: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    title?: string;
+    avatar?: string;
+    branch: {
+      id: string;
+      name: string;
+      code: string;
+      address: string;
+      city?: string;
+      phone?: string;
+      status: string;
+    } | null;
+  };
+  requiredBranch?: {
+    id: string;
+    name: string;
+    code: string;
+    address: string;
+    city?: string;
+    phone?: string;
+  };
+  message?: string;
+}
+
 export interface ClientSummary {
   id: string;
   borrowerNumber: string;
