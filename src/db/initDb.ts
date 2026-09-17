@@ -1,4 +1,4 @@
-import { getPool } from './index';
+import { getPool, markConnectionStringFailed } from './index';
 
 export async function initDbSchema(): Promise<boolean> {
   const pool = getPool();
@@ -10,6 +10,7 @@ export async function initDbSchema(): Promise<boolean> {
   try {
     client = await pool.connect();
   } catch (err: any) {
+    markConnectionStringFailed();
     console.warn('[Database] Could not connect to database pool:', err.message);
     return false;
   }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   SlidersHorizontal, Building2, Landmark, UserCog, Bell as BellIcon,
-  ShieldCheck, ReceiptText, Coins, Check, ChevronRight, Database, Languages,
+  ShieldCheck, ReceiptText, Coins, Check, ChevronRight, Database, Languages, Lock, Shield,
 } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { Badge } from '../components/Badge';
@@ -11,24 +11,30 @@ const Toggle: React.FC<ToggleProps> = ({ checked, onChange }) => (
   <button
     type="button"
     onClick={() => onChange(!checked)}
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${checked ? 'bg-emerald-500' : 'bg-slate-200'}`}
+    className={`relative inline-flex h-5 w-10 items-center rounded-full transition focus:outline-none focus:ring-2 focus:ring-amber-500/30 ${
+      checked ? 'bg-[#091527] border border-amber-400/50' : 'bg-slate-200'
+    }`}
   >
-    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+    <span
+      className={`inline-block h-4 w-4 transform rounded-full transition ${
+        checked ? 'translate-x-5 bg-amber-400' : 'translate-x-0.5 bg-white shadow-xs'
+      }`}
+    />
   </button>
 );
 
-const inputCls = "w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition";
-const labelCls = "block text-sm font-medium text-slate-700 mb-1.5";
+const inputCls = "w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition text-slate-800";
+const labelCls = "block text-xs font-bold text-slate-700 mb-1.5";
 
 const TABS = [
-  { id: 'general', label: 'General Settings', icon: SlidersHorizontal },
-  { id: 'coop', label: 'Cooperative Info', icon: Building2 },
-  { id: 'lending', label: 'Loan & Interest', icon: Landmark },
-  { id: 'savings', label: 'Savings & Interest', icon: Coins },
-  { id: 'users', label: 'User Access & Roles', icon: UserCog },
-  { id: 'notifications', label: 'Notifications', icon: BellIcon },
-  { id: 'security', label: 'Security & KYC', icon: ShieldCheck },
-  { id: 'fees', label: 'Fees & Charges', icon: ReceiptText },
+  { id: 'general', label: 'General Parameters', icon: SlidersHorizontal },
+  { id: 'coop', label: 'Cooperative Charter', icon: Building2 },
+  { id: 'lending', label: 'Credit & Interest Rules', icon: Landmark },
+  { id: 'savings', label: 'Savings & CBU Equity', icon: Coins },
+  { id: 'users', label: 'RBAC Access Matrix', icon: UserCog },
+  { id: 'notifications', label: 'System Alert Dispatches', icon: BellIcon },
+  { id: 'security', label: 'Security & KYC Policies', icon: ShieldCheck },
+  { id: 'fees', label: 'Coop Tariffs & Fees', icon: ReceiptText },
 ];
 
 export const SystemSettingsPage: React.FC = () => {
@@ -36,7 +42,6 @@ export const SystemSettingsPage: React.FC = () => {
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState('');
 
-  // Simplified state for demo
   const [fees, setFees] = useState({
     membershipFee: 300,
     loanProcessing: 250,
@@ -44,6 +49,7 @@ export const SystemSettingsPage: React.FC = () => {
     latePenalty: 3,
     delinquencyFee: 2,
   });
+
   const [coopInfo, setCoopInfo] = useState({
     coopName: 'HOSCOMO Multi-Purpose Cooperative',
     acronym: 'HOSCOMO',
@@ -53,8 +59,9 @@ export const SystemSettingsPage: React.FC = () => {
     email2: 'credit@hoscomo.coop',
     website: 'www.hoscomo.coop',
     tin: '123-456-789-000',
-    ceaLicense: 'CEA-003-TR-2023',
+    ceaLicense: 'CDA-003-TR-2023',
   });
+
   const [toggles, setToggles] = useState({
     autoKycReminder: true,
     kycSmsAlert: false,
@@ -72,162 +79,205 @@ export const SystemSettingsPage: React.FC = () => {
 
   const save = () => {
     setDirty(false);
-    setToast('Settings saved successfully.');
+    setToast('Institutional parameters saved successfully.');
   };
 
   const field = (label: string, value: string, onChange: (v: string) => void, placeholder?: string, type = 'text') => (
     <div>
       <label className={labelCls}>{label}</label>
-      <input type={type} className={inputCls} value={value} placeholder={placeholder} onChange={(e) => { onChange(e.target.value); markDirty(); }} />
+      <input
+        type={type}
+        className={inputCls}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => { onChange(e.target.value); markDirty(); }}
+      />
     </div>
   );
 
   const toggleRow = (label: string, description: string, key: keyof typeof toggles) => (
-    <div className="flex items-center justify-between py-3 border-b border-slate-50 last:border-0">
-      <div>
-        <p className="text-sm font-medium text-slate-800">{label}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{description}</p>
+    <div className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
+      <div className="pr-4">
+        <p className="text-xs font-bold text-slate-800">{label}</p>
+        <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{description}</p>
       </div>
-      <Toggle checked={toggles[key]} onChange={(v) => { setToggles((p) => ({ ...p, [key]: v })); setDirty(true); }} />
+      <Toggle
+        checked={toggles[key]}
+        onChange={(v) => { setToggles((p) => ({ ...p, [key]: v })); setDirty(true); }}
+      />
     </div>
   );
 
   return (
-    <div>
-      <Breadcrumbs items={[{ label: 'System Settings' }]} />
+    <div className="space-y-6">
+      <Breadcrumbs items={[{ label: 'Institutional Policies & System Settings' }]} />
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">System Settings</h1>
-          <p className="mt-0.5 text-sm text-slate-500">Configure cooperative policies, lending rules, and system behavior.</p>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">System & Policy Settings</h1>
+            <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              Cooperative Governance
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500">
+            Configure lending caps, member share capital rules, statutory penalties, and compliance parameters.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant={dirty ? 'warning' : 'success'} dot={dirty}>{dirty ? 'Unsaved changes' : 'All changes saved'}</Badge>
-          <button onClick={save} disabled={!dirty} className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-semibold rounded-xl transition shadow-md">
-            <Check className="w-4 h-4" /> Save Changes
+        <div className="flex items-center gap-2.5">
+          <Badge variant={dirty ? 'warning' : 'success'} dot={dirty}>
+            {dirty ? 'Unsaved modifications' : 'Synced with core'}
+          </Badge>
+          <button
+            onClick={save}
+            disabled={!dirty}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#091527] hover:bg-[#132c52] disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold rounded-xl transition shadow-sm border border-slate-800"
+          >
+            <Check className="w-3.5 h-3.5 text-amber-400" /> Save Changes
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left tabs */}
+      <div className="flex flex-col lg:flex-row gap-5">
+        {/* Left Navigation Tabs */}
         <div className="lg:w-64 shrink-0">
-          <nav className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-2 space-y-0.5">
+          <nav className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-1.5 space-y-1">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => { setTab(t.id); setDirty(false); }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition ${
-                  tab === t.id ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition ${
+                  tab === t.id
+                    ? 'bg-[#091527] text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <t.icon className={`w-4 h-4 ${tab === t.id ? 'text-amber-400' : 'text-slate-400'}`} />
-                <span className="font-medium flex-1 text-left">{t.label}</span>
-                <ChevronRight className={`w-4 h-4 ${tab === t.id ? 'text-slate-400' : 'text-slate-200'}`} />
+                <t.icon className={`w-4 h-4 shrink-0 ${tab === t.id ? 'text-amber-400' : 'text-slate-400'}`} />
+                <span className="flex-1 text-left truncate">{t.label}</span>
+                <ChevronRight className={`w-3.5 h-3.5 ${tab === t.id ? 'text-amber-400' : 'text-slate-300'}`} />
               </button>
             ))}
           </nav>
         </div>
 
-        {/* Right content */}
-        <div className="flex-1 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+        {/* Right Settings Form Container */}
+        <div className="flex-1 bg-white rounded-xl border border-slate-200/80 shadow-sm p-6">
           {tab === 'general' && (
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">General Settings</h3>
-              <p className="text-sm text-slate-400 mb-5">Base system preferences and defaults.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                {field('Cooperative Name', 'HOSCOMO Multi-Purpose Cooperative',() => {})}
-                {field('System Language', 'English (default)',() => {})}
-                {field('Default Currency', 'PHP — Philippine Peso',() => {})}
-                {field('Fiscal Year Start', 'January 2026',() => {})}
+              <div className="mb-5 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">General System Baseline</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Core localization, reporting currency, and administrative defaults.</p>
               </div>
-              <div className="mt-2 space-y-3">
-                <h4 className="text-sm font-semibold text-slate-800 pt-3 border-t border-slate-100">Interface</h4>
-                {toggleRow('Dark Mode Support', 'Allow admin to switch between light and dark themes.', 'suspiciousLoginAlert')}
-                {toggleRow('Reduce Motion', 'Disable animations and transitions in the admin UI.', 'autoKycReminder')}
-                {toggleRow('Daily Email Summary', 'Send a daily system summary to the administrator.', 'dailyReportEmail')}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {field('Registered Cooperative Name', 'HOSCOMO Multi-Purpose Cooperative', () => {})}
+                {field('System Administrative Language', 'English (PH Banking Standard)', () => {})}
+                {field('Operating Currency Code', 'PHP (Philippine Peso, ₱)', () => {})}
+                {field('Fiscal Accounting Cycle Start', 'January 1, 2026', () => {})}
+              </div>
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Interface & Audit Preferences</h4>
+                {toggleRow('Audit Activity Highlighting', 'Visually flag administrative modifications with amber tags.', 'suspiciousLoginAlert')}
+                {toggleRow('Consolidated Daily Executive Digest', 'Forward daily automated portfolio balance report to admin mailbox.', 'dailyReportEmail')}
+                {toggleRow('Strict Single Session Per Operator', 'Disallow concurrent admin sign-ins on different workstations.', 'withdrawalTwoFactor')}
               </div>
             </div>
           )}
 
           {tab === 'coop' && (
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">Cooperative Information</h3>
-              <p className="text-sm text-slate-400 mb-5">Official details shown across receipts and the member portal.</p>
+              <div className="mb-5 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">Cooperative Legal Charter</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Statutory accreditation details displayed on official passbooks and receipts.</p>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {field('Cooperative Full Name', coopInfo.coopName, (v) => { setCoopInfo((p) => ({ ...p, coopName: v })); markDirty(); })}
-                {field('Acronym', coopInfo.acronym, (v) => { setCoopInfo((p) => ({ ...p, acronym: v })); markDirty(); })}
-                <div className="md:col-span-2">{field('Registered Address', coopInfo.address, (v) => { setCoopInfo((p) => ({ ...p, address: v })); markDirty(); })}</div>
-                {field('Contact Phone', coopInfo.contact, (v) => { setCoopInfo((p) => ({ ...p, contact: v })); markDirty(); })}
-                {field('General Email', coopInfo.email, (v) => { setCoopInfo((p) => ({ ...p, email: v })); markDirty(); })}
-                {field('Credit Department Email', coopInfo.email2, (v) => { setCoopInfo((p) => ({ ...p, email2: v })); markDirty(); })}
-                {field('Website', coopInfo.website, (v) => { setCoopInfo((p) => ({ ...p, website: v })); markDirty(); })}
-                {field('TIN Number', coopInfo.tin, (v) => { setCoopInfo((p) => ({ ...p, tin: v })); markDirty(); })}
-                {field('CDA Registration No.', coopInfo.ceaLicense, (v) => { setCoopInfo((p) => ({ ...p, ceaLicense: v })); markDirty(); })}
+                {field('Registered Acronym', coopInfo.acronym, (v) => { setCoopInfo((p) => ({ ...p, acronym: v })); markDirty(); })}
+                <div className="md:col-span-2">
+                  {field('Principal Corporate Address', coopInfo.address, (v) => { setCoopInfo((p) => ({ ...p, address: v })); markDirty(); })}
+                </div>
+                {field('Official Landline Phone', coopInfo.contact, (v) => { setCoopInfo((p) => ({ ...p, contact: v })); markDirty(); })}
+                {field('Public Inquiries Email', coopInfo.email, (v) => { setCoopInfo((p) => ({ ...p, email: v })); markDirty(); })}
+                {field('Credit Division Email', coopInfo.email2, (v) => { setCoopInfo((p) => ({ ...p, email2: v })); markDirty(); })}
+                {field('Institutional Web Portal', coopInfo.website, (v) => { setCoopInfo((p) => ({ ...p, website: v })); markDirty(); })}
+                {field('BIR Tax Identification No. (TIN)', coopInfo.tin, (v) => { setCoopInfo((p) => ({ ...p, tin: v })); markDirty(); })}
+                {field('Cooperative Development Authority (CDA) Reg.', coopInfo.ceaLicense, (v) => { setCoopInfo((p) => ({ ...p, ceaLicense: v })); markDirty(); })}
               </div>
             </div>
           )}
 
           {tab === 'lending' && (
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">Loan & Interest Configuration</h3>
-              <p className="text-sm text-slate-400 mb-5">Policy limits applied to all lending activities.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {field('Maximum Loan Amount (P)', '100,000',() => {markDirty();})}
-                {field('Maximum Loan Term (months)', '24',() => {markDirty();})}
-                {field('Minimum Interest Rate (%)', '1.5',() => {markDirty();})}
-                {field('Maximum Interest Rate (%)', '2.5',() => {markDirty();})}
-                {field('Late Payment Penalty Rate (%)', `${fees.latePenalty}`, (v) => { setFees((p) => ({ ...p, latePenalty: Number(v) })); markDirty(); })}
+              <div className="mb-5 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">Credit Underwriting & Amortization Rules</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Statutory credit ceilings, interest guidelines, and default procedures.</p>
               </div>
-              <div className="mt-5 space-y-3">
-                <h4 className="text-sm font-semibold text-slate-800 pt-3 border-t border-slate-100">Lending Rules</h4>
-                {toggleRow('Auto-Compute Monthly Interest', 'Interest is computed automatically per amortization schedule.', 'autoLoanInterest')}
-                {toggleRow('Allow Early Settlement', 'Clients may fully prepay loans at any time without penalty.', 'allowEarlySettlement')}
-                {toggleRow('Grace Period for First Payment', 'First payment is due 30 days after loan disbursement.', 'withdrawalTwoFactor')}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {field('Maximum Standard Micro-Loan Ceiling (PHP)', '100,000', () => { markDirty(); })}
+                {field('Maximum Repayment Term (Months)', '24', () => { markDirty(); })}
+                {field('Standard Interest Rate Floor (% per month)', '1.5', () => { markDirty(); })}
+                {field('Maximum Allowable Interest Cap (% per month)', '2.5', () => { markDirty(); })}
+                {field('Delinquent Amortization Penalty Rate (%)', `${fees.latePenalty}`, (v) => { setFees((p) => ({ ...p, latePenalty: Number(v) })); markDirty(); })}
+              </div>
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Automated Underwriting Policies</h4>
+                {toggleRow('Automatic Monthly Interest Calculation', 'Diminishing balance interest is automatically scheduled per amortization table.', 'autoLoanInterest')}
+                {toggleRow('Unrestricted Early Loan Prepayment', 'Borrowers can prepay balance at zero additional termination penalty.', 'allowEarlySettlement')}
+                {toggleRow('Mandatory 30-Day First Payment Grace Period', 'Schedule first installment due 30 days after loan disbursement.', 'withdrawalTwoFactor')}
               </div>
             </div>
           )}
 
           {tab === 'savings' && (
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">Savings & Interest</h3>
-              <p className="text-sm text-slate-400 mb-5">Settings for member savings products.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {field('Regular Savings Rate (% p.a.)', '1.0',() => {markDirty();})}
-                {field('Time Deposit Rate (% p.a.)', '3.5',() => {markDirty();})}
-                {field('Minimum Balance (P)', '500',() => {markDirty();})}
-                {field('Minimum Time Deposit Term (months)', '3',() => {markDirty();})}
+              <div className="mb-5 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">Savings Ledger & Member Capital Build-Up</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Interest dividend rates for regular passbook and fixed time deposit products.</p>
               </div>
-              <div className="mt-5 space-y-3">
-                <h4 className="text-sm font-semibold text-slate-800 pt-3 border-t border-slate-100">Savings Rules</h4>
-                {toggleRow('Auto-Roll Time Deposits', 'Matured time deposits automatically renew for the same term.', 'timeDepositAutoRoll')}
-                {toggleRow('SMS Alert on Deposits', 'Notify members via SMS for successful deposits.', 'savingsSmsAlert')}
-                {toggleRow('Require 2FA for Withdrawals', 'Members must verify identity for any withdrawal.', 'withdrawalTwoFactor')}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {field('Regular Savings Dividend (% p.a.)', '1.0', () => { markDirty(); })}
+                {field('Fixed Time Deposit Yield (% p.a.)', '3.5', () => { markDirty(); })}
+                {field('Minimum Maintaining Passbook Balance (PHP)', '500', () => { markDirty(); })}
+                {field('Minimum Time Deposit Lock-in Period (Months)', '3', () => { markDirty(); })}
+              </div>
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Savings Execution Safeguards</h4>
+                {toggleRow('Automatic Time Deposit Rollover', 'Renew matured time deposits into equal subsequent tenures upon expiration.', 'timeDepositAutoRoll')}
+                {toggleRow('Immediate SMS Dispatch on Deposit', 'Dispatch real-time SMS to registered member phone upon teller counter deposit.', 'savingsSmsAlert')}
+                {toggleRow('Two-Factor Passcode for Counter Withdrawals', 'Require OTP or biometric confirmation for withdrawals over PHP 10,000.', 'withdrawalTwoFactor')}
               </div>
             </div>
           )}
 
           {tab === 'users' && (
             <div className="space-y-4">
-              <h3 className="font-semibold text-slate-900 mb-1">User Access & Roles</h3>
-              <p className="text-sm text-slate-400 mb-4">Define role-based permissions across the system.</p>
+              <div className="mb-4 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">Role-Based Access Control (RBAC)</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Active institutional roles and subsystem module permissions.</p>
+              </div>
               {[
-                { role: 'Administrator', desc: 'Full access to all modules and system settings.', caps: 9, icon: ShieldCheck, color: 'text-amber-600 bg-amber-50' },
-                { role: 'Manager', desc: 'Manage clients, loans, and approve disbursements.', caps: 7, icon: UserCog, color: 'text-blue-600 bg-blue-50' },
-                { role: 'Loan Officer', desc: 'Process loan applications and KYC verification.', caps: 5, icon: Landmark, color: 'text-indigo-600 bg-indigo-50' },
-                { role: 'Teller', desc: 'Process payments, deposits, and withdrawals.', caps: 4, icon: ReceiptText, color: 'text-emerald-600 bg-emerald-50' },
-                { role: 'Auditor', desc: 'Read-only access to all modules and audit logs.', caps: 6, icon: Database, color: 'text-slate-600 bg-slate-100' },
-              ].map((r, i) => (
-                <div key={r.role} className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition">
-                  <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${r.color}`}>
+                { role: 'System Administrator', desc: 'Full sovereign read/write authority across all modules and audit log purging.', caps: 9, icon: ShieldCheck, color: 'text-amber-700 bg-amber-50 border-amber-200' },
+                { role: 'Branch General Manager', desc: 'Supervise territorial loans, approve disbursements up to PHP 500,000.', caps: 7, icon: UserCog, color: 'text-blue-700 bg-blue-50 border-blue-200' },
+                { role: 'Credit / Loan Officer', desc: 'Process client origination, loan appraisals, and solidarity cell monitoring.', caps: 5, icon: Landmark, color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+                { role: 'Cashier / Teller', desc: 'Receive cash/digital amortizations, post savings deposits, and issue receipts.', caps: 4, icon: ReceiptText, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+                { role: 'Internal Compliance Auditor', desc: 'Read-only access across all general ledgers, transactions, and audit records.', caps: 6, icon: Database, color: 'text-slate-700 bg-slate-100 border-slate-200' },
+              ].map((r) => (
+                <div key={r.role} className="flex items-center gap-3.5 p-3.5 rounded-xl border border-slate-200/70 hover:border-amber-400/50 transition">
+                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${r.color}`}>
                     <r.icon className="w-5 h-5" />
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-800">{r.role}</p>
-                    <p className="text-xs text-slate-400 truncate">{r.desc}</p>
+                    <p className="font-bold text-slate-900 text-xs">{r.role}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{r.desc}</p>
                   </div>
-                  <Badge variant="info">{r.caps} of 9 modules</Badge>
-                  <button onClick={() => setTab('security')} className="text-sm font-medium text-blue-600 hover:text-blue-700 shrink-0">Configure</button>
+                  <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/60">
+                    {r.caps} of 9 Subsystems
+                  </span>
+                  <button
+                    onClick={() => setTab('security')}
+                    className="text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg transition"
+                  >
+                    Policies
+                  </button>
                 </div>
               ))}
             </div>
@@ -235,68 +285,85 @@ export const SystemSettingsPage: React.FC = () => {
 
           {tab === 'notifications' && (
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">Notification Preferences</h3>
-              <p className="text-sm text-slate-400 mb-5">Choose how and when system alerts are delivered.</p>
-              <div className="space-y-3">
-                {toggleRow('KYC Pending Reminders', 'Daily reminder for pending KYC verification requests.', 'autoKycReminder')}
-                {toggleRow('KYC SMS Alerts', 'Notify clients via SMS when KYC is approved.', 'kycSmsAlert')}
-                {toggleRow('Large Transaction Alert', 'Alert admins for transactions above P50,000.', 'requireAdminApproveLarge')}
-                {toggleRow('Suspicious Login Alerts', 'Emails admin when unusual login activity is detected.', 'suspiciousLoginAlert')}
-                {toggleRow('Daily System Report', 'Send a daily summary email at 6:00 AM.', 'dailyReportEmail')}
+              <div className="mb-5 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">System Alert Dispatches</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Automated push, SMS, and email triggers for critical operational events.</p>
+              </div>
+              <div className="space-y-1">
+                {toggleRow('Daily KYC Queue Reminders', 'Notify compliance officers of unreviewed member dossiers at 8:00 AM.', 'autoKycReminder')}
+                {toggleRow('Member SMS Dispatch on KYC Approval', 'Send automated welcome SMS upon verification approval.', 'kycSmsAlert')}
+                {toggleRow('High-Exposure Transaction Escalations', 'Immediate dashboard banner for single transactions exceeding PHP 50,000.', 'requireAdminApproveLarge')}
+                {toggleRow('Suspicious Network Login Alerts', 'Alert security team upon anomalous IP or off-hours sign-in.', 'suspiciousLoginAlert')}
+                {toggleRow('Consolidated Morning Summary Email', 'Dispatch daily operational overview to general manager at 6:00 AM.', 'dailyReportEmail')}
               </div>
             </div>
           )}
 
           {tab === 'security' && (
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">Security & KYC Policy</h3>
-              <p className="text-sm text-slate-400 mb-5">Password, login, and identity verification rules.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                {field('Password Minimum Length', '8',() => {markDirty();})}
-                {field('Password Expiry (days)', '90',() => {markDirty();})}
-                {field('Max Failed Login Attempts', '5',() => {markDirty();})}
-                {field('Session Timeout (minutes)', '15',() => {markDirty();})}
-                {field('KYC Document Validity (months)', '12',() => {markDirty();})}
+              <div className="mb-5 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">Security & KYC Compliance Policy</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Cryptographic thresholds, session idle timers, and identity verification mandates.</p>
               </div>
-              <div className="space-y-3 pt-3 border-t border-slate-100">
-                <h4 className="text-sm font-semibold text-slate-800">Security Policies</h4>
-                {toggleRow('Require Strong Passwords', 'Passwords must include numbers, symbols, and uppercase letters.', 'requireAdminApproveLarge')}
-                {toggleRow('Two-Factor Authentication', 'Require 2FA for all administrator accounts.', 'withdrawalTwoFactor')}
-                {toggleRow('Auto-Lock Suspicious Accounts', 'Automatically suspend accounts after failed login attempts.', 'suspiciousLoginAlert')}
-                {toggleRow('Require KYC for All New Clients', 'Block lending products for unverified members.', 'autoKycReminder')}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {field('Minimum Password Complexity (Chars)', '8', () => { markDirty(); })}
+                {field('Mandatory Password Rotation Cycle (Days)', '90', () => { markDirty(); })}
+                {field('Failed Authentication Lockout Limit', '5 Attempts', () => { markDirty(); })}
+                {field('Idle Session Inactivity Expiry (Minutes)', '15 Minutes', () => { markDirty(); })}
+                {field('KYC Identity Document Validity Period', '12 Months', () => { markDirty(); })}
+              </div>
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Hardened Security Enforcement</h4>
+                {toggleRow('Enforce Enterprise Password Complexity', 'Require mixed case, numbers, and special symbols for all staff accounts.', 'requireAdminApproveLarge')}
+                {toggleRow('Mandatory Two-Factor Auth (2FA) for Admins', 'Require authenticator app code on every administrative sign-in.', 'withdrawalTwoFactor')}
+                {toggleRow('Automated Lockout on Repeated Failures', 'Temporarily disable operator credentials after 5 consecutive bad passcodes.', 'suspiciousLoginAlert')}
+                {toggleRow('Strict Pre-Loan KYC Requirement', 'Prevent credit disbursements until KYC dossier is formally validated.', 'autoKycReminder')}
               </div>
             </div>
           )}
 
           {tab === 'fees' && (
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">Fees & Charges</h3>
-              <p className="text-sm text-slate-400 mb-5">Service fees applied across cooperative transactions.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {field('Membership Fee (P)', `${fees.membershipFee}`, (v) => { setFees((p) => ({ ...p, membershipFee: Number(v) })); markDirty(); })}
-                {field('Loan Processing Fee (P)', `${fees.loanProcessing}`, (v) => { setFees((p) => ({ ...p, loanProcessing: Number(v) })); markDirty(); })}
-                {field('Savings Withdrawal Fee (P)', `${fees.savingsWithdrawal}`, (v) => { setFees((p) => ({ ...p, savingsWithdrawal: Number(v) })); markDirty(); })}
-                {field('Late Payment Penalty (%)', `${fees.latePenalty}`, (v) => { setFees((p) => ({ ...p, latePenalty: Number(v) })); markDirty(); })}
-                {field('Delinquency Fee (%)', `${fees.delinquencyFee}`, (v) => { setFees((p) => ({ ...p, delinquencyFee: Number(v) })); markDirty(); })}
+              <div className="mb-5 pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 tracking-tight">Cooperative Tariffs & Service Fees</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Approved fee schedule applied across teller and loan operations.</p>
               </div>
-              <p className="text-xs text-slate-400 mt-4">All fees are denominated in Philippine Pesos unless otherwise stated.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {field('Member Onboarding / Membership Fee (PHP)', `${fees.membershipFee}`, (v) => { setFees((p) => ({ ...p, membershipFee: Number(v) })); markDirty(); })}
+                {field('Credit Application Processing Fee (PHP)', `${fees.loanProcessing}`, (v) => { setFees((p) => ({ ...p, loanProcessing: Number(v) })); markDirty(); })}
+                {field('Over-the-Counter Withdrawal Fee (PHP)', `${fees.savingsWithdrawal}`, (v) => { setFees((p) => ({ ...p, savingsWithdrawal: Number(v) })); markDirty(); })}
+                {field('Late Installment Penalty Surcharge (%)', `${fees.latePenalty}`, (v) => { setFees((p) => ({ ...p, latePenalty: Number(v) })); markDirty(); })}
+                {field('30+ Days Delinquency Administrative Fee (%)', `${fees.delinquencyFee}`, (v) => { setFees((p) => ({ ...p, delinquencyFee: Number(v) })); markDirty(); })}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-4 italic">
+                * All tariffs are officially enacted under HOSCOMO General Assembly Resolution 2024-B and BSP circular guidelines.
+              </p>
             </div>
           )}
 
-          {/* Footer actions */}
-          <div className="flex justify-end mt-6 pt-5 border-t border-slate-100">
-            <button onClick={() => { setDirty(false); setToast('Changes discarded.'); }} disabled={!dirty} className="px-5 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 disabled:opacity-40 disabled:pointer-events-none mr-3 rounded-xl hover:bg-slate-50 transition">
-              Discard
+          {/* Footer Save / Discard Bar */}
+          <div className="flex justify-end gap-2.5 mt-8 pt-4 border-t border-slate-100">
+            <button
+              onClick={() => { setDirty(false); setToast('Modifications discarded.'); }}
+              disabled={!dirty}
+              className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:pointer-events-none rounded-xl hover:bg-slate-100 transition"
+            >
+              Discard Changes
             </button>
-            <button onClick={save} disabled={!dirty} className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-semibold rounded-xl transition shadow-md">
-              <Check className="w-4 h-4" /> Save Changes
+            <button
+              onClick={save}
+              disabled={!dirty}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#091527] hover:bg-[#132c52] disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold rounded-xl transition shadow-sm border border-slate-800"
+            >
+              <Check className="w-3.5 h-3.5 text-amber-400" /> Save Changes
             </button>
           </div>
         </div>
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-xl animate-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-6 right-6 z-50 bg-[#091527] border border-amber-500/40 text-white text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
           {toast}
         </div>
       )}

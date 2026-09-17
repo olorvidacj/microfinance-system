@@ -12,11 +12,25 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let serverSupabaseClient: SupabaseClient | null = null;
 
+export function isPlaceholderSupabaseUrl(url?: string | null): boolean {
+  if (!url) return true;
+  const lower = url.toLowerCase().trim();
+  return (
+    lower.includes('your-project') ||
+    lower.includes('your_project') ||
+    lower.includes('your-project-ref') ||
+    lower.includes('placeholder') ||
+    lower.includes('example.com') ||
+    lower.includes('<') ||
+    lower.includes('>')
+  );
+}
+
 export function getServerSupabase(): SupabaseClient | null {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
-  if (!supabaseUrl || !serviceKey) {
+  if (!supabaseUrl || !serviceKey || isPlaceholderSupabaseUrl(supabaseUrl)) {
     return null;
   }
 

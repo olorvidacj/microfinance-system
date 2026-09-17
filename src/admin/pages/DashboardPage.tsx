@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Users, UserCheck, ShieldCheck, FileSpreadsheet, CheckCircle2, PiggyBank,
   ArrowLeftRight, Users2, Sparkles, PlusCircle, Download, Eye, ArrowUpRight,
+  Landmark, ShieldAlert, BadgePercent, Calendar, TrendingUp
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -20,10 +21,10 @@ export const DashboardPage: React.FC = () => {
   const [quickLoading, setQuickLoading] = useState(false);
 
   const quickActions = [
-    { label: 'New User', icon: PlusCircle, path: '/admin/users', color: 'text-blue-600 bg-blue-50' },
-    { label: 'Verify KYC', icon: ShieldCheck, path: '/admin/kyc', color: 'text-amber-600 bg-amber-50' },
-    { label: 'Review Loans', icon: FileSpreadsheet, path: '/admin/loans', color: 'text-emerald-600 bg-emerald-50' },
-    { label: 'Generate Report', icon: Download, path: '/admin/reports', color: 'text-purple-600 bg-purple-50' },
+    { label: 'Register User', icon: PlusCircle, path: '/admin/users', color: 'text-blue-600 bg-blue-50/80 border-blue-100' },
+    { label: 'Verify KYC Queue', icon: ShieldCheck, path: '/admin/kyc', color: 'text-amber-600 bg-amber-50/80 border-amber-100' },
+    { label: 'Review Loans', icon: FileSpreadsheet, path: '/admin/loans', color: 'text-emerald-600 bg-emerald-50/80 border-emerald-100' },
+    { label: 'Financial Reports', icon: Download, path: '/admin/reports', color: 'text-indigo-600 bg-indigo-50/80 border-indigo-100' },
   ];
 
   const recentLoans = MOCK_LOANS.slice(0, 5);
@@ -35,112 +36,238 @@ export const DashboardPage: React.FC = () => {
     setTimeout(() => {
       setQuickLoading(false);
       window.location.href = path;
-    }, 300);
+    }, 200);
   };
 
   return (
-    <div>
-      {/* Header row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Welcome back, Elena. Here's what's happening at HOSCOMO today.
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <button className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition shadow-sm">
-            <Download className="w-4 h-4" />
-            Export
-          </button>
-          <button className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-medium transition shadow-md">
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            Quick Actions
-          </button>
+    <div className="space-y-6">
+      {/* Executive Welcome Banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#091527] via-[#0d1f3b] to-[#132c52] p-6 sm:p-7 text-white shadow-xl border border-[#1b345b]">
+        {/* Subtle decorative gold line & glow */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600" />
+        <div className="absolute -right-16 -bottom-16 w-64 h-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                HOSCOMO Microfinance Cooperative
+              </span>
+              <span className="text-slate-400 text-xs flex items-center gap-1">
+                <Landmark className="w-3.5 h-3.5 text-amber-400" /> Tacloban, Leyte
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+              Executive Management Console
+            </h1>
+            <p className="mt-1 text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Monitoring credit operations, KYC verifications, group lending liability, and savings liquidity for HOSCOMO Cooperative.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <Link
+              to="/admin/reports"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs sm:text-sm font-semibold border border-white/15 transition backdrop-blur shadow-sm"
+            >
+              <Download className="w-4 h-4 text-amber-400" />
+              <span>Export Audit</span>
+            </Link>
+            <Link
+              to="/admin/loans"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-bold shadow-md shadow-amber-500/20 transition"
+            >
+              <Sparkles className="w-4 h-4 text-slate-950" />
+              <span>Credit Desk</span>
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Quick action buttons */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      {/* Quick Launch Buttons */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {quickActions.map((qa) => (
           <button
             key={qa.label}
             onClick={() => handleQuickAction(qa.path)}
-            className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200/80 hover:border-slate-300 hover:shadow-md transition text-left"
+            className="group flex items-center gap-3.5 px-4 py-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-amber-400/50 hover:shadow-md transition-all duration-200 text-left"
           >
-            <span className={`w-9 h-9 rounded-lg flex items-center justify-center ${qa.color}`}>
+            <span className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-transform group-hover:scale-105 shrink-0 ${qa.color}`}>
               <qa.icon className="w-4 h-4" />
             </span>
-            <span className="text-sm font-semibold text-slate-700">{qa.label}</span>
+            <div className="min-w-0">
+              <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-amber-800 transition block truncate">
+                {qa.label}
+              </span>
+              <span className="text-[11px] text-slate-400 flex items-center gap-0.5">
+                Manage <ArrowUpRight className="w-3 h-3 text-slate-400 group-hover:text-amber-600 transition" />
+              </span>
+            </div>
           </button>
         ))}
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Registered Users" value="48" icon={Users} iconColor="text-blue-600" iconBg="bg-blue-50" change={8} changeLabel="vs last month" />
-        <StatCard title="Total Active Clients" value="995" icon={UserCheck} iconColor="text-emerald-600" iconBg="bg-emerald-50" change={5.2} changeLabel="vs last month" />
-        <StatCard title="Pending KYC Requests" value="45" icon={ShieldCheck} iconColor="text-amber-600" iconBg="bg-amber-50" change={-12} changeLabel="vs last month" />
-        <StatCard title="Total Loan Applications" value="112" icon={FileSpreadsheet} iconColor="text-indigo-600" iconBg="bg-indigo-50" change={18} changeLabel="vs last month" />
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Approved Loans" value="89" icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" subtitle="79.5% approval rate" />
-        <StatCard title="Total Savings" value={formatPHP(6700000)} icon={PiggyBank} iconColor="text-amber-600" iconBg="bg-amber-50" change={4.8} changeLabel="vs last month" />
-        <StatCard title="Financial Transactions" value="1,428" icon={ArrowLeftRight} iconColor="text-cyan-600" iconBg="bg-cyan-50" change={10.4} changeLabel="vs last month" />
-        <StatCard title="Active Lending Groups" value="32" icon={Users2} iconColor="text-purple-600" iconBg="bg-purple-50" change={2} changeLabel="this quarter" />
+      {/* Core Banking KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total Registered Users"
+          value="48"
+          icon={Users}
+          iconColor="text-blue-600"
+          iconBg="bg-blue-50"
+          change={8}
+          changeLabel="vs last month"
+        />
+        <StatCard
+          title="Total Active Clients"
+          value="995"
+          icon={UserCheck}
+          iconColor="text-emerald-600"
+          iconBg="bg-emerald-50"
+          change={5.2}
+          changeLabel="vs last month"
+        />
+        <StatCard
+          title="Pending KYC Requests"
+          value="45"
+          icon={ShieldCheck}
+          iconColor="text-amber-600"
+          iconBg="bg-amber-50"
+          change={-12}
+          changeLabel="vs last month"
+          accentBorder
+        />
+        <StatCard
+          title="Total Loan Applications"
+          value="112"
+          icon={FileSpreadsheet}
+          iconColor="text-indigo-600"
+          iconBg="bg-indigo-50"
+          change={18}
+          changeLabel="vs last month"
+        />
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Approved Loans"
+          value="89"
+          icon={CheckCircle2}
+          iconColor="text-emerald-600"
+          iconBg="bg-emerald-50"
+          subtitle="79.5% approval rate"
+        />
+        <StatCard
+          title="Total Savings Liquidity"
+          value={formatPHP(6700000)}
+          icon={PiggyBank}
+          iconColor="text-amber-600"
+          iconBg="bg-amber-50"
+          change={4.8}
+          changeLabel="vs last month"
+          accentBorder
+        />
+        <StatCard
+          title="Transactions Recorded"
+          value="1,428"
+          icon={ArrowLeftRight}
+          iconColor="text-cyan-600"
+          iconBg="bg-cyan-50"
+          change={10.4}
+          changeLabel="vs last month"
+        />
+        <StatCard
+          title="Active Lending Groups"
+          value="32"
+          icon={Users2}
+          iconColor="text-purple-600"
+          iconBg="bg-purple-50"
+          change={2}
+          changeLabel="this quarter"
+        />
+      </div>
+
+      {/* Analytics Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Loan trend */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
             <div>
-              <h3 className="font-semibold text-slate-900">Loan Application Trend</h3>
-              <p className="text-xs text-slate-400">Last 6 months</p>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                Loan Origination & Approval Trajectory
+              </h3>
+              <p className="text-xs text-slate-400">Monthly loan volume across all Tacloban branches</p>
             </div>
-            <Badge variant="success" dot>+12.5%</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="gold" dot>79.5% Avg Approval</Badge>
+              <Badge variant="success" dot>+12.5% Growth</Badge>
+            </div>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={LOAN_TREND_DATA} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <AreaChart data={LOAN_TREND_DATA} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gradApps" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#0B192C" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="#0B192C" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="gradApproved" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.2} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#d97706" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#d97706" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} width={32} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="applications" name="Applications" stroke="#3b82f6" strokeWidth={2} fill="url(#gradApps)" />
-                <Area type="monotone" dataKey="approved" name="Approved" stroke="#10b981" strokeWidth={2} fill="url(#gradApproved)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} width={35} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#091527',
+                    border: '1px solid #1e3a8a',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    fontSize: '12px',
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: '8px' }} />
+                <Area type="monotone" dataKey="applications" name="Applications" stroke="#0B192C" strokeWidth={2.5} fill="url(#gradApps)" />
+                <Area type="monotone" dataKey="approved" name="Approved" stroke="#d97706" strokeWidth={2.5} fill="url(#gradApproved)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Transaction overview */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
-          <div className="mb-4">
-            <h3 className="font-semibold text-slate-900">Transaction Overview</h3>
-            <p className="text-xs text-slate-400">Deposits vs Loan Payments</p>
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">
+          <div className="mb-4 pb-3 border-b border-slate-100">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+              Cash Flow Velocity
+            </h3>
+            <p className="text-xs text-slate-400">Savings deposits vs. loan amortizations (PHP)</p>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={TRANSACTION_CHART_DATA} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} width={44} tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="deposits" name="Deposits" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <BarChart data={TRANSACTION_CHART_DATA} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  width={42}
+                  tickFormatter={(v) => `₱${Math.round(v / 1000)}k`}
+                />
+                <Tooltip
+                  formatter={(v: any) => [`₱${Number(v).toLocaleString()}`, '']}
+                  contentStyle={{
+                    backgroundColor: '#091527',
+                    border: '1px solid #1e3a8a',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    fontSize: '12px',
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: '8px' }} />
+                <Bar dataKey="deposits" name="Savings Deposits" fill="#0B192C" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="loanPayments" name="Loan Payments" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -148,120 +275,195 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Second row charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
-          <div className="mb-4">
-            <h3 className="font-semibold text-slate-900">Client Registrations</h3>
-            <p className="text-xs text-slate-400">New clients per month</p>
+      {/* Secondary Metrics & Compliance Pipeline */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Client registrations */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                New Client Membership Onboarding
+              </h3>
+              <p className="text-xs text-slate-400">Tacloban Main, Palo, and Ormoc Branches</p>
+            </div>
+            <Link to="/admin/clients" className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1">
+              Client Registry <ArrowUpRight className="w-3 h-3" />
+            </Link>
           </div>
-          <div className="h-52">
+          <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={CLIENT_REGISTRATION_DATA} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} width={30} />
-                <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                <Line type="monotone" dataKey="registrations" name="Registrations" stroke="#8b5cf6" strokeWidth={2.5} dot={{ r: 4, fill: '#8b5cf6' }} />
+              <LineChart data={CLIENT_REGISTRATION_DATA} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} width={30} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#091527',
+                    border: '1px solid #1e3a8a',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    fontSize: '12px',
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="registrations"
+                  name="New Clients"
+                  stroke="#d97706"
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="font-semibold text-slate-900">KYC Verification Stats</h3>
-              <p className="text-xs text-slate-400">Overall verification pipeline</p>
+        {/* KYC Verification Stats */}
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                  KYC Compliance Pipeline
+                </h3>
+                <p className="text-xs text-slate-400">Official Bangko Sentral / CDA KYC audit</p>
+              </div>
+              <Link to="/admin/kyc" className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1">
+                Queue <ArrowUpRight className="w-3 h-3" />
+              </Link>
             </div>
-            <Link to="/admin/kyc" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1">
-              Manage <ArrowUpRight className="w-3 h-3" />
-            </Link>
+
+            <div className="grid grid-cols-3 gap-2 my-4">
+              <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-100 text-center">
+                <span className="text-xl font-bold text-emerald-700">89%</span>
+                <p className="text-xs font-semibold text-emerald-800 mt-0.5">Verified</p>
+                <p className="text-[10px] text-emerald-600">685 clients</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-100 text-center">
+                <span className="text-xl font-bold text-amber-700">6%</span>
+                <p className="text-xs font-semibold text-amber-800 mt-0.5">Pending</p>
+                <p className="text-[10px] text-amber-600">45 clients</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-100 text-center">
+                <span className="text-xl font-bold text-rose-700">2%</span>
+                <p className="text-xs font-semibold text-rose-800 mt-0.5">Rejected</p>
+                <p className="text-[10px] text-rose-600">12 clients</p>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-full border-[6px] border-emerald-100 flex items-center justify-center">
-                <span className="text-lg font-bold text-emerald-600">89%</span>
-              </div>
-              <p className="mt-2 text-xs font-medium text-slate-600">Verified</p>
-              <p className="text-[10px] text-slate-400">685 clients</p>
+
+          <div className="pt-3 border-t border-slate-100 space-y-2 text-xs">
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">Under Investigation / Review</span>
+              <span className="font-bold text-slate-800">22 files</span>
             </div>
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-full border-[6px] border-amber-100 flex items-center justify-center">
-                <span className="text-lg font-bold text-amber-600">6%</span>
-              </div>
-              <p className="mt-2 text-xs font-medium text-slate-600">Pending</p>
-              <p className="text-[10px] text-slate-400">45 clients</p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-full border-[6px] border-red-100 flex items-center justify-center">
-                <span className="text-lg font-bold text-red-500">2%</span>
-              </div>
-              <p className="mt-2 text-xs font-medium text-slate-600">Rejected</p>
-              <p className="text-[10px] text-slate-400">12 clients</p>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-500">Under Review</span>
-              <span className="font-medium text-slate-700">22</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-slate-500">Requires Correction</span>
-              <span className="font-medium text-slate-700">8</span>
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">Document Correction Required</span>
+              <span className="font-bold text-amber-600">8 files</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Recent loans table */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
-        <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
+      {/* Operational Queues: Recent Loans & Notifications */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
             <div>
-              <h3 className="font-semibold text-slate-900">Recent Loan Applications</h3>
-              <p className="text-xs text-slate-400">Latest applications submitted</p>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                Recent Loan Applications
+              </h3>
+              <p className="text-xs text-slate-400">Microfinance, SME, and Agricultural loan requests</p>
             </div>
-            <Link to="/admin/loans" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1">
-              View All <ArrowUpRight className="w-3 h-3" />
+            <Link to="/admin/loans" className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1">
+              View All Loans <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>
+
           <DataTable
             data={recentLoans}
             keyField="id"
             columns={[
-              { key: 'loanId', header: 'Loan ID', render: (l) => <span className="font-mono text-xs text-slate-600">{l.loanId}</span> },
-              { key: 'clientName', header: 'Client', render: (l) => <span className="font-medium text-slate-800">{l.clientName}</span> },
-              { key: 'loanProduct', header: 'Product', render: (l) => <span className="text-xs text-slate-500">{l.loanProduct}</span> },
-              { key: 'loanAmount', header: 'Amount', render: (l) => <span className="font-medium text-slate-800">{formatPHP(l.loanAmount)}</span> },
-              { key: 'status', header: 'Status', render: (l) => <Badge>{l.status}</Badge> },
-              { key: 'view', header: '', render: () => (
-                <Link to="/admin/loans" className="inline-flex items-center justify-center p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition">
-                  <Eye className="w-4 h-4" />
-                </Link>
-              )},
+              {
+                key: 'loanId',
+                header: 'Loan ID',
+                render: (l) => <span className="font-mono text-xs font-semibold text-[#0B192C]">{l.loanId}</span>,
+              },
+              {
+                key: 'clientName',
+                header: 'Client / Borrower',
+                render: (l) => <span className="font-medium text-slate-800">{l.clientName}</span>,
+              },
+              {
+                key: 'loanProduct',
+                header: 'Product',
+                render: (l) => <span className="text-xs text-slate-600">{l.loanProduct}</span>,
+              },
+              {
+                key: 'loanAmount',
+                header: 'Amount',
+                render: (l) => <span className="font-bold text-slate-900">{formatPHP(l.loanAmount)}</span>,
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                render: (l) => <Badge dot>{l.status}</Badge>,
+              },
+              {
+                key: 'view',
+                header: 'Action',
+                render: () => (
+                  <Link
+                    to="/admin/loans"
+                    className="inline-flex items-center justify-center p-1.5 rounded-lg border border-slate-200 hover:bg-amber-50 hover:border-amber-300 text-slate-600 hover:text-amber-700 transition"
+                    title="Open Loan File"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Link>
+                ),
+              },
             ]}
           />
         </div>
 
-        {/* Notifications panel */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-slate-900">Recent Notifications</h3>
-            <Link to="/admin/notifications" className="text-xs text-blue-600 font-medium hover:underline">
-              View All
+        {/* Notifications preview card */}
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5 flex flex-col">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+              Action Required Alerts
+            </h3>
+            <Link to="/admin/notifications" className="text-xs font-semibold text-amber-600 hover:text-amber-700">
+              Center ({unreadNotifications.length})
             </Link>
           </div>
-          <div className="space-y-3">
+
+          <div className="space-y-3 flex-1 overflow-y-auto max-h-[380px] pr-1">
             {unreadNotifications.map((n) => (
-              <div key={n.id} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50/80 border border-slate-100">
-                <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
-                  n.type === 'KYC' ? 'bg-amber-500' : n.type === 'Loan' ? 'bg-emerald-500' : n.type === 'Transaction' ? 'bg-cyan-500' : 'bg-blue-500'
-                }`} />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-800 truncate">{n.title}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
-                  <p className="text-[10px] text-slate-400 mt-1">{n.timestamp}</p>
+              <div
+                key={n.id}
+                className="flex items-start gap-3 p-3 rounded-xl bg-slate-50/80 border border-slate-200/60 hover:bg-amber-50/30 hover:border-amber-200/80 transition"
+              >
+                <span
+                  className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${
+                    n.type === 'KYC'
+                      ? 'bg-amber-500'
+                      : n.type === 'Loan'
+                      ? 'bg-emerald-500'
+                      : n.type === 'Transaction'
+                      ? 'bg-blue-500'
+                      : 'bg-slate-400'
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="text-xs font-bold text-slate-800 truncate">{n.title}</p>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">{n.timestamp}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
+                    {n.message}
+                  </p>
                 </div>
               </div>
             ))}
@@ -269,28 +471,59 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Recent transactions */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
-        <div className="flex items-center justify-between mb-4">
+      {/* Recent transactions section */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
           <div>
-            <h3 className="font-semibold text-slate-900">Recent Financial Transactions</h3>
-            <p className="text-xs text-slate-400">Latest recorded transactions</p>
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+              Latest Financial Transactions
+            </h3>
+            <p className="text-xs text-slate-400">Real-time deposit, withdrawal, and amortization ledger entries</p>
           </div>
-          <Link to="/admin/transactions" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1">
-            View All <ArrowUpRight className="w-3 h-3" />
+          <Link to="/admin/transactions" className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1">
+            All Transactions <ArrowUpRight className="w-3 h-3" />
           </Link>
         </div>
+
         <DataTable
           data={recentTxns}
           keyField="id"
           columns={[
-            { key: 'transactionId', header: 'Transaction ID', render: (t) => <span className="font-mono text-xs text-slate-600">{t.transactionId}</span> },
-            { key: 'clientName', header: 'Client', render: (t) => <span className="font-medium text-slate-800">{t.clientName}</span> },
-            { key: 'type', header: 'Type', render: (t) => <Badge>{t.type}</Badge> },
-            { key: 'amount', header: 'Amount', render: (t) => <span className="font-medium text-slate-800">{formatPHP(t.amount)}</span> },
-            { key: 'paymentMethod', header: 'Method', render: (t) => <span className="text-xs text-slate-500">{t.paymentMethod}</span> },
-            { key: 'datetime', header: 'Date & Time', render: (t) => <span className="text-xs text-slate-500">{t.dateTime}</span> },
-            { key: 'status', header: 'Status', render: (t) => <Badge>{t.status}</Badge> },
+            {
+              key: 'transactionId',
+              header: 'Txn ID',
+              render: (t) => <span className="font-mono text-xs font-medium text-[#0B192C]">{t.transactionId}</span>,
+            },
+            {
+              key: 'clientName',
+              header: 'Member / Client',
+              render: (t) => <span className="font-medium text-slate-800">{t.clientName}</span>,
+            },
+            {
+              key: 'type',
+              header: 'Transaction Type',
+              render: (t) => <Badge>{t.type}</Badge>,
+            },
+            {
+              key: 'amount',
+              header: 'Amount',
+              render: (t) => <span className="font-bold text-slate-900">{formatPHP(t.amount)}</span>,
+            },
+            {
+              key: 'paymentMethod',
+              header: 'Channel',
+              render: (t) => <Badge variant="default">{t.paymentMethod}</Badge>,
+            },
+            {
+              key: 'dateTime',
+              header: 'Date & Time',
+              render: (t) => <span className="text-xs text-slate-500">{t.dateTime}</span>,
+            },
+            {
+              key: 'status',
+              header: 'Status',
+              render: (t) => <Badge dot>{t.status}</Badge>,
+            },
           ]}
         />
       </div>
