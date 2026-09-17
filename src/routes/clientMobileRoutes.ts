@@ -3,6 +3,84 @@ import { getDb, schema } from '../db/index';
 import { eq, desc, and } from 'drizzle-orm';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../auth/index';
 import { calculateLoanSchedule } from '../utils/loanMath';
+import { getServerSupabase } from '../db/supabaseServer';
+
+const KYC_STORAGE_BUCKET = 'kyc-documents';
+const KYC_STORAGE_SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days for staff review
+
+// Accepted image payloads for KYC document uploads
+const KYC_ACCEPTED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
+const KYC_MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function mimeFromBase64(base64: string): string {
+  const match = /^data:([a-zA-Z0-9./+-]+);base64,/.exec(base64 || '');
+  return match ? match[1] : 'image/jpeg';
+}
+
+// Produce a filesystem-safe lowercase slug from a document type.
+function stringToId(value: string): string {
+  return (value || 'doc')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+function stripDataUrlPrefix(base64: string): string {
+  const idx = (base64 || '').indexOf(',');
+  return idx >= 0 ? base64.slice(idx + 1) : base64;
+}
+
+// Upload a base64 image to the private kyc-documents bucket, returning an expiring signed URL.
+async function uploadKycFile(
+  borrowerId: string,
+  folder: string,
+  base64: string,
+  mime?: string
+): Promise<{ signedUrl: string; path: string } | null> {
+  const supabase = getServerSupabase();
+  if (!supabase) {
+    throw new Error('Supabase storage is not configured on the server.');
+  }
+  const payload = stripDataUrlPrefix(base64);
+  const buffer = Buffer.from(payload, 'base64');
+  if (buffer.length < 128) throw new Error('The uploaded image appears to be empty or corrupted.');
+  if (buffer.length > KYC_MAX_FILE_BYTES) {
+    throw new Error('The uploaded image exceeds the 10 MB limit.');
+  }
+  const contentType = mime && KYC_ACCEPTED_MIME.includes(mime) ? mime : mimeFromBase64(base64);
+  if (!KYC_ACCEPTED_MIME.includes(contentType)) {
+    throw new Error('Only JPG, PNG, and WEBP images are accepted.');
+  }
+  const ext = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const objectPath = `kyc/${borrowerId}/${folder}/${fileName}`;
+
+  const { error: upErr } = await supabase.storage
+    .from(KYC_STORAGE_BUCKET)
+    .upload(objectPath, buffer, { contentType, upsert: false });
+  if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
+
+  const { data: signed } = await supabase.storage
+    .from(KYC_STORAGE_BUCKET)
+    .createSignedUrl(objectPath, KYC_STORAGE_SIGNED_URL_TTL);
+  if (!signed) throw new Error('Unable to generate a secure link for the uploaded file.');
+
+  return { signedUrl: signed.signedUrl, path: objectPath };
+}
+
+// Remove previously uploaded objects for the same borrower/folder prefix (re-upload hygiene).
+async function removeKycFolderObjects(borrowerId: string, folder: string): Promise<void> {
+  const supabase = getServerSupabase();
+  if (!supabase) return;
+  const prefix = `kyc/${borrowerId}/${folder}/`;
+  const { data, error } = await supabase.storage.from(KYC_STORAGE_BUCKET).list(`kyc/${borrowerId}/${folder}`);
+  if (error || !data) return;
+  const names = data.filter((f) => f.name && f.metadata?.size > 0).map((f) => `${prefix}${f.name}`);
+  if (names.length) {
+    await supabase.storage.from(KYC_STORAGE_BUCKET).remove(names);
+  }
+}
 
 export interface AuthedRequest extends Request {
   authUser?: {
@@ -532,12 +610,19 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
     let rejectionReason: string | undefined;
     let verifiedAt: string | undefined;
     let reviewedByName: string | undefined;
+    let staffRemarks: string | undefined;
+    let profile: any = null;
+    let personalInfo: any = null;
+    let address: any = null;
+    let employment: any = null;
     let documents: any[] = [];
 
     if (db) {
       const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
       if (bRows.length > 0) {
         kycStatus = bRows[0].kycStatus || 'NOT_STARTED';
+        staffRemarks = bRows[0].notes || undefined;
+        profile = bRows[0];
       }
       const subRows = await db.select().from(schema.kycSubmissions)
         .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
@@ -552,15 +637,21 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
         rejectionReason = sub.rejectionReason || undefined;
         verifiedAt = sub.verifiedAt || undefined;
         reviewedByName = sub.reviewedByName || undefined;
+        personalInfo = sub.personalInfo || null;
+        address = sub.address || null;
+        employment = sub.employment || null;
       }
       const docRows = await db.select().from(schema.kycDocuments)
         .where(eq(schema.kycDocuments.borrowerId, borrowerId));
       documents = docRows.map((d: any) => ({
+        id: d.id,
         type: d.documentType,
         name: d.documentName,
-        submitted: !!d.fileName,
+        submitted: !!d.fileUrl || !!d.fileName,
         status: d.status || 'PENDING',
         fileName: d.fileName,
+        fileUrl: d.fileUrl || undefined,
+        rejectionReason: d.rejectionReason || undefined,
       }));
     }
 
@@ -586,6 +677,8 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
       }
     }
 
+    const findDoc = (type: string) => documents.find((d: any) => d.type === type);
+
     res.json({
       success: true,
       kycStatus,
@@ -597,8 +690,23 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
       reviewedAt,
       correctionReason,
       rejectionReason,
+      staffRemarks,
       verifiedAt,
       reviewedByName,
+      referenceNumber: submissionId,
+      // Structured snapshot useful for the correction/edit screen
+      submission: {
+        personalInfo,
+        address,
+        employment,
+        idInfo: {
+          idType: findDoc('VALID_ID')?.name ?? profile?.idType ?? undefined,
+          idNumber: personalInfo?.idNumber ?? undefined,
+          idFrontUrl: findDoc('ID_FRONT')?.fileUrl ?? findDoc('VALID_ID')?.fileUrl ?? undefined,
+          idBackUrl: findDoc('ID_BACK')?.fileUrl ?? undefined,
+          selfieUrl: findDoc('SELFIE')?.fileUrl ?? findDoc('PHOTO_2X2')?.fileUrl ?? undefined,
+        },
+      },
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -609,17 +717,30 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
 clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
-    const { personalInfo, address, employment } = req.body || {};
+    const { personalInfo, address, employment, idInfo, selfieUrl } = req.body || {};
     if (!personalInfo || !address || !employment) {
       return res.status(400).json({ success: false, error: 'personalInfo, address, and employment are required.' });
     }
     const now = new Date().toISOString();
     const db = getDb();
+
+    // ID front/back + selfie are tracked as kyc_documents rows so staff can review them.
+    const docMap: Array<{ type: string; name: string; url?: string }> = [
+      { type: 'ID_FRONT', name: 'Government ID — Front', url: (idInfo || {}).idFrontUrl },
+      { type: 'ID_BACK', name: 'Government ID — Back', url: (idInfo || {}).idBackUrl },
+      { type: 'SELFIE', name: 'Profile Selfie', url: selfieUrl },
+      { type: 'VALID_ID', name: (idInfo || {}).idType || 'Government-Issued ID', url: (idInfo || {}).idFrontUrl },
+    ];
+
     if (db) {
       const existing = await db.select().from(schema.kycSubmissions)
         .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
         .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
-      if (existing.length > 0 && (existing[0].status === 'NOT_STARTED' || existing[0].status === 'CORRECTION_REQUIRED')) {
+      let submissionId: string;
+      let previousStatus = existing.length > 0 ? existing[0].status : 'NOT_STARTED';
+      const canResubmit = existing.length > 0 && ['NOT_STARTED', 'CORRECTION_REQUIRED', 'REJECTED'].includes(existing[0].status);
+      if (canResubmit) {
+        submissionId = existing[0].id;
         await db.update(schema.kycSubmissions).set({
           personalInfo,
           address,
@@ -628,9 +749,12 @@ clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest,
           submittedAt: now,
           updatedAt: now,
           correctionReason: null,
-        }).where(eq(schema.kycSubmissions.id, existing[0].id));
+          rejectionReason: null,
+          reviewedAt: null,
+          reviewedByName: null,
+        }).where(eq(schema.kycSubmissions.id, submissionId));
       } else {
-        const submissionId = `KYC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        submissionId = `KYC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         await db.insert(schema.kycSubmissions).values({
           id: submissionId,
           borrowerId,
@@ -642,16 +766,55 @@ clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest,
           createdAt: now,
           updatedAt: now,
         });
+        previousStatus = 'NOT_STARTED';
       }
+
       await db.update(schema.borrowers).set({ kycStatus: 'PENDING' }).where(eq(schema.borrowers.id, borrowerId));
+
+      // Upsert document metadata for the submitted submission.
+      for (const doc of docMap) {
+        if (!doc.url) continue;
+        const existingDoc = await db.select().from(schema.kycDocuments)
+          .where(and(
+            eq(schema.kycDocuments.borrowerId, borrowerId),
+            eq(schema.kycDocuments.documentType, doc.type),
+            eq(schema.kycDocuments.kycSubmissionId, submissionId)
+          ))
+          .limit(1);
+        if (existingDoc.length > 0) {
+          await db.update(schema.kycDocuments).set({
+            fileName: doc.url.split('/').pop() || doc.url,
+            fileUrl: doc.url,
+            status: 'PENDING',
+            rejectionReason: null,
+          }).where(eq(schema.kycDocuments.id, existingDoc[0].id));
+        } else {
+          await db.insert(schema.kycDocuments).values({
+            id: `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            kycSubmissionId: submissionId,
+            borrowerId,
+            documentType: doc.type,
+            documentName: doc.name,
+            fileName: doc.url.split('/').pop() || doc.url,
+            fileUrl: doc.url,
+            status: 'PENDING',
+            createdAt: now,
+          });
+        }
+      }
+
       await db.insert(schema.kycAuditLog).values({
         id: `AUDIT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
         borrowerId,
         action: 'SUBMITTED',
-        previousStatus: 'NOT_STARTED',
+        previousStatus,
         newStatus: 'PENDING',
         createdAt: now,
       });
+
+      res.json({ success: true, message: 'KYC submitted for review.', referenceNumber: submissionId });
+    } else {
+      res.json({ success: true, message: 'KYC submitted for review.', referenceNumber: `KYC-${Date.now().toString(36)}` });
     }
 
     mockClientNotifications.unshift({
@@ -663,8 +826,6 @@ clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest,
       isRead: false,
       createdAt: now,
     });
-
-    res.json({ success: true, message: 'KYC submitted for review.' });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -717,13 +878,32 @@ clientMobileRouter.get('/kyc/documents', requireAuth(), async (req: AuthedReques
 clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
-    const { documentType, documentName, fileName } = req.body || {};
+    const { documentType, documentName, fileName, imageBase64, side, mime } = req.body || {};
     if (!documentType || !documentName) {
       return res.status(400).json({ success: false, error: 'documentType and documentName are required.' });
     }
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, error: 'imageBase64 is required for upload.' });
+    }
     const now = new Date().toISOString();
     const db = getDb();
+
+    // Upload the real bytes to secure storage (server-side service role).
+    let safeUrl: string | null = null;
+    try {
+      const folder = side ? `doc-${stringToId(documentType)}-${side}` : `doc-${stringToId(documentType)}`;
+      const uploaded = await uploadKycFile(borrowerId, folder, imageBase64, mime);
+      safeUrl = uploaded?.signedUrl ?? null;
+      if (uploaded) {
+        // Best effort removal of older copies for the same doc/side.
+        removeKycFolderObjects(borrowerId, folder).catch(() => {});
+      }
+    } catch (storageErr: any) {
+      return res.status(400).json({ success: false, error: storageErr.message });
+    }
+
     const docId = `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const savedName = fileName || `${documentType}_${Date.now()}.jpg`;
     if (db) {
       const subRows = await db.select().from(schema.kycSubmissions)
         .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
@@ -735,12 +915,67 @@ clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: Auth
         borrowerId,
         documentType,
         documentName,
-        fileName: fileName || `uploaded_${docId}.pdf`,
+        fileName: savedName,
+        fileUrl: safeUrl || undefined,
         status: 'PENDING',
         createdAt: now,
       });
     }
-    res.json({ success: true, document: { id: docId, documentType, documentName, fileName: fileName || `uploaded_${docId}.pdf`, status: 'PENDING' } });
+    res.json({
+      success: true,
+      document: {
+        id: docId,
+        documentType,
+        documentName,
+        fileName: savedName,
+        fileUrl: safeUrl,
+        status: 'PENDING',
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Upload a selfie used for face verification against the submitted ID.
+clientMobileRouter.post('/kyc/selfie', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const { imageBase64, mime } = req.body || {};
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, error: 'imageBase64 is required for the selfie.' });
+    }
+    const now = new Date().toISOString();
+    const db = getDb();
+
+    let safeUrl: string | null = null;
+    try {
+      const uploaded = await uploadKycFile(borrowerId, 'selfie', imageBase64, mime);
+      safeUrl = uploaded?.signedUrl ?? null;
+      if (uploaded) removeKycFolderObjects(borrowerId, 'selfie').catch(() => {});
+    } catch (storageErr: any) {
+      return res.status(400).json({ success: false, error: storageErr.message });
+    }
+
+    const docId = `DOC-SELFIE-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    if (db) {
+      const subRows = await db.select().from(schema.kycSubmissions)
+        .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+        .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+      const subId = subRows.length > 0 ? subRows[0].id : 'PENDING';
+      await db.insert(schema.kycDocuments).values({
+        id: docId,
+        kycSubmissionId: subId,
+        borrowerId,
+        documentType: 'SELFIE',
+        documentName: 'Profile Selfie',
+        fileName: `selfie_${Date.now()}.jpg`,
+        fileUrl: safeUrl || undefined,
+        status: 'PENDING',
+        createdAt: now,
+      });
+    }
+    res.json({ success: true, selfie: { id: docId, fileUrl: safeUrl, status: 'PENDING' } });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

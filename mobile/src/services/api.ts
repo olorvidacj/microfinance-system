@@ -8,6 +8,31 @@ import {
   InstallmentScheduleItem,
   PaymentItem,
   MobileNotification,
+  KycRequiredDocumentItem,
+  KycSubmission,
+  KycSubmissionPayload,
+  KycStatusData,
+  KycDocumentItem,
+  TransactionType,
+  FinancialTransaction,
+  SavingsAccount,
+  SavingsTransaction,
+  PortalDocument,
+  ClientGroup,
+  FaqItem,
+  SupportTicket,
+  NotificationPreferences,
+  PrivacyPreferences,
+  LoginActivityItem,
+  PaymentReceipt,
+  PaymentMethod,
+  InstallmentScheduleItem as InstallmentScheduleItemAlias,
+  KycReviewDecision,
+  AuditLogEntry,
+  BranchContextData,
+  BranchKycQueueItem,
+  KycSubmission as KycSubmissionAlias,
+  BranchContextDataStaffContext,
 } from '../types';
 
 import Constants from 'expo-constants';
@@ -54,7 +79,7 @@ class ApiService {
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  public async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -198,6 +223,49 @@ class ApiService {
     return this.request('/client/kyc-status');
   }
 
+  // 8. KYC — required documents, uploads (real file bytes → Supabase Storage), submit, resubmit
+  async getKycRequiredDocuments(): Promise<KycRequiredDocumentItem[]> {
+    const res = await this.request<{ success: boolean; documents: KycRequiredDocumentItem[] }>(
+      '/client/kyc/required-documents'
+    );
+    return res.documents;
+  }
+
+  async uploadKycDocument(payload: {
+    documentType: string;
+    documentName: string;
+    fileName: string;
+    side?: 'front' | 'back';
+    imageBase64?: string;
+    mime?: string;
+  }): Promise<any> {
+    return this.request('/client/kyc/documents/upload', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async uploadKycSelfie(payload: { imageBase64: string; mime?: string }): Promise<any> {
+    return this.request('/client/kyc/selfie', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async submitKyc(payload: KycSubmissionPayload): Promise<{ success: boolean; message: string; referenceNumber: string }> {
+    return this.request('/client/kyc/submit', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async resubmitKyc(payload: KycSubmissionPayload): Promise<{ success: boolean; message: string; referenceNumber: string }> {
+    return this.request('/client/kyc/submit', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, resubmission: true }),
+    });
+  }
+
   // 4. Loan Application
   async getLoanProducts(): Promise<LoanProduct[]> {
     const res = await this.request<{ success: boolean; products: LoanProduct[] }>('/client/loan-products');
@@ -283,6 +351,131 @@ class ApiService {
   async markAllNotificationsAsRead(): Promise<void> {
     await this.request('/client/notifications/mark-all-read', { method: 'POST' });
   }
+
+  // 8. Transactions (financial activity)
+  async getTransactions(payload: { search?: string; type?: TransactionType }): Promise<FinancialTransaction[]> {
+    const res = await this.request<{ success: boolean; transactions: FinancialTransaction[] }>('/client/transactions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res.transactions;
+  }
+
+  // 9. Savings
+  async getSavings(): Promise<SavingsAccount> {
+    const res = await this.request<{ success: boolean; account: SavingsAccount }>('/client/savings');
+    return res.account;
+  }
+
+  async getSavingsTransactions(): Promise<SavingsTransaction[]> {
+    const res = await this.request<{ success: boolean; transactions: SavingsTransaction[] }>('/client/savings/transactions');
+    return res.transactions;
+  }
+
+  async requestSavingsWithdrawal(payload: { amount: number; reason: string }): Promise<{ success: boolean; message: string }> {
+    return this.request('/client/savings/request-withdrawal', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // 10. Documents
+  async getDocuments(): Promise<PortalDocument[]> {
+    const res = await this.request<{ success: boolean; documents: PortalDocument[] }>('/client/documents');
+    return res.documents;
+  }
+
+  // 11. Group Lending
+  async getMyGroup(): Promise<ClientGroup> {
+    const res = await this.request<{ success: boolean; group: ClientGroup }>('/client/groups/my');
+    return res.group;
+  }
+
+  // 12. Help & Support
+  async getFaqs(): Promise<FaqItem[]> {
+    const res = await this.request<{ success: boolean; faqs: FaqItem[] }>('/client/faqs');
+    return res.faqs;
+  }
+
+  async getSupportTickets(): Promise<SupportTicket[]> {
+    const res = await this.request<{ success: boolean; tickets: SupportTicket[] }>('/client/support-tickets');
+    return res.tickets;
+  }
+
+  async submitSupportTicket(payload: {
+    subject: string;
+    category: string;
+    message: string;
+    priority?: string;
+    attachments?: string[];
+  }): Promise<{ success: boolean; message: string; ticket: SupportTicket }> {
+    return this.request('/client/support-tickets', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // 13. Settings
+  async getNotificationPreferences(): Promise<NotificationPreferences> {
+    const res = await this.request<{ success: boolean; preferences: NotificationPreferences }>('/client/settings/notification-preferences');
+    return res.preferences;
+  }
+
+  async updateNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<{ success: boolean; message: string }> {
+    return this.request('/client/settings/notification-preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(preferences),
+    });
+  }
+
+  async getPrivacyPreferences(): Promise<PrivacyPreferences> {
+    const res = await this.request<{ success: boolean; preferences: PrivacyPreferences }>('/client/settings/privacy-preferences');
+    return res.preferences;
+  }
+
+  async updatePrivacyPreferences(preferences: Partial<PrivacyPreferences>): Promise<{ success: boolean; message: string }> {
+    return this.request('/client/settings/privacy-preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(preferences),
+    });
+  }
+
+  async getLoginActivity(): Promise<LoginActivityItem[]> {
+    const res = await this.request<{ success: boolean; activity: LoginActivityItem[] }>('/client/settings/login-activity');
+    return res.activity;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Branch (staff) — BranchApiService mirrors the branch staff screens' needs
+// ---------------------------------------------------------------------------
+
+class BranchApiService {
+  async getContext(): Promise<BranchContextData> {
+    return api.request('/branch/context');
+  }
+
+  async getKycQueue(): Promise<BranchKycQueueItem[]> {
+    const res = await api.request<{ success: boolean; queue: BranchKycQueueItem[] }>('/branch/kyc/queue');
+    return res.queue;
+  }
+
+  async reviewKyc(payload: {
+    clientId: string;
+    decision: KycReviewDecision;
+    notes?: string;
+    CorrectionReason?: string;
+    rejectedDocumentIds?: string[];
+    reason?: string;
+  }): Promise<{ success: boolean; message: string; auditLogEntry?: AuditLogEntry }> {
+    const res = await api.request<{ success: boolean; message: string; auditLogEntry?: AuditLogEntry }>('/branch/kyc/review', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res;
+  }
 }
 
 export const api = new ApiService();
+
+export const branchApi = new BranchApiService();

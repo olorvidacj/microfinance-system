@@ -1,0 +1,100 @@
+﻿src/components/ScreenHeader.tsx(3,31): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/context/AuthContext.tsx(57,46): error TS2367: This comparison appears to be unintentional because the types '"CLIENT" | null' and '"BRANCH_PERSONNEL"' have no overlap.
+src/navigation/AuthNavigator.tsx(2,44): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/navigation/BranchStack.tsx(2,44): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/navigation/ClientTabs.tsx(2,42): error TS2307: Cannot find module '@react-navigation/bottom-tabs' or its corresponding type declarations.
+src/navigation/ClientTabs.tsx(25,25): error TS7031: Binding element 'route' implicitly has an 'any' type.
+src/navigation/ClientTabs.tsx(37,24): error TS7031: Binding element 'focused' implicitly has an 'any' type.
+src/navigation/ClientTabs.tsx(37,33): error TS7031: Binding element 'color' implicitly has an 'any' type.
+src/navigation/ClientTabs.tsx(37,40): error TS7031: Binding element 'size' implicitly has an 'any' type.
+src/navigation/HomeStack.tsx(2,44): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/navigation/LoansStack.tsx(2,44): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/navigation/MoreStack.tsx(2,44): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/navigation/NotificationsStack.tsx(2,44): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/navigation/RootNavigator.tsx(2,51): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/navigation/SavingsStack.tsx(2,44): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/navigation/types.ts(1,39): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/auth/ForgotPasswordScreen.tsx(3,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/auth/LoginScreen.tsx(4,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/auth/RegisterScreen.tsx(13,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/auth/RegisterScreen.tsx(160,9): error TS2353: Object literal may only specify known properties, and 'firstName' does not exist in type '{ phone: string; password?: string | undefined; fullName?: string | undefined; email?: string | undefined; borrowerNumber?: string | undefined; dateOfBirth?: string | undefined; address?: string | undefined; civilStatus?: string | undefined; occupation?: string | undefined; employerOrBusiness?: string | undefined; m...'.
+src/screens/auth/ResetPasswordScreen.tsx(3,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/auth/VerifyOtpScreen.tsx(3,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/auth/VerifyOtpScreen.tsx(27,16): error TS2339: Property 'verified' does not exist on type '{ success: boolean; message: string; }'.
+src/screens/auth/VerifyOtpScreen.tsx(27,32): error TS2339: Property 'verified' does not exist on type '{ success: boolean; message: string; }'.
+src/screens/branch/BranchHomeScreen.tsx(4,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/branch/KycQueueScreen.tsx(4,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/branch/KycReviewDetailScreen.tsx(4,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/branch/KycReviewDetailScreen.tsx(90,26): error TS2339: Property 'reviewedAt' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(91,26): error TS2339: Property 'reviewerName' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(94,26): error TS2339: Property 'status' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(99,59): error TS2339: Property 'status' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(159,69): error TS2339: Property 'memberStatus' does not exist on type 'BranchKycQueueItem'.
+src/screens/client/DocumentsScreen.tsx(4,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/GroupLendingScreen.tsx(4,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/GroupLendingScreen.tsx(74,50): error TS18048: 'group.groupLoan.paidAmount' is possibly 'undefined'.
+src/screens/client/GroupLendingScreen.tsx(121,14): error TS18048: 'group.groupLoan.schedule' is possibly 'undefined'.
+src/screens/client/GroupLendingScreen.tsx(125,22): error TS18048: 'group.groupLoan.schedule' is possibly 'undefined'.
+src/screens/client/GroupLendingScreen.tsx(146,41): error TS2538: Type 'undefined' cannot be used as an index type.
+src/screens/client/HelpSupportScreen.tsx(4,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/HelpSupportScreen.tsx(41,19): error TS2345: Argument of type 'FaqItem[]' is not assignable to parameter of type 'SetStateAction<Record<string, FaqItem[]>>'.
+  Type 'FaqItem[]' is not assignable to type 'Record<string, FaqItem[]>'.
+    Index signature for type 'string' is missing in type 'FaqItem[]'.
+src/screens/client/HelpSupportScreen.tsx(129,90): error TS2339: Property 'lastUpdate' does not exist on type 'SupportTicket'.
+src/screens/client/HomeScreen.tsx(11,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/HomeScreen.tsx(12,38): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/HomeScreen.tsx(13,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/client/HomeScreen.tsx(14,38): error TS2307: Cannot find module '@react-navigation/bottom-tabs' or its corresponding type declarations.
+src/screens/client/KycFormScreen.tsx(12,30): error TS2307: Cannot find module 'expo-image-picker' or its corresponding type declarations.
+src/screens/client/KycFormScreen.tsx(14,31): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/KycFormScreen.tsx(160,9): error TS2353: Object literal may only specify known properties, and 'fileUrl' does not exist in type '{ documentType: string; documentName: string; fileName: string; side?: "front" | "back" | undefined; imageBase64?: string | undefined; mime?: string | undefined; }'.
+src/screens/client/KycStatusScreen.tsx(4,47): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/KycStatusScreen.tsx(24,15): error TS2345: Argument of type '{ success: boolean; kycStatus: string; isVerified: boolean; requiredDocuments: any[]; }' is not assignable to parameter of type 'SetStateAction<KycStatusData | null>'.
+  Property 'uploadedDocuments' is missing in type '{ success: boolean; kycStatus: string; isVerified: boolean; requiredDocuments: any[]; }' but required in type 'KycStatusData'.
+src/screens/client/KycStatusScreen.tsx(70,24): error TS2551: Property 'rejectionReason' does not exist on type 'KycStatusData'. Did you mean 'correctionReason'?
+src/screens/client/KycStatusScreen.tsx(71,25): error TS2551: Property 'rejectionReason' does not exist on type 'KycStatusData'. Did you mean 'correctionReason'?
+src/screens/client/KycStatusScreen.tsx(135,17): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/screens/client/KycStatusScreen.tsx(136,17): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/screens/client/LoanApplicationScreen.tsx(12,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/client/LoanApplicationScreen.tsx(13,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/LoanDetailScreen.tsx(4,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/client/LoansScreen.tsx(4,47): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/MoreScreen.tsx(4,47): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/NotificationsScreen.tsx(4,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/PaymentReceiptScreen.tsx(4,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/client/PaymentsScreen.tsx(12,30): error TS2307: Cannot find module 'expo-image-picker' or its corresponding type declarations.
+src/screens/client/PaymentsScreen.tsx(13,40): error TS2307: Cannot find module '@react-navigation/native-stack' or its corresponding type declarations.
+src/screens/client/PaymentsScreen.tsx(104,9): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'PaymentReceipt'.
+src/screens/client/ProfileScreen.tsx(4,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/SavingsScreen.tsx(4,47): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/SavingsScreen.tsx(72,42): error TS2339: Property 'requestId' does not exist on type '{ success: boolean; message: string; }'.
+src/screens/client/SettingsScreen.tsx(131,17): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: SwitchProps): Switch', gave the following error.
+    Type 'boolean | Record<string, boolean> | undefined' is not assignable to type 'boolean | undefined'.
+      Type 'Record<string, boolean>' is not assignable to type 'boolean | undefined'.
+  Overload 2 of 2, '(props: SwitchProps, context: any): Switch', gave the following error.
+    Type 'boolean | Record<string, boolean> | undefined' is not assignable to type 'boolean | undefined'.
+      Type 'Record<string, boolean>' is not assignable to type 'boolean | undefined'.
+src/screens/client/SettingsScreen.tsx(191,37): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/screens/client/TransactionsScreen.tsx(4,32): error TS2307: Cannot find module '@react-navigation/native' or its corresponding type declarations.
+src/screens/client/TransactionsScreen.tsx(46,9): error TS2322: Type 'string | undefined' is not assignable to type 'TransactionType | undefined'.
+  Type 'string' is not assignable to type 'TransactionType | undefined'.
+src/services/mock.ts(146,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(147,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(148,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(149,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(162,3): error TS2322: Type 'KycDocumentItem[]' is not assignable to type 'KycRequiredDocumentItem[]'.
+  Type 'KycDocumentItem' is missing the following properties from type 'KycRequiredDocumentItem': documentType, documentName
+src/services/mock.ts(174,3): error TS2322: Type 'KycDocumentItem[]' is not assignable to type 'KycRequiredDocumentItem[]'.
+  Type 'KycDocumentItem' is missing the following properties from type 'KycRequiredDocumentItem': documentType, documentName
+src/services/mock.ts(184,3): error TS2322: Type 'KycDocumentItem[]' is not assignable to type 'KycRequiredDocumentItem[]'.
+  Type 'KycDocumentItem' is missing the following properties from type 'KycRequiredDocumentItem': documentType, documentName
+src/services/mock.ts(247,133): error TS2322: Type '"UNDER_REVIEW"' is not assignable to type '"PENDING" | "REJECTED" | "APPROVED" | "DISBURSED"'.
+src/services/mock.ts(297,5): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'PaymentReceipt'.
+src/services/mock.ts(526,14): error TS2322: Type '{ borrowerNumber: string; id: string; fullName: string; phone: string; email: string; kycStatus: string; submittedDocuments: number; gender: string | undefined; dateOfBirth: string | undefined; ... 8 more ...; kycSubmission: { ...; }; }[]' is not assignable to type 'BranchKycQueueItem[]'.
+  Type '{ borrowerNumber: string; id: string; fullName: string; phone: string; email: string; kycStatus: string; submittedDocuments: number; gender: string | undefined; dateOfBirth: string | undefined; ... 8 more ...; kycSubmission: { ...; }; }' is not assignable to type 'BranchKycQueueItem'.
+    Types of property 'kycStatus' are incompatible.
+      Type 'string' is not assignable to type 'KYCStatus'.

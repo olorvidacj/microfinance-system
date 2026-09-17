@@ -49,6 +49,8 @@ import { RestructureModal } from './components/RestructureModal';
 import { BranchModal } from './components/BranchModal';
 import { ProductModal } from './components/ProductModal';
 
+import { AdminRoutes } from './admin/router';
+
 import { Borrower, Branch, InterestType, Loan, LoanProduct, PaymentRecord, RepaymentFrequency } from './types';
 
 interface NewLoanParams {
@@ -428,7 +430,10 @@ export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AuthGate />
+        <Routes>
+          <Route path="/admin/*" element={<AdminRoutes />} />
+          <Route path="*" element={<AuthGate />} />
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

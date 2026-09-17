@@ -1,0 +1,13 @@
+﻿src/types/index.ts(396,1): error TS1131: Property or signature expected.
+src/types/index.ts(396,5): error TS1109: Expression expected.
+src/types/index.ts(397,12): error TS1109: Expression expected.
+src/types/index.ts(398,19): error TS1109: Expression expected.
+src/types/index.ts(399,15): error TS1109: Expression expected.
+src/types/index.ts(400,10): error TS1109: Expression expected.
+src/types/index.ts(401,14): error TS1109: Expression expected.
+src/types/index.ts(402,15): error TS1109: Expression expected.
+src/types/index.ts(403,17): error TS1109: Expression expected.
+src/types/index.ts(404,10): error TS1109: Expression expected.
+src/types/index.ts(405,20): error TS1109: Expression expected.
+src/types/index.ts(406,9): error TS1109: Expression expected.
+src/types/index.ts(407,1): error TS1128: Declaration or statement expected.

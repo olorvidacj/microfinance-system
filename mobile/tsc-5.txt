@@ -1,0 +1,151 @@
+﻿App.tsx(13,10): error TS2305: Module '"./src/services/api"' has no exported member 'api'.
+App.tsx(35,16): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/context/AuthContext.tsx(3,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/context/AuthContext.tsx(57,46): error TS2367: This comparison appears to be unintentional because the types '"CLIENT" | null' and '"BRANCH_PERSONNEL"' have no overlap.
+src/screens/auth/ForgotPasswordScreen.tsx(7,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/auth/LoginScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/auth/RegisterScreen.tsx(16,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/auth/ResetPasswordScreen.tsx(7,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/auth/VerifyOtpScreen.tsx(7,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/AuthScreen.tsx(12,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/screens/AuthScreen.tsx(91,23): error TS2694: Namespace 'global.NodeJS' has no exported member 'Timeout'.
+src/screens/branch/BranchHomeScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/branch/KycReviewDetailScreen.tsx(48,13): error TS2353: Object literal may only specify known properties, and 'createdAt' does not exist in type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(76,10): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(76,42): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(87,16): error TS2345: Argument of type '(prev: AuditLogEntry[]) => (AuditLogEntry | { id: string; createdAt: any; staffName: any; action: string; previousStatus: string; newStatus: any; reason: string | undefined; })[]' is not assignable to parameter of type 'SetStateAction<AuditLogEntry[]>'.
+  Type '(prev: AuditLogEntry[]) => (AuditLogEntry | { id: string; createdAt: any; staffName: any; action: string; previousStatus: string; newStatus: any; reason: string | undefined; })[]' is not assignable to type '(prevState: AuditLogEntry[]) => AuditLogEntry[]'.
+    Type '(AuditLogEntry | { id: string; createdAt: any; staffName: any; action: string; previousStatus: string; newStatus: any; reason: string | undefined; })[]' is not assignable to type 'AuditLogEntry[]'.
+      Type 'AuditLogEntry | { id: string; createdAt: any; staffName: any; action: string; previousStatus: string; newStatus: any; reason: string | undefined; }' is not assignable to type 'AuditLogEntry'.
+        Property 'performedAt' is missing in type '{ id: string; createdAt: any; staffName: any; action: string; previousStatus: string; newStatus: any; reason: string | undefined; }' but required in type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(90,26): error TS2339: Property 'reviewedAt' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(91,26): error TS2339: Property 'reviewerName' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(94,26): error TS2339: Property 'status' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(99,59): error TS2339: Property 'status' does not exist on type '{ success: boolean; message: string; auditLogEntry?: AuditLogEntry | undefined; }'.
+src/screens/branch/KycReviewDetailScreen.tsx(159,69): error TS2339: Property 'memberStatus' does not exist on type 'BranchKycQueueItem'.
+src/screens/branch/KycReviewDetailScreen.tsx(181,67): error TS2339: Property 'employer' does not exist on type 'KycEmployment'.
+src/screens/branch/KycReviewDetailScreen.tsx(232,57): error TS2339: Property 'previousStatus' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(232,79): error TS2339: Property 'newStatus' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(232,116): error TS2339: Property 'previousStatus' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(232,156): error TS2339: Property 'newStatus' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(235,26): error TS2339: Property 'staffName' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(235,64): error TS2339: Property 'createdAt' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(235,95): error TS2339: Property 'createdAt' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(237,24): error TS2339: Property 'reason' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(237,71): error TS2339: Property 'reason' does not exist on type 'AuditLogEntry'.
+src/screens/branch/KycReviewDetailScreen.tsx(253,45): error TS2345: Argument of type 'string' is not assignable to parameter of type 'KycReviewDecision'.
+src/screens/branch/KycReviewDetailScreen.tsx(261,45): error TS2345: Argument of type 'string' is not assignable to parameter of type 'KycReviewDecision'.
+src/screens/branch/KycReviewDetailScreen.tsx(270,41): error TS2345: Argument of type 'string' is not assignable to parameter of type 'KycReviewDecision'.
+src/screens/branch/KycReviewDetailScreen.tsx(284,11): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(286,15): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(291,11): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(293,15): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(297,15): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(297,75): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(298,20): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(298,66): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(299,17): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(299,67): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(300,22): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(300,78): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(301,25): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(301,67): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(306,11): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(306,43): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/branch/KycReviewDetailScreen.tsx(325,10): error TS2367: This comparison appears to be unintentional because the types 'KycReviewDecision | null' and 'string' have no overlap.
+src/screens/client/DocumentsScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/GroupLendingScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/GroupLendingScreen.tsx(74,50): error TS18048: 'group.groupLoan.paidAmount' is possibly 'undefined'.
+src/screens/client/GroupLendingScreen.tsx(121,14): error TS18048: 'group.groupLoan.schedule' is possibly 'undefined'.
+src/screens/client/GroupLendingScreen.tsx(125,22): error TS18048: 'group.groupLoan.schedule' is possibly 'undefined'.
+src/screens/client/GroupLendingScreen.tsx(146,41): error TS2538: Type 'undefined' cannot be used as an index type.
+src/screens/client/HelpSupportScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/HelpSupportScreen.tsx(129,90): error TS2339: Property 'lastUpdate' does not exist on type 'SupportTicket'.
+src/screens/client/HomeScreen.tsx(18,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/HomeScreen.tsx(20,31): error TS2305: Module '"../../types"' has no exported member 'DashboardTransaction'.
+src/screens/client/HomeScreen.tsx(88,88): error TS2339: Property 'totalBalance' does not exist on type 'ClientDashboardData'.
+src/screens/client/HomeScreen.tsx(247,38): error TS2339: Property 'totalBalance' does not exist on type 'ClientDashboardData'.
+src/screens/client/HomeScreen.tsx(253,95): error TS2339: Property 'totalBalance' does not exist on type 'ClientDashboardData'.
+src/screens/client/KycFormScreen.tsx(17,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/KycFormScreen.tsx(97,23): error TS7006: Parameter 'd' implicitly has an 'any' type.
+src/screens/client/KycFormScreen.tsx(281,11): error TS2353: Object literal may only specify known properties, and 'employer' does not exist in type 'KycEmployment'.
+src/screens/client/KycStatusScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/KycStatusScreen.tsx(70,24): error TS2551: Property 'rejectionReason' does not exist on type 'KycStatusData'. Did you mean 'correctionReason'?
+src/screens/client/KycStatusScreen.tsx(71,25): error TS2551: Property 'rejectionReason' does not exist on type 'KycStatusData'. Did you mean 'correctionReason'?
+src/screens/client/KycStatusScreen.tsx(135,17): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/screens/client/KycStatusScreen.tsx(136,17): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/screens/client/LoanApplicationScreen.tsx(17,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/LoanDetailScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/LoanDetailScreen.tsx(16,9): error TS2322: Type 'LoanItem | { id: string; loanNumber: string; productName: string; principalAmount: number; interestRate: number; termMonths: number; monthlyInstallment: number; remainingBalance: number; status: "PENDING"; }' is not assignable to type 'LoanItem'.
+  Type '{ id: string; loanNumber: string; productName: string; principalAmount: number; interestRate: number; termMonths: number; monthlyInstallment: number; remainingBalance: number; status: "PENDING"; }' is missing the following properties from type 'LoanItem': interestType, paidAmount, startDate, maturityDate, purpose
+src/screens/client/LoansScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/MoreScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/NotificationsScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/PaymentReceiptScreen.tsx(54,41): error TS18048: 'receipt.paymentMethod' is possibly 'undefined'.
+src/screens/client/PaymentReceiptScreen.tsx(92,63): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/screens/client/PaymentsScreen.tsx(17,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/PaymentsScreen.tsx(26,5): error TS2322: Type 'string' is not assignable to type 'PaymentMethod'.
+src/screens/client/PaymentsScreen.tsx(27,5): error TS2322: Type 'string' is not assignable to type 'PaymentMethod'.
+src/screens/client/PaymentsScreen.tsx(28,5): error TS2322: Type 'string' is not assignable to type 'PaymentMethod'.
+src/screens/client/PaymentsScreen.tsx(29,5): error TS2322: Type 'string' is not assignable to type 'PaymentMethod'.
+src/screens/client/PaymentsScreen.tsx(39,55): error TS2345: Argument of type 'string' is not assignable to parameter of type 'PaymentMethod | (() => PaymentMethod)'.
+src/screens/client/PaymentsScreen.tsx(55,36): error TS7006: Parameter 'l' implicitly has an 'any' type.
+src/screens/client/PaymentsScreen.tsx(111,9): error TS2322: Type 'PaymentMethod' is not assignable to type 'string'.
+src/screens/client/PaymentsScreen.tsx(159,35): error TS2322: Type 'PaymentMethod' is not assignable to type 'Key | null | undefined'.
+src/screens/client/PaymentsScreen.tsx(161,95): error TS2339: Property 'replace' does not exist on type 'PaymentMethod'.
+src/screens/client/PaymentsScreen.tsx(290,51): error TS2339: Property 'replace' does not exist on type 'PaymentMethod'.
+src/screens/client/ProfileScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/SavingsScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/SettingsScreen.tsx(7,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/SettingsScreen.tsx(8,54): error TS2305: Module '"../../types"' has no exported member 'PrivacyPreferences'.
+src/screens/client/SettingsScreen.tsx(53,22): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/screens/client/SettingsScreen.tsx(119,13): error TS2352: Conversion of type '(["paymentReminders", string, string] | ["loanUpdates", string, string] | ["savingsUpdates", string, string] | ["announcements", string, string])[]' to type '[keyof NotificationPreferences, string, string][]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '["paymentReminders", string, string] | ["loanUpdates", string, string] | ["savingsUpdates", string, string] | ["announcements", string, string]' is not comparable to type '[keyof NotificationPreferences, string, string]'.
+    Type '["announcements", string, string]' is not comparable to type '[keyof NotificationPreferences, string, string]'.
+      Type at position 0 in source is not compatible with type at position 0 in target.
+        Type '"announcements"' is not comparable to type 'keyof NotificationPreferences'.
+src/screens/client/SettingsScreen.tsx(131,17): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: SwitchProps): Switch', gave the following error.
+    Type 'boolean | Record<string, boolean>' is not assignable to type 'boolean | undefined'.
+      Type 'Record<string, boolean>' is not assignable to type 'boolean | undefined'.
+  Overload 2 of 2, '(props: SwitchProps, context: any): Switch', gave the following error.
+    Type 'boolean | Record<string, boolean>' is not assignable to type 'boolean | undefined'.
+      Type 'Record<string, boolean>' is not assignable to type 'boolean | undefined'.
+src/screens/client/SettingsScreen.tsx(189,52): error TS2339: Property 'device' does not exist on type 'LoginActivityItem'.
+src/screens/client/SettingsScreen.tsx(191,37): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/screens/client/SettingsScreen.tsx(195,63): error TS2339: Property 'time' does not exist on type 'LoginActivityItem'.
+src/screens/client/TransactionsScreen.tsx(8,10): error TS2305: Module '"../../services/api"' has no exported member 'api'.
+src/screens/client/TransactionsScreen.tsx(9,32): error TS2305: Module '"../../types"' has no exported member 'TransactionType'.
+src/screens/DashboardScreen.tsx(11,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/screens/LoanApplicationScreen.tsx(12,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/screens/LoansScreen.tsx(11,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/screens/NotificationsScreen.tsx(10,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/screens/PaymentsScreen.tsx(13,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/screens/ProfileScreen.tsx(13,10): error TS2305: Module '"../services/api"' has no exported member 'api'.
+src/services/api.ts(16,3): error TS2305: Module '"../types"' has no exported member 'TransactionType'.
+src/services/api.ts(25,3): error TS2305: Module '"../types"' has no exported member 'PrivacyPreferences'.
+src/services/api.ts(35,3): error TS2305: Module '"../types"' has no exported member 'BranchStatsData'.
+src/services/api.ts(36,3): error TS2724: '"../types"' has no exported member named 'BranchContextStaffContext'. Did you mean 'BranchContextDataStaffContext'?
+src/services/api.ts(456,12): error TS2304: Cannot find name 'api'.
+src/services/api.ts(460,23): error TS2304: Cannot find name 'api'.
+src/services/api.ts(472,23): error TS2304: Cannot find name 'api'.
+src/services/mock.ts(146,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(147,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(148,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(149,3): error TS2741: Property 'id' is missing in type '{ type: string; name: string; submitted: true; status: "VERIFIED"; description: string; }' but required in type 'KycDocumentItem'.
+src/services/mock.ts(162,3): error TS2322: Type 'KycDocumentItem[]' is not assignable to type 'KycRequiredDocumentItem[]'.
+  Type 'KycDocumentItem' is missing the following properties from type 'KycRequiredDocumentItem': documentType, documentName
+src/services/mock.ts(174,3): error TS2322: Type 'KycDocumentItem[]' is not assignable to type 'KycRequiredDocumentItem[]'.
+  Type 'KycDocumentItem' is missing the following properties from type 'KycRequiredDocumentItem': documentType, documentName
+src/services/mock.ts(184,3): error TS2322: Type 'KycDocumentItem[]' is not assignable to type 'KycRequiredDocumentItem[]'.
+  Type 'KycDocumentItem' is missing the following properties from type 'KycRequiredDocumentItem': documentType, documentName
+src/services/mock.ts(247,133): error TS2322: Type '"UNDER_REVIEW"' is not assignable to type '"PENDING" | "REJECTED" | "APPROVED" | "DISBURSED"'.
+src/services/mock.ts(296,3): error TS2741: Property 'userId' is missing in type '{ id: string; referenceNumber: string; amount: number; paymentDate: string; loanId: string; loanNumber: string; loanProduct: string; paymentMethod: string; status: string; remainingBalance: number; notes: string | undefined; }' but required in type 'PaymentReceipt'.
+src/services/mock.ts(526,14): error TS2322: Type '{ borrowerNumber: string; id: string; fullName: string; phone: string; email: string; kycStatus: string; submittedDocuments: number; gender: string | undefined; dateOfBirth: string | undefined; ... 8 more ...; kycSubmission: { ...; }; }[]' is not assignable to type 'BranchKycQueueItem[]'.
+  Type '{ borrowerNumber: string; id: string; fullName: string; phone: string; email: string; kycStatus: string; submittedDocuments: number; gender: string | undefined; dateOfBirth: string | undefined; ... 8 more ...; kycSubmission: { ...; }; }' is not assignable to type 'BranchKycQueueItem'.
+    Types of property 'kycStatus' are incompatible.
+      Type 'string' is not assignable to type 'KYCStatus'.
