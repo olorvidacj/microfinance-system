@@ -21,6 +21,8 @@ export type SystemPermission =
   | 'manage_settings'
   | 'view_all_records'
   | 'approve_sensitive_operations'
+  | 'add_advisory_notes'
+  | 'manage_legal_records'
   
   // Client Services Staff Permissions
   | 'register_clients'
@@ -83,6 +85,8 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'manage_settings',
       'view_all_records',
       'approve_sensitive_operations',
+      'add_advisory_notes',
+      'manage_legal_records',
       'register_clients',
       'manage_kyc',
       'view_client_info',
@@ -258,6 +262,8 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'manage_settings',
       'view_all_records',
       'approve_sensitive_operations',
+      'add_advisory_notes',
+      'manage_legal_records',
       'register_clients',
       'manage_kyc',
       'view_client_info',
@@ -671,6 +677,8 @@ export const PERMISSION_CATEGORIES: {
       { key: 'manage_settings', label: 'Manage System Settings', description: 'Configure interest caps, penalty rules, and branch limits' },
       { key: 'view_all_records', label: 'View All Records', description: 'Unrestricted access to all branch accounts, ledgers, and logs' },
       { key: 'approve_sensitive_operations', label: 'Approve Sensitive Operations', description: 'Authorize high-value loans, transaction reversals, write-offs' },
+      { key: 'add_advisory_notes', label: 'Add Advisory Notes', description: 'Provide strategic portfolio and risk advisory notes' },
+      { key: 'manage_legal_records', label: 'Manage Legal Records', description: 'Manage legal compliance, mortgage registrations and records' },
     ],
   },
   {

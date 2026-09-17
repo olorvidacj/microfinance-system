@@ -12,7 +12,7 @@ export interface AuthUser {
   branchId?: string | null;
 }
 
-interface RegisterData {
+export interface RegisterData {
   fullName: string;
   email?: string;
   phone?: string;
@@ -22,6 +22,8 @@ interface RegisterData {
   occupation?: string;
   employerOrBusiness?: string;
   monthlyIncome?: number;
+  dateOfBirth?: string;
+  civilStatus?: string;
 }
 
 interface AuthContextType {
