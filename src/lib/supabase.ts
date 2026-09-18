@@ -7,7 +7,7 @@ export interface SupabaseConfig {
   isConfigured: boolean;
 }
 
-const STORAGE_KEY = 'hoscomo_supabase_credentials';
+const STORAGE_KEY = 'HOSCOMCO_supabase_credentials';
 
 export function getSupabaseConfig(): SupabaseConfig {
   const metaEnv = (import.meta as any).env || {};

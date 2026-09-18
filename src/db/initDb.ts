@@ -34,6 +34,13 @@ export async function initDbSchema(): Promise<boolean> {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS id_sequences (
+        name TEXT PRIMARY KEY,
+        year INTEGER NOT NULL,
+        last_value INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS branches (
         id TEXT PRIMARY KEY,
         code TEXT NOT NULL,
@@ -92,6 +99,8 @@ export async function initDbSchema(): Promise<boolean> {
         id_number TEXT NOT NULL,
         phone TEXT NOT NULL,
         email TEXT NOT NULL,
+        email_verified INTEGER DEFAULT 0,
+        email_verified_at TEXT,
         date_of_birth TEXT NOT NULL,
         gender TEXT NOT NULL,
         civil_status TEXT NOT NULL,
@@ -108,8 +117,15 @@ export async function initDbSchema(): Promise<boolean> {
         kyc_status TEXT NOT NULL,
         member_status TEXT NOT NULL,
         membership_date TEXT NOT NULL,
-        savings_balance DOUBLE PRECISION DEFAULT 1000,
-        share_capital DOUBLE PRECISION DEFAULT 15000,
+        profile_completed BOOLEAN DEFAULT FALSE,
+        profile_completed_at TEXT,
+        existing_member_id TEXT,
+        barangay TEXT,
+        city_municipality TEXT,
+        province TEXT,
+        source_of_income TEXT,
+        savings_balance DOUBLE PRECISION DEFAULT 0,
+        share_capital DOUBLE PRECISION DEFAULT 0,
         active_loans_count INTEGER DEFAULT 0,
         total_borrowed DOUBLE PRECISION DEFAULT 0,
         total_repaid DOUBLE PRECISION DEFAULT 0,
@@ -198,7 +214,7 @@ export async function initDbSchema(): Promise<boolean> {
         member_id TEXT NOT NULL,
         member_name TEXT NOT NULL,
         passbook_number TEXT NOT NULL,
-        balance DOUBLE PRECISION DEFAULT 1000,
+        balance DOUBLE PRECISION DEFAULT 0,
         maintaining_balance DOUBLE PRECISION DEFAULT 1000,
         interest_rate DOUBLE PRECISION DEFAULT 1.0,
         created_at TIMESTAMP DEFAULT NOW()
@@ -419,6 +435,13 @@ export async function initDbSchema(): Promise<boolean> {
         is_read BOOLEAN NOT NULL DEFAULT false,
         created_at TEXT NOT NULL
       );
+    `);
+
+    // Self-heal defaults on pre-existing databases that predate the zero-balance policy.
+    await client.query(`
+      ALTER TABLE borrowers ALTER COLUMN savings_balance SET DEFAULT 0;
+      ALTER TABLE borrowers ALTER COLUMN share_capital SET DEFAULT 0;
+      ALTER TABLE savings_accounts ALTER COLUMN balance SET DEFAULT 0;
     `);
 
     console.log('[Database] Schema verified and all tables ensured.');

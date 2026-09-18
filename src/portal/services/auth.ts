@@ -3,7 +3,6 @@ import { publicRequest } from './clientApi';
 export interface OtpResult {
   success: boolean;
   message: string;
-  demoOtp?: string;
   formattedPhone?: string;
   expiresInSeconds?: number;
   expiresInMinutes?: number;

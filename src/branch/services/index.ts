@@ -1,4 +1,4 @@
-import { branchRequest, withMockFallback } from './api';
+import { branchRequest } from './api';
 import {
   BranchContextData,
   BranchDashboard,
@@ -21,55 +21,25 @@ import {
   TodayCollections,
   StaffBranchAssignmentResponse,
 } from '../types';
-import {
-  mockBranchContext,
-  mockClients,
-  mockClientsFiltered,
-  mockDashboard,
-  mockDocuments,
-  mockGroups,
-  mockKycQueue,
-  mockLoanApplications,
-  mockLoanDetail,
-  mockLoanProducts,
-  mockLoans,
-  mockGroupDetail,
-  mockNotifications,
-  mockPerformance,
-  mockReport,
-  mockSavingsAccounts,
-  mockSavingsTransactions,
-  mockTodayCollections,
-  mockTransactions,
-  mockAuditLogs,
-} from './mock';
 
 const unwrap = (p: any) => p?.data;
 const unwrapReceipt = (p: any) => p?.data?.receipt;
 
 export const branchService = {
-  context: async (): Promise<BranchContextData> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/context');
-        return {
-          personnel: payload.personnel,
-          branch: payload.branch,
-          permissions: payload.permissions || [],
-          viewAll: !!payload.viewAll,
-        };
-      },
-      async () => mockBranchContext
-    ),
+  context: async (): Promise<BranchContextData> => {
+    const payload = await branchRequest('/api/branch/context');
+    return {
+      personnel: payload.personnel,
+      branch: payload.branch,
+      permissions: payload.permissions || [],
+      viewAll: !!payload.viewAll,
+    };
+  },
 
-  personnel: async (): Promise<{ personnel: BranchPersonnel; branch: any; permissions: string[] }> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/personnel');
-        return { personnel: payload.personnel, branch: payload.branch, permissions: payload.permissions || [] };
-      },
-      async () => ({ personnel: mockBranchContext.personnel, branch: mockBranchContext.branch, permissions: mockBranchContext.permissions })
-    ),
+  personnel: async (): Promise<{ personnel: BranchPersonnel; branch: any; permissions: string[] }> => {
+    const payload = await branchRequest('/api/branch/personnel');
+    return { personnel: payload.personnel, branch: payload.branch, permissions: payload.permissions || [] };
+  },
 
   getBranchAssignment: async (): Promise<StaffBranchAssignmentResponse> => {
     return branchRequest('/api/staff/branch-assignment');
@@ -94,59 +64,31 @@ export const branchService = {
 };
 
 export const dashboardService = {
-  get: async (): Promise<BranchDashboard> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/dashboard');
-        return payload?.data || mockDashboard;
-      },
-      async () => mockDashboard
-    ),
+  get: async (): Promise<BranchDashboard> => {
+    const payload = await branchRequest('/api/branch/dashboard');
+    return payload?.data as BranchDashboard;
+  },
 
-  performance: async (range: string = 'month'): Promise<PerformanceData> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/performance?range=${encodeURIComponent(range)}`);
-        return payload?.data || mockPerformance;
-      },
-      async () => mockPerformance
-    ),
+  performance: async (range: string = 'month'): Promise<PerformanceData> => {
+    const payload = await branchRequest(`/api/branch/performance?range=${encodeURIComponent(range)}`);
+    return payload?.data as PerformanceData;
+  },
 
-  activities: async (limit = 15) =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/activities?limit=${limit}`);
-        return payload?.data || [];
-      },
-      async () => mockAuditLogs.slice(0, limit)
-    ),
+  activities: async (limit = 15) => {
+    const payload = await branchRequest(`/api/branch/activities?limit=${limit}`);
+    return payload?.data || [];
+  },
 };
 
 export const clientsService = {
   list: async (filters?: Record<string, string>): Promise<ClientSummary[]> => {
     const qs = new URLSearchParams(filters || {}).toString();
-    return withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/clients${qs ? `?${qs}` : ''}`);
-        return payload?.data || [];
-      },
-      async () => mockClientsFiltered(filters?.search || '') as unknown as ClientSummary[]
-    );
+    const payload = await branchRequest(`/api/branch/clients${qs ? `?${qs}` : ''}`);
+    return payload?.data || [];
   },
 
   get: async (id: string) =>
-    withMockFallback(
-      async () => (await branchRequest(`/api/branch/clients/${id}`, undefined, unwrap)) || null,
-      async () => {
-        const client = mockClients.find((c) => c.id === id) || mockClients[0];
-        return {
-          client,
-          loans: mockLoans.filter((l) => l.borrowerId === client.id),
-          documents: mockDocuments.filter((d) => d.clientId === client.id),
-          savingsAccounts: mockSavingsAccounts.filter((a) => a.memberId === client.id),
-        };
-      }
-    ),
+    (await branchRequest(`/api/branch/clients/${id}`, undefined, unwrap)) || null,
 
   create: async (data: Record<string, any>) =>
     branchRequest('/api/branch/clients', {
@@ -164,14 +106,10 @@ export const clientsService = {
 };
 
 export const kycService = {
-  queue: async (): Promise<(ClientDetail & { submittedDocuments?: number })[]> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/kyc-queue');
-        return payload?.data || [];
-      },
-      async () => mockKycQueue
-    ),
+  queue: async (): Promise<(ClientDetail & { submittedDocuments?: number })[]> => {
+    const payload = await branchRequest('/api/branch/kyc-queue');
+    return payload?.data || [];
+  },
 
   review: async (clientId: string, decision: string, notes?: string) =>
     branchRequest(`/api/branch/kyc/${clientId}/review`, {
@@ -182,24 +120,15 @@ export const kycService = {
 };
 
 export const loansService = {
-  products: async (): Promise<LoanProduct[]> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/loan-products');
-        return payload?.data || [];
-      },
-      async () => mockLoanProducts
-    ),
+  products: async (): Promise<LoanProduct[]> => {
+    const payload = await branchRequest('/api/branch/loan-products');
+    return payload?.data || [];
+  },
 
   applications: async (filters?: Record<string, string>): Promise<BranchLoan[]> => {
     const qs = new URLSearchParams(filters || {}).toString();
-    return withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/loan-applications${qs ? `?${qs}` : ''}`);
-        return payload?.data || [];
-      },
-      async () => mockLoanApplications
-    );
+    const payload = await branchRequest(`/api/branch/loan-applications${qs ? `?${qs}` : ''}`);
+    return payload?.data || [];
   },
 
   createApplication: async (data: Record<string, any>) =>
@@ -211,23 +140,14 @@ export const loansService = {
 
   list: async (filters?: Record<string, string>): Promise<BranchLoan[]> => {
     const qs = new URLSearchParams(filters || {}).toString();
-    return withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/loans${qs ? `?${qs}` : ''}`);
-        return payload?.data || [];
-      },
-      async () => mockLoans.filter((l) => !filters?.status || l.status.includes(filters.status))
-    );
+    const payload = await branchRequest(`/api/branch/loans${qs ? `?${qs}` : ''}`);
+    return payload?.data || [];
   },
 
-  get: async (id: string): Promise<BranchLoanDetail> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/loans/${id}`);
-        return payload?.data || mockLoanDetail(id);
-      },
-      async () => mockLoanDetail(id)
-    ),
+  get: async (id: string): Promise<BranchLoanDetail> => {
+    const payload = await branchRequest(`/api/branch/loans/${id}`);
+    return payload?.data as BranchLoanDetail;
+  },
 
   action: async (id: string, action: string, payload?: { notes?: string; reason?: string }) =>
     branchRequest(`/api/branch/loans/${id}/action`, {
@@ -236,94 +156,40 @@ export const loansService = {
       body: JSON.stringify({ action, ...payload }),
     }),
 
-  assess: async (id: string, data?: Record<string, any>): Promise<LoanAssessment> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/loans/${id}/assessment`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data || {}),
-        });
-        return payload?.data || {};
-      },
-      async () => ({
-        monthlyIncome: 18000,
-        monthlyExpenses: 9500,
-        existingObligations: 4000,
-        disposableIncome: 4500,
-        repaymentCapacityMonthly: 2250,
-        debtRatio: 0.35,
-        recommendedAmount: 40000,
-        estimatedInstallment: 4600,
-        riskIndicators: [],
-        isEstimate: true,
-        note: 'Automated estimate for assessment guidance only.',
-        assessedBy: 'Maria Santos',
-        assessedAt: new Date().toISOString(),
-      })
-    ),
+  assess: async (id: string, data?: Record<string, any>): Promise<LoanAssessment> => {
+    const payload = await branchRequest(`/api/branch/loans/${id}/assessment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data || {}),
+    });
+    return payload?.data || {};
+  },
 };
 
 export const collectionsService = {
-  today: async (): Promise<TodayCollections> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/collections/today');
-        return payload?.data || mockTodayCollections;
-      },
-      async () => mockTodayCollections
-    ),
+  today: async (): Promise<TodayCollections> => {
+    const payload = await branchRequest('/api/branch/collections/today');
+    return payload?.data as TodayCollections;
+  },
 
   recordPayment: async (data: Record<string, any>): Promise<{ receipt: any }> =>
-    withMockFallback(
-      async () => await branchRequest('/api/branch/payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      }, unwrapReceipt),
-      async () => {
-        const loan = mockLoans.find((l) => l.id === String(data.loanId)) || mockLoans[0];
-        const amount = Number(data.amount) || 0;
-        return {
-          receipt: {
-            id: 'pay-mock',
-            receiptNumber: `OR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
-            loanId: loan.id,
-            loanNumber: loan.loanNumber,
-            clientId: loan.borrowerId,
-            clientName: loan.borrowerName,
-            amount,
-            paymentDate: String(data.date || new Date().toISOString().slice(0, 10)),
-            paymentMethod: String(data.paymentMethod || 'Cash'),
-            transactionReference: String(data.transactionReference || ''),
-            processedBy: mockBranchContext.personnel.name,
-            principalPortion: Math.round(amount * 0.74 * 100) / 100,
-            interestPortion: Math.round(amount * 0.26 * 100) / 100,
-            remainingBalance: Math.max(0, loan.remainingBalance - amount),
-          },
-        };
-      }
-    ),
+    await branchRequest('/api/branch/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }, unwrapReceipt),
 };
 
 export const savingsService = {
-  list: async (): Promise<BranchSavingsAccount[]> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/savings');
-        return payload?.data || [];
-      },
-      async () => mockSavingsAccounts
-    ),
+  list: async (): Promise<BranchSavingsAccount[]> => {
+    const payload = await branchRequest('/api/branch/savings');
+    return payload?.data || [];
+  },
 
-  transactions: async (accountId: string): Promise<SavingsTransactionRow[]> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/savings/${accountId}/transactions`);
-        return payload?.data || [];
-      },
-      async () => mockSavingsTransactions(accountId)
-    ),
+  transactions: async (accountId: string): Promise<SavingsTransactionRow[]> => {
+    const payload = await branchRequest(`/api/branch/savings/${accountId}/transactions`);
+    return payload?.data || [];
+  },
 
   deposit: async (data: Record<string, any>) =>
     branchRequest('/api/branch/savings/deposit', {
@@ -341,23 +207,15 @@ export const savingsService = {
 };
 
 export const groupsService = {
-  list: async (): Promise<SolidarityGroup[]> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/groups');
-        return payload?.data || [];
-      },
-      async () => mockGroups
-    ),
+  list: async (): Promise<SolidarityGroup[]> => {
+    const payload = await branchRequest('/api/branch/groups');
+    return payload?.data || [];
+  },
 
-  get: async (id: string) =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/groups/${id}`);
-        return payload?.data || mockGroupDetail(id);
-      },
-      async () => mockGroupDetail(id)
-    ),
+  get: async (id: string) => {
+    const payload = await branchRequest(`/api/branch/groups/${id}`);
+    return payload?.data;
+  },
 
   create: async (data: Record<string, any>) =>
     branchRequest('/api/branch/groups', {
@@ -380,13 +238,8 @@ export const groupsService = {
 export const transactionsService = {
   list: async (filters?: Record<string, string>): Promise<FinancialTransactionRow[]> => {
     const qs = new URLSearchParams(filters || {}).toString();
-    return withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/transactions${qs ? `?${qs}` : ''}`);
-        return payload?.data || [];
-      },
-      async () => mockTransactions
-    );
+    const payload = await branchRequest(`/api/branch/transactions${qs ? `?${qs}` : ''}`);
+    return payload?.data || [];
   },
 
   record: async (data: Record<string, any>) =>
@@ -400,13 +253,8 @@ export const transactionsService = {
 export const documentsService = {
   list: async (filters?: Record<string, string>): Promise<BranchDocument[]> => {
     const qs = new URLSearchParams(filters || {}).toString();
-    return withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/documents${qs ? `?${qs}` : ''}`);
-        return payload?.data || [];
-      },
-      async () => mockDocuments
-    );
+    const payload = await branchRequest(`/api/branch/documents${qs ? `?${qs}` : ''}`);
+    return payload?.data || [];
   },
 
   create: async (data: Record<string, any>) =>
@@ -425,17 +273,10 @@ export const documentsService = {
 };
 
 export const notificationsService = {
-  list: async (): Promise<{ notifications: BranchNotification[]; unreadCount: number }> =>
-    withMockFallback(
-      async () => {
-        const payload = await branchRequest('/api/branch/notifications');
-        return { notifications: payload?.data || [], unreadCount: payload?.unreadCount || 0 };
-      },
-      async () => ({
-        notifications: mockNotifications,
-        unreadCount: mockNotifications.filter((n) => !n.isRead).length,
-      })
-    ),
+  list: async (): Promise<{ notifications: BranchNotification[]; unreadCount: number }> => {
+    const payload = await branchRequest('/api/branch/notifications');
+    return { notifications: payload?.data || [], unreadCount: payload?.unreadCount || 0 };
+  },
 
   markRead: async (id: string) =>
     branchRequest(`/api/branch/notifications/${id}/read`, { method: 'POST' }),
@@ -449,26 +290,16 @@ export const reportsService = {
     const qs = new URLSearchParams({ type });
     if (from) qs.set('from', from);
     if (to) qs.set('to', to);
-    return withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/reports?${qs.toString()}`);
-        return payload?.data || mockReport(type);
-      },
-      async () => mockReport(type)
-    );
+    const payload = await branchRequest(`/api/branch/reports?${qs.toString()}`);
+    return payload?.data as ReportRow;
   },
 };
 
 export const activityService = {
   log: async (filters?: Record<string, string>) => {
     const qs = new URLSearchParams(filters || {}).toString();
-    return withMockFallback(
-      async () => {
-        const payload = await branchRequest(`/api/branch/activity-log${qs ? `?${qs}` : ''}`);
-        return payload?.data || [];
-      },
-      async () => mockAuditLogs
-    );
+    const payload = await branchRequest(`/api/branch/activity-log${qs ? `?${qs}` : ''}`);
+    return payload?.data || [];
   },
 };
 

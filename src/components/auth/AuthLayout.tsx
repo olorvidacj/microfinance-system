@@ -49,7 +49,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
                 <Building2 className="w-6 h-6" />
               </div>
               <div>
-                <span className="font-bold text-xl tracking-tight">HOSCOMO</span>
+                <span className="font-bold text-xl tracking-tight">HOSCOMCO</span>
                 <p className="text-[11px] text-gold-300 uppercase tracking-widest font-semibold">Microfinance Cooperative</p>
               </div>
             </div>
@@ -68,7 +68,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
           </div>
 
           <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400/70">
-            <span>© 2026 HOSCOMO Cooperative</span>
+            <span>© 2026 HOSCOMCO Cooperative</span>
             <span>Tacloban, Leyte</span>
           </div>
         </div>

@@ -69,7 +69,7 @@ export const SavingsReceiptModal: React.FC<SavingsReceiptModalProps> = ({
   const handleDownload = () => {
     const textContent = `
 ============================================================
-           HOSCOMO MICROFINANCE COOPERATIVE
+           HOSCOMCO MICROFINANCE COOPERATIVE
            OFFICIAL SAVINGS TRANSACTION SLIP
 ============================================================
 Transaction No:      ${transaction.transactionNumber}
@@ -192,7 +192,7 @@ CDA Registration No. 9520-10023812 • Bangko Sentral Regulated
               <PiggyBank className="w-6 h-6" />
             </div>
             <h2 className="text-lg font-black tracking-tight text-slate-900 uppercase">
-              HOSCOMO Microfinance Cooperative
+              HOSCOMCO Microfinance Cooperative
             </h2>
             <p className="text-xs text-slate-500 font-medium">
               Community Savings, Capital Build-up & Mutual Credit Union
@@ -378,7 +378,7 @@ CDA Registration No. 9520-10023812 • Bangko Sentral Regulated
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>Certified Official System Record • Hash: {transaction.id.slice(-8)}</span>
             </div>
-            <div>HOSCOMO Core Banking System v2.4</div>
+            <div>HOSCOMCO Core Banking System v2.4</div>
           </div>
         </div>
 

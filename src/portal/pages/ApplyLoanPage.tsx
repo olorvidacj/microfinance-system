@@ -373,7 +373,7 @@ const ApplyLoanPage: React.FC = () => {
             <div className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 px-4 py-3 text-xs text-slate-500">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
               <span>
-                By submitting you agree that the details provided are accurate and authorize HOSCOMO to conduct a
+                By submitting you agree that the details provided are accurate and authorize HOSCOMCO to conduct a
                 credit investigation. Final approval is subject to the Credit Committee.
               </span>
             </div>

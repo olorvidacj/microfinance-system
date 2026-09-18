@@ -150,7 +150,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
       const res = await authFetch('/api/db/seed', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setSeedSuccess('Database seeded with standard HOSCOMO branches, staff, products, and members!');
+        setSeedSuccess('Database seeded with standard HOSCOMCO branches, staff, products, and members!');
         await syncWithDatabase();
         checkServerDatabase();
       } else {
@@ -199,7 +199,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
                 </span>
               </div>
               <p className="text-xs text-slate-300">
-                Cloud Database Integration, Schema Migration & Live Synchronization for HOSCOMO
+                Cloud Database Integration, Schema Migration & Live Synchronization for HOSCOMCO
               </p>
             </div>
           </div>
@@ -296,7 +296,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {serverDbStatus?.message || 'HOSCOMO financial records and audit ledgers ready for real-time synchronization.'}
+                      {serverDbStatus?.message || 'HOSCOMCO financial records and audit ledgers ready for real-time synchronization.'}
                     </p>
                   </div>
                 </div>
@@ -343,7 +343,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
                       </div>
                       <h5 className="font-bold text-slate-900 mb-1">Create Supabase Project</h5>
                       <p className="text-slate-500">
-                        Go to Supabase.com and create a new free PostgreSQL project for HOSCOMO.
+                        Go to Supabase.com and create a new free PostgreSQL project for HOSCOMCO.
                       </p>
                     </div>
                     <a
@@ -549,7 +549,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
                     Supabase PostgreSQL Migration Script (`supabase_schema.sql`)
                   </h4>
                   <p className="text-xs text-slate-500">
-                    Sets up 15 tables, indexes, Row Level Security policies, and initial HOSCOMO seed records.
+                    Sets up 15 tables, indexes, Row Level Security policies, and initial HOSCOMCO seed records.
                   </p>
                 </div>
 
@@ -584,7 +584,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
 
               {/* SQL Code Preview Window */}
               <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 font-mono text-xs text-slate-300 max-h-96 overflow-y-auto leading-relaxed select-all">
-                <pre className="text-emerald-400">-- HOSCOMO Supabase Migration Script</pre>
+                <pre className="text-emerald-400">-- HOSCOMCO Supabase Migration Script</pre>
                 <pre className="text-slate-400">CREATE EXTENSION IF NOT EXISTS "uuid-ossp";</pre>
                 <pre className="text-gold-400 mt-2">-- 1. Branches</pre>
                 <pre className="text-slate-200">{`CREATE TABLE IF NOT EXISTS public.branches (
@@ -730,7 +730,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
         <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <Layers className="w-4 h-4 text-slate-400" />
-            <span>HOSCOMO Microfinance Institution &bull; Supabase PostgreSQL Integration</span>
+            <span>HOSCOMCO Microfinance Institution &bull; Supabase PostgreSQL Integration</span>
           </div>
           <button
             onClick={onClose}

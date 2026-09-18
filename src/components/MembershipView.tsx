@@ -93,13 +93,13 @@ export const MembershipView: React.FC = () => {
 
   // Background Investigation Form State
   const [biForm, setBiForm] = useState<BackgroundInvestigation>({
-    investigatorName: 'Prof. Teresa Santos (Education Committee)',
+    investigatorName: '',
     investigationDate: new Date().toISOString().split('T')[0],
-    communityReputation: 'Excellent',
-    residenceConfirmed: true,
-    incomeSourceVerified: true,
-    pmesSeminarAttended: true,
-    recommendation: 'RECOMMEND_APPROVAL',
+    communityReputation: 'Satisfactory',
+    residenceConfirmed: false,
+    incomeSourceVerified: false,
+    pmesSeminarAttended: false,
+    recommendation: 'CONDITIONAL',
     findingsNotes: 'Confirmed permanent resident for over 4 years. Good standing in community. Satisfactory PMES seminar engagement.',
   });
 

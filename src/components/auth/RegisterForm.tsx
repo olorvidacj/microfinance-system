@@ -134,9 +134,9 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
       });
 
       if (linked.borrowerId) {
-        setInfo('Your HOSCOMO account is ready. Your client profile has been successfully linked.');
+        setInfo('Your HOSCOMCO account is ready. Your client profile has been successfully linked.');
       } else {
-        setInfo('Your HOSCOMO account is ready.');
+        setInfo('Your HOSCOMCO account is ready.');
       }
       setSuccess(true);
     } catch (err: any) {
@@ -154,7 +154,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
         </div>
         <h2 className="text-2xl font-extrabold text-slate-900">Account Created!</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Welcome to HOSCOMO, {steps.account.fullName.split(' ')[0]}.
+          Welcome to HOSCOMCO, {steps.account.fullName.split(' ')[0]}.
         </p>
         {info && (
           <div className="mt-4 flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-3">
@@ -225,7 +225,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
             <Smartphone className="w-4 h-4 text-gold-600 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-gold-700">Step 1 of 3 — Your Account. </span>
-              <span>Complete your registration to access your HOSCOMO client portal.</span>
+              <span>Complete your registration to access your HOSCOMCO client portal.</span>
             </div>
           </div>
 

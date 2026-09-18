@@ -36,29 +36,3 @@ export async function branchRequest(
   return payload;
 }
 
-export async function withMockFallback<T>(
-  call: () => Promise<T>,
-  fallback: () => T | Promise<T>
-): Promise<T> {
-  try {
-    return await withTimeout(call(), 8000);
-  } catch {
-    return fallback();
-  }
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Request timed out')), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      }
-    );
-  });
-}

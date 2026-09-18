@@ -166,7 +166,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
         idType: formData.idType,
         phone: formData.phone,
         secondaryPhone: formData.secondaryPhone,
-        email: formData.email || `${formData.fullName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@client.hoscomo.ph`,
+        email: formData.email || `${formData.fullName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@client.HOSCOMCO.ph`,
         dateOfBirth: formData.dateOfBirth,
         placeOfBirth: formData.placeOfBirth,
         gender: formData.gender,

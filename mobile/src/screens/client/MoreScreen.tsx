@@ -85,7 +85,7 @@ export const MoreScreen: React.FC = () => {
           />
         </AppCard>
 
-        <Text style={styles.version}>HOSCOMO Mobile App · Version 2.0.0</Text>
+        <Text style={styles.version}>HOSCOMCO Mobile App · Version 2.0.0</Text>
       </ScrollView>
 
       <AppModal

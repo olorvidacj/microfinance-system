@@ -72,7 +72,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
         status: 'Pending',
       });
       setIsSubmitting(false);
-      setSuccessMessage('Your profile update request has been transmitted to HOSCOMO Member Records for verification.');
+      setSuccessMessage('Your profile update request has been transmitted to HOSCOMCO Member Records for verification.');
       setTimeout(() => {
         setSuccessMessage('');
         onClose();

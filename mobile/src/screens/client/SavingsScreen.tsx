@@ -82,7 +82,7 @@ export const SavingsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title="My Savings" subtitle="Save with HOSCOMO, build a better future" />
+      <ScreenHeader title="My Savings" subtitle="Save with HOSCOMCO, build a better future" />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -130,7 +130,7 @@ export const SavingsScreen: React.FC = () => {
             <View style={styles.infoNote}>
               <Ionicons name="information-circle-outline" size={16} color={colors.info} />
               <Text style={styles.infoNoteText}>
-                Savings earn 1% interest per annum, credited quarterly. Deposits are accepted over the counter at any HOSCOMO branch.
+                Savings earn 1% interest per annum, credited quarterly. Deposits are accepted over the counter at any HOSCOMCO branch.
               </Text>
             </View>
 
@@ -198,7 +198,7 @@ export const SavingsScreen: React.FC = () => {
         visible={depositVisible}
         onClose={() => setDepositVisible(false)}
         title="How to Make a Deposit"
-        subtitle="Deposit at any HOSCOMO branch"
+        subtitle="Deposit at any HOSCOMCO branch"
         icon="storefront-outline"
         iconColor={colors.teal}
         iconBg={colors.tealSoft}
@@ -207,7 +207,7 @@ export const SavingsScreen: React.FC = () => {
       >
         <View style={styles.depositStep}>
           <Text style={styles.depositStepNum}>1</Text>
-          <Text style={styles.depositStepText}>Visit any HOSCOMO branch and bring your member number or valid ID.</Text>
+          <Text style={styles.depositStepText}>Visit any HOSCOMCO branch and bring your member number or valid ID.</Text>
         </View>
         <View style={styles.depositStep}>
           <Text style={styles.depositStepNum}>2</Text>

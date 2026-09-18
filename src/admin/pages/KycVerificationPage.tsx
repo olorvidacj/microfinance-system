@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ShieldCheck, CheckCircle2, XCircle, RefreshCcw, Eye, FileText, CheckSquare, Square, ScanLine, Camera, AlertCircle, FileCheck, Building,
 } from 'lucide-react';
@@ -8,7 +8,8 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_KYC_REQUESTS, KycRequest, formatDate } from '../data/mockData';
+import { KycRequest, formatDate } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
 
 const STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Requires Correction'];
 
@@ -28,7 +29,7 @@ const VERIFY_CHECKLIST = [
 ];
 
 export const KycVerificationPage: React.FC = () => {
-  const [requests, setRequests] = useState<KycRequest[]>(MOCK_KYC_REQUESTS);
+  const [requests, setRequests] = useState<KycRequest[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<KycRequest | null>(null);
@@ -36,6 +37,10 @@ export const KycVerificationPage: React.FC = () => {
   const [checked, setChecked] = useState<boolean[]>(VERIFY_CHECKLIST.map(() => false));
   const [remarks, setRemarks] = useState('');
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.kycRequests().then(setRequests).catch(() => setRequests([]));
+  }, []);
 
   const filtered = useMemo(() => {
     return requests.filter((r) => {

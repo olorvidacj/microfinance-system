@@ -556,6 +556,15 @@ branchRouter.post('/clients', requireBranch(['register_clients', 'manage_kyc', '
     lastActivityDate: nowDate,
     notes: body.notes ? String(body.notes) : null,
   });
+  await db.insert(schema.savingsAccounts).values({
+    id: genId('sav'),
+    memberId: id,
+    memberName: String(body.fullName || 'New Client').trim(),
+    passbookNumber: `PB-${borrowerNumber}`,
+    balance: 0,
+    maintainingBalance: 1000,
+    interestRate: 1.0,
+  });
   await audit(ctx, 'CLIENT_REGISTERED', `Registered new client ${borrowerNumber} (${body.fullName || 'New Client'})`, 'BORROWER', { targetType: 'Borrower', targetId: id });
   await notify(ctx, 'CLIENT_REGISTRATION', 'New client registered', `${body.fullName || 'New client'} was registered under this branch.`, { relatedType: 'Borrower', relatedId: id });
   res.status(201).json({ success: true, data: { id, borrowerNumber } });
@@ -1134,6 +1143,7 @@ branchRouter.post('/savings/deposit', requireBranch(['process_savings_deposits']
   const txNumber = `STX-${nowDate.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`;
 
   await db.update(schema.savingsAccounts).set({ balance: balanceAfter }).where(eq(schema.savingsAccounts.id, accountId));
+  try { await db.update(schema.borrowers).set({ savingsBalance: balanceAfter }).where(eq(schema.borrowers.id, account.memberId)); } catch {}
   await db.insert(schema.savingsTransactions).values({
     id: txId,
     savingsAccountId: accountId,
@@ -1204,6 +1214,7 @@ branchRouter.post('/savings/withdrawal', requireBranch(['process_savings_withdra
   const txNumber = `STW-${nowDate.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`;
 
   await db.update(schema.savingsAccounts).set({ balance: balanceAfter }).where(eq(schema.savingsAccounts.id, accountId));
+  try { await db.update(schema.borrowers).set({ savingsBalance: balanceAfter }).where(eq(schema.borrowers.id, account.memberId)); } catch {}
   await db.insert(schema.savingsTransactions).values({
     id: txId,
     savingsAccountId: accountId,

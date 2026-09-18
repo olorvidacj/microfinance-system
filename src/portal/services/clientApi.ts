@@ -41,21 +41,6 @@ export async function clientRequest(
 }
 
 /**
- * Executes an API call and falls back to a mock value when the endpoint is
- * unreachable or not yet implemented. Keeps the UI usable during development.
- */
-export async function withMockFallback<T>(
-  call: () => Promise<T>,
-  fallback: () => T | Promise<T>
-): Promise<T> {
-  try {
-    return await call();
-  } catch {
-    return fallback();
-  }
-}
-
-/**
  * Public (non-authenticated) request used by client login / OTP / reset flows.
  */
 export async function publicRequest(url: string, body?: unknown, method: 'POST' = 'POST'): Promise<any> {

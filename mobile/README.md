@@ -1,4 +1,4 @@
-# HOSCOMO Microfinance - Mobile Application (React Native / Expo)
+# HOSCOMCO Microfinance - Mobile Application (React Native / Expo)
 
 This directory contains the cross-platform mobile client built using **React Native** and **Expo**.
 

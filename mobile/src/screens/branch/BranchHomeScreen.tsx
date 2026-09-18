@@ -62,7 +62,7 @@ export const BranchHomeScreen: React.FC<Props> = ({ navigation }) => {
           </View>
           <View style={styles.branchRow}>
             <Ionicons name="location-outline" size={14} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.branchName}>{context?.branchName ?? 'HOSCOMO Branch'}</Text>
+            <Text style={styles.branchName}>{context?.branchName ?? 'HOSCOMCO Branch'}</Text>
           </View>
         </View>
 
@@ -134,7 +134,7 @@ export const BranchHomeScreen: React.FC<Props> = ({ navigation }) => {
           icon={<Ionicons name="log-out-outline" size={17} color={colors.primary} />}
         />
 
-        <Text style={styles.footer}>{context?.branchName ?? 'HOSCOMO'} · Authorized personnel only</Text>
+        <Text style={styles.footer}>{context?.branchName ?? 'HOSCOMCO'} · Authorized personnel only</Text>
       </ScrollView>
     </SafeAreaView>
   );

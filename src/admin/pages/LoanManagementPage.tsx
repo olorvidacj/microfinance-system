@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   FileSpreadsheet, CheckCircle2, XCircle, Clock, Wallet, Eye, Download, History as HistoryIcon, ArrowUpRight, Check,
 } from 'lucide-react';
@@ -8,7 +8,8 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_LOANS, AdminLoan, formatPHP, formatDate } from '../data/mockData';
+import { AdminLoan, formatPHP, formatDate } from '../data/mockData';
+import { adminApi, LoanDetail } from '../services/adminApi';
 
 const STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Active', 'Completed', 'Disbursed'];
 const PRODUCTS = ['Regular Microloan', 'Livelihood Loan', 'Emergency Loan', 'Agricultural Loan', 'Business Loan'];
@@ -16,14 +17,24 @@ const PRODUCTS = ['Regular Microloan', 'Livelihood Loan', 'Emergency Loan', 'Agr
 type LoanAction = 'approve' | 'reject' | 'disburse';
 
 export const LoanManagementPage: React.FC = () => {
-  const [loans, setLoans] = useState<AdminLoan[]>(MOCK_LOANS);
+  const [loans, setLoans] = useState<AdminLoan[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [productFilter, setProductFilter] = useState('');
   const [selected, setSelected] = useState<AdminLoan | null>(null);
+  const [detail, setDetail] = useState<LoanDetail | null>(null);
   const [detailTab, setDetailTab] = useState<'overview' | 'schedule' | 'history'>('overview');
   const [action, setAction] = useState<{ type: LoanAction; loan: AdminLoan } | null>(null);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.loans().then(setLoans).catch(() => setLoans([]));
+  }, []);
+
+  useEffect(() => {
+    if (!selected) { setDetail(null); return; }
+    adminApi.loansDetail(selected.id).then(setDetail).catch(() => setDetail(null));
+  }, [selected?.id]);
 
   const filtered = useMemo(() => {
     return loans.filter((l) => {
@@ -56,23 +67,21 @@ export const LoanManagementPage: React.FC = () => {
     outstanding: loans.reduce((s, l) => s + l.outstandingBalance, 0),
   };
 
-  const sampleSchedule = [
-    { n: 1, due: '2025-07-15', principal: 4167, interest: 521, total: 4688, status: 'Paid' },
-    { n: 2, due: '2025-08-15', principal: 4167, interest: 521, total: 4688, status: 'Paid' },
-    { n: 3, due: '2025-09-15', principal: 4167, interest: 521, total: 4688, status: 'Paid' },
-    { n: 4, due: '2025-10-15', principal: 4167, interest: 521, total: 4688, status: 'Upcoming' },
-    { n: 5, due: '2025-11-15', principal: 4167, interest: 521, total: 4688, status: 'Upcoming' },
-    { n: 6, due: '2025-12-15', principal: 4167, interest: 521, total: 4688, status: 'Upcoming' },
-    { n: 7, due: '2026-01-15', principal: 4167, interest: 521, total: 4688, status: 'Upcoming' },
-    { n: 8, due: '2026-02-15', principal: 4167, interest: 521, total: 4688, status: 'Upcoming' },
-  ];
+  const scheduleRows = (detail?.loan?.schedule || []).map((s: any, i: number) => ({
+    n: i + 1,
+    due: s.dueDate || s.due || '',
+    principal: Number(s.principal) || 0,
+    interest: Number(s.interest) || 0,
+    total: Number(s.totalDue) || Number(s.total) || 0,
+    status: s.status || (Number(s.amountPaid) > 0 ? 'Paid' : 'Upcoming'),
+  }));
 
-  const approvalHistory = [
-    { date: '2025-06-20', action: 'Loan Processor verified eligibility & credit score', by: 'Maria Santos', status: 'Complete' },
-    { date: '2025-06-22', action: 'Credit Committee appraisal & risk review', by: 'Credit Committee', status: 'Complete' },
-    { date: '2025-06-25', action: 'Approved by General Manager', by: 'Roberto Villanueva', status: 'Complete' },
-    { date: '2025-06-27', action: 'Disbursement released via Teller Counter', by: 'Cashier Desk', status: 'Complete' },
-  ];
+  const approvalHistory = (detail?.auditHistory || []).map((h) => ({
+    date: h.date || '',
+    action: h.action,
+    by: h.by || '',
+    status: String(h.status || '').toUpperCase().includes('FAIL') ? 'Warning' : 'Complete',
+  }));
 
   return (
     <div className="space-y-6">
@@ -267,7 +276,7 @@ export const LoanManagementPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Stated Purpose</p>
-                    <p className="font-medium text-xs text-slate-700">Small business working capital and retail inventory</p>
+                    <p className="font-medium text-xs text-slate-700">{selected.purpose || '—'}</p>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -277,15 +286,15 @@ export const LoanManagementPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Release Date</p>
-                    <p className="font-bold text-xs text-slate-800">{selected.status === 'Disbursed' || selected.status === 'Active' ? 'July 01, 2025' : 'Pending Clearance'}</p>
+                    <p className="font-bold text-xs text-slate-800">{selected.releaseDate || 'Pending Clearance'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Maturity Date</p>
-                    <p className="font-bold text-xs text-slate-800">{selected.status === 'Active' ? 'June 15, 2026' : 'Upon Release'}</p>
+                    <p className="font-bold text-xs text-slate-800">{selected.maturityDate || 'Upon Release'}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">Assigned Credit Officer</p>
-                    <p className="font-bold text-xs text-slate-800">Maria Santos (Branch Officer)</p>
+                    <p className="font-bold text-xs text-slate-800">{selected.loanOfficer || 'Not Assigned'}</p>
                   </div>
                 </div>
               </div>
@@ -294,7 +303,7 @@ export const LoanManagementPage: React.FC = () => {
             {detailTab === 'schedule' && (
               <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <DataTable
-                  data={sampleSchedule}
+                  data={scheduleRows}
                   keyField="n"
                   columns={[
                     { key: 'n', header: 'Inst #', render: (s) => <span className="text-xs font-mono text-slate-500">#{s.n}</span> },

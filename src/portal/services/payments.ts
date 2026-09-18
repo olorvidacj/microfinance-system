@@ -1,29 +1,23 @@
-import { ApiError, clientRequest, withMockFallback } from './clientApi';
+import { ApiError, clientRequest } from './clientApi';
 import { PaymentProofResult, PaymentRecordItem } from '../types';
-import { mockPayments } from './mock';
 
 export const paymentService = {
   async list(loanId?: string): Promise<PaymentRecordItem[]> {
-    return withMockFallback(
-      async () => {
-        const url = loanId ? `/api/client/loans/${loanId}/payments` : '/api/client/payments';
-        const payload = await clientRequest(url);
-        const rows = payload?.payments || payload || [];
-        return rows.map((p: any, i: number) => ({
-          id: String(p.id ?? i),
-          loanId: p.loanId || p.loanNumber,
-          loanNumber: p.loanNumber || '',
-          amount: Number(p.amount) || 0,
-          paymentDate: p.paymentDate,
-          paymentMethod: p.paymentMethod || 'CASH',
-          referenceNumber: p.referenceNumber || '',
-          officialReceiptNumber: p.officialReceiptNumber,
-          status: p.status || 'COMPLETED',
-          notes: p.notes,
-        }));
-      },
-      async () => (loanId ? mockPayments.filter((p) => p.loanId === loanId) : mockPayments)
-    );
+    const url = loanId ? `/api/client/loans/${loanId}/payments` : '/api/client/payments';
+    const payload = await clientRequest(url);
+    const rows = payload?.payments || payload || [];
+    return rows.map((p: any, i: number) => ({
+      id: String(p.id ?? i),
+      loanId: p.loanId || p.loanNumber,
+      loanNumber: p.loanNumber || '',
+      amount: Number(p.amount) || 0,
+      paymentDate: p.paymentDate,
+      paymentMethod: p.paymentMethod || 'CASH',
+      referenceNumber: p.referenceNumber || '',
+      officialReceiptNumber: p.officialReceiptNumber,
+      status: p.status || 'COMPLETED',
+      notes: p.notes,
+    }));
   },
 
   async submitPaymentProof(input: {

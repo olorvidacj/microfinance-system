@@ -12,7 +12,7 @@ import { formatDate, humanizeStatus } from '../../utils/format';
 const CONTACTS = [
   { icon: 'call-outline' as const, label: 'Hotline', value: '(053) 100 2000', color: colors.primary },
   { icon: 'phone-portrait-outline' as const, label: 'Smart / Globe', value: '0917 555 0000', color: colors.teal },
-  { icon: 'mail-outline' as const, label: 'Email', value: 'support@hoscomo.ph', color: colors.green },
+  { icon: 'mail-outline' as const, label: 'Email', value: 'support@HOSCOMCO.ph', color: colors.green },
   { icon: 'location-outline' as const, label: 'Head Office', value: 'Tacloban City, Leyte', color: colors.info },
 ];
 

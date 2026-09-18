@@ -1,5 +1,5 @@
 export const colors = {
-  // Primary — deep navy (HOSCOMO brand)
+  // Primary — deep navy (HOSCOMCO brand)
   primary: '#091527',
   primaryDark: '#0D1C33',
   primaryDeep: '#06101C',

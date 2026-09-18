@@ -49,7 +49,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
 
   // Admin authorization simulation state
   const [showAdminAuth, setShowAdminAuth] = useState(false);
-  const [adminPassword, setAdminPassword] = useState('Admin@123');
+  const [adminPassword, setAdminPassword] = useState('');
   const [adminAuthorizing, setAdminAuthorizing] = useState(false);
   const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
 
@@ -58,7 +58,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
     id: 'br-main',
     name: 'Tacloban Main Branch',
     code: 'TAC-MAIN',
-    address: 'HOSCOMO Cooperative Building, Real Street, Tacloban City, Leyte',
+    address: 'HOSCOMCO Cooperative Building, Real Street, Tacloban City, Leyte',
     city: 'Tacloban City',
     phone: '+63 (053) 832-4190',
   };
@@ -66,10 +66,10 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
   // the cooperative's seed data). Fallbacks reuse the same seeded records.
   const adminContact = assignmentData?.adminContact || {
     name: 'Elena Rostata',
-    email: 'admin@hoscomo.coop',
+    email: 'admin@HOSCOMCO.coop',
     title: 'System Administrator & Operations Head',
     phone: '+63 (053) 832-4190',
-    location: 'Tacloban Main Branch, HOSCOMO Bldg, Real Street',
+    location: 'Tacloban Main Branch, HOSCOMCO Bldg, Real Street',
   };
   const adminInitials =
     adminContact.name
@@ -93,12 +93,12 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
       } else {
         const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         setRefreshMessage(
-          `Checked HOSCOMO central directory at ${timeStr}. Account is still pending cooperative branch assignment by the System Administrator.`
+          `Checked HOSCOMCO central directory at ${timeStr}. Account is still pending cooperative branch assignment by the System Administrator.`
         );
       }
     } catch (err: any) {
       setRefreshError(
-        err?.message || 'Unable to communicate with HOSCOMO server. Please verify your connection.'
+        err?.message || 'Unable to communicate with HOSCOMCO server. Please verify your connection.'
       );
     } finally {
       setIsRefreshing(false);
@@ -107,7 +107,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
 
   const handleCopyAccountInfo = () => {
     const text = [
-      '--- HOSCOMO Staff Branch Assignment Request ---',
+      '--- HOSCOMCO Staff Branch Assignment Request ---',
       `Staff Name: ${staff?.name || 'Staff Member'}`,
       `Staff ID: ${staff?.id || 'N/A'}`,
       `Email: ${staff?.email || 'N/A'}`,
@@ -162,7 +162,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
 
   return (
     <div className="min-h-screen bg-[#091527] text-slate-100 flex flex-col justify-between selection:bg-amber-400 selection:text-slate-950 font-sans">
-      {/* Top HOSCOMO Brand Header */}
+      {/* Top HOSCOMCO Brand Header */}
       <header className="border-b border-slate-800/80 bg-[#060e1a]/90 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/10">
@@ -171,7 +171,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">
-                HOSCOMO Microfinance Cooperative
+                HOSCOMCO Microfinance Cooperative
               </span>
               <span className="hidden sm:inline-flex items-center rounded-md bg-amber-500/15 border border-amber-400/30 px-2 py-0.5 text-[10px] font-bold text-amber-300">
                 Staff Operations Portal
@@ -229,7 +229,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
                         Cooperative Branch Assignment Required
                       </h1>
                       <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                        HOSCOMO Microfinance Cooperative Security & Compliance Framework
+                        HOSCOMCO Microfinance Cooperative Security & Compliance Framework
                       </p>
                     </div>
                   </div>
@@ -251,7 +251,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
                         Official Notice
                       </p>
                       <p className="text-sm sm:text-base leading-relaxed text-slate-200 font-medium">
-                        &ldquo;Your staff account is currently not assigned to a cooperative branch. Please contact your HOSCOMO System Administrator to assign you to Tacloban Main Branch.&rdquo;
+                        &ldquo;Your staff account is currently not assigned to a cooperative branch. Please contact your HOSCOMCO System Administrator to assign you to Tacloban Main Branch.&rdquo;
                       </p>
                     </div>
                   </div>
@@ -393,7 +393,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
 
       {/* Footer */}
       <footer className="border-t border-slate-900 py-3 px-6 text-center text-xs text-slate-400">
-        HOSCOMO Microfinance Cooperative · Enterprise Staff Portal · Tacloban City, Leyte
+        HOSCOMCO Microfinance Cooperative · Enterprise Staff Portal · Tacloban City, Leyte
       </footer>
 
       {/* Contact System Administrator Modal */}
@@ -408,7 +408,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    HOSCOMO System Administrator
+                    HOSCOMCO System Administrator
                   </h3>
                   <p className="text-xs text-slate-400">
                     Cooperative Branch Assignment Desk
@@ -445,7 +445,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
                   <div>
                     <h4 className="text-sm font-bold text-white">{adminContact.name}</h4>
                     <p className="text-xs text-amber-400 font-medium">{adminContact.title}</p>
-                    <p className="text-[11px] text-slate-400">HOSCOMO Cooperative IT & Operations Directorate</p>
+                    <p className="text-[11px] text-slate-400">HOSCOMCO Cooperative IT & Operations Directorate</p>
                   </div>
                 </div>
 

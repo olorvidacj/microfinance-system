@@ -206,7 +206,7 @@ const MainApp: React.FC = () => {
       title: 'Analytics & Policy',
       items: [
         navItem('reports', 'Audit & Reports', FileText),
-        navItem('brochure', 'HOSCOMO Policies', BookOpen),
+        navItem('brochure', 'HOSCOMCO Policies', BookOpen),
         navItem('calculator', 'Calculator', Calculator),
       ],
     },
@@ -227,7 +227,7 @@ const MainApp: React.FC = () => {
     <>
       <AppShell
         sections={sections}
-        brandName="HOSCOMO"
+        brandName="HOSCOMCO"
         brandSubtitle="Client Services"
         brandTag="Microfinance"
         brandMeta="Tacloban · Main Branch"

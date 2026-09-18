@@ -3,26 +3,12 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import {
   Building2,
   CheckCircle2,
-  KeyRound,
   Loader2,
   LockKeyhole,
   ShieldCheck,
-  UserCheck,
-  Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { INITIAL_BRANCHES, INITIAL_STAFF } from '../../data/initialData';
 import { Input, Label } from '../../portal/components/ui/Field';
-
-const BRANCH_LABELS = new Map(INITIAL_BRANCHES.map((b) => [b.id, b.name]));
-
-const DEMO_STAFF_ACCOUNTS = INITIAL_STAFF.map((s) => ({
-  role: s.title || s.role,
-  name: s.name,
-  email: s.email,
-  password: 'Staff@123',
-  branch: BRANCH_LABELS.get(s.assignedBranchId) || 'Tacloban Main Branch',
-}));
 
 export const StaffLoginPage: React.FC = () => {
   const { user, login } = useAuth();
@@ -36,16 +22,13 @@ export const StaffLoginPage: React.FC = () => {
     return <Navigate to="/staff/app" replace />;
   }
 
-  const handleLogin = async (e?: React.FormEvent, customEmail?: string, customPass?: string) => {
+  const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError('');
     setLoading(true);
 
-    const loginEmail = (customEmail || email).trim();
-    const loginPass = customPass || password;
-
     try {
-      const u = await login(loginEmail, loginPass);
+      const u = await login(email, password);
       if (u.role === 'STAFF') {
         navigate('/staff/app', { replace: true });
       } else {
@@ -56,12 +39,6 @@ export const StaffLoginPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickLogin = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    handleLogin(undefined, demoEmail, demoPass);
   };
 
   return (
@@ -79,7 +56,7 @@ export const StaffLoginPage: React.FC = () => {
             <Building2 className="h-8 w-8 stroke-[2.2]" />
           </div>
           <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-            HOSCOMO Microfinance Cooperative
+            HOSCOMCO Microfinance Cooperative
           </h1>
           <p className="mt-1 text-sm font-medium text-amber-300">Staff & Operations Portal</p>
           <p className="text-xs text-slate-400">Tacloban, Leyte, Philippines · Main Operations Branch</p>
@@ -106,7 +83,7 @@ export const StaffLoginPage: React.FC = () => {
                 id="staff-email"
                 type="email"
                 autoComplete="username"
-                placeholder="officer@hoscomo.coop"
+                placeholder="officer@HOSCOMCO.coop"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -152,28 +129,15 @@ export const StaffLoginPage: React.FC = () => {
           {/* Quick Demo Shift Access */}
           <div className="mt-6 border-t border-slate-100 pt-5">
             <div className="flex items-center gap-1.5 pb-2.5">
-              <KeyRound className="h-3.5 w-3.5 text-amber-500" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
               <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Quick Shift Access (1-Click Test Login)
+                Verify credentials
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {DEMO_STAFF_ACCOUNTS.map((acc) => (
-                <button
-                  key={acc.email}
-                  type="button"
-                  onClick={() => handleQuickLogin(acc.email, acc.password)}
-                  disabled={loading}
-                  className="flex flex-col items-start rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 text-left transition hover:border-amber-400 hover:bg-amber-50/40 hover:shadow-xs group"
-                >
-                  <span className="text-xs font-bold text-slate-800 group-hover:text-amber-900 line-clamp-1">
-                    {acc.name}
-                  </span>
-                  <span className="text-[11px] font-medium text-amber-700">{acc.role}</span>
-                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">{acc.email}</span>
-                </button>
-              ))}
-            </div>
+            <p className="text-xs text-slate-500">
+              Use the email registered to your HOSCOMCO work account. Contact the System
+              Administrator if you do not have branch access yet.
+            </p>
           </div>
 
           <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">

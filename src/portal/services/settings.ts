@@ -1,16 +1,10 @@
-import { clientRequest, withMockFallback } from './clientApi';
+import { clientRequest } from './clientApi';
 import { LoginActivityItem, NotificationPreferences, PrivacyPreferences } from '../types';
-import { mockLoginActivity, mockNotificationPreferences, mockPrivacyPreferences } from './mock';
 
 export const settingsService = {
   async notificationPreferences(): Promise<NotificationPreferences> {
-    return withMockFallback(
-      async () => {
-        const payload = await clientRequest('/api/client/settings/notifications');
-        return { ...mockNotificationPreferences, ...(payload?.preferences || payload || {}) };
-      },
-      async () => mockNotificationPreferences
-    );
+    const payload = await clientRequest('/api/client/settings/notifications');
+    return (payload?.preferences || payload || {}) as NotificationPreferences;
   },
 
   async saveNotificationPreferences(prefs: NotificationPreferences): Promise<void> {
@@ -21,23 +15,13 @@ export const settingsService = {
   },
 
   async loginActivity(): Promise<LoginActivityItem[]> {
-    return withMockFallback(
-      async () => {
-        const payload = await clientRequest('/api/client/settings/sessions');
-        return payload?.sessions || payload || mockLoginActivity;
-      },
-      async () => mockLoginActivity
-    );
+    const payload = await clientRequest('/api/client/settings/sessions');
+    return payload?.sessions || payload || [];
   },
 
   async privacyPreferences(): Promise<PrivacyPreferences> {
-    return withMockFallback(
-      async () => {
-        const payload = await clientRequest('/api/client/settings/privacy');
-        return { ...mockPrivacyPreferences, ...(payload?.preferences || payload || {}) };
-      },
-      async () => mockPrivacyPreferences
-    );
+    const payload = await clientRequest('/api/client/settings/privacy');
+    return (payload?.preferences || payload || {}) as PrivacyPreferences;
   },
 
   async savePrivacyPreferences(prefs: PrivacyPreferences): Promise<void> {

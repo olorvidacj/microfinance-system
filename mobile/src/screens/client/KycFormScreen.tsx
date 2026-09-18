@@ -478,7 +478,7 @@ export const KycFormScreen: React.FC = () => {
               <View style={styles.consentRow}>
                 <Ionicons name="shield-checkmark-outline" size={18} color={colors.teal} />
                 <Text style={styles.consentText}>
-                  I certify that the information and documents I provided are true and correct, and I consent to HOSCOMO's verification process under the Data Privacy Act.
+                  I certify that the information and documents I provided are true and correct, and I consent to HOSCOMCO's verification process under the Data Privacy Act.
                 </Text>
               </View>
             </View>

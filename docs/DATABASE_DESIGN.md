@@ -25,7 +25,7 @@ database/migrations/0010_configuration_seed.sql   -- optional but recommended
 ```
 
 > ⚠️ These files intentionally use plain `CREATE TABLE` (no `IF NOT EXISTS`) so that running them
-> against a database containing the legacy HOSCOMO demo tables fails loudly on name collisions
+> against a database containing the legacy HOSCOMCO demo tables fails loudly on name collisions
 > (`savings_accounts`, `savings_transactions`, `loan_products`, `loans`). Use a fresh Supabase project.
 
 ---

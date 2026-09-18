@@ -53,7 +53,7 @@ export function useAccess() {
       setCurrentUser({
         id: `role-${norm.toLowerCase()}`,
         name: `${def.name} Demo User`,
-        email: `${norm.toLowerCase().replace(/_/g, '')}@hoscomo.coop`,
+        email: `${norm.toLowerCase().replace(/_/g, '')}@HOSCOMCO.coop`,
         role: norm as any,
         assignedBranchId: 'all',
         title: def.name,

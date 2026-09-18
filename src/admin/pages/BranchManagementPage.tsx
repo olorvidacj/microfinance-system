@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Building2, Users, Wallet, MapPin, Phone, Pencil, PlusCircle, Eye, CheckCircle2, Plus, ShieldCheck, CreditCard } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
@@ -6,16 +6,21 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput } from '../components/SearchFilter';
-import { MOCK_BRANCHES, AdminBranch, formatPHP } from '../data/mockData';
+import { AdminBranch, formatPHP } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
 
 export const BranchManagementPage: React.FC = () => {
-  const [branches, setBranches] = useState<AdminBranch[]>(MOCK_BRANCHES);
+  const [branches, setBranches] = useState<AdminBranch[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<AdminBranch | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<AdminBranch | null>(null);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.branches().then(setBranches).catch(() => setBranches([]));
+  }, []);
 
   const filtered = branches.filter((b) => {
     const q = search.toLowerCase();
@@ -28,11 +33,11 @@ export const BranchManagementPage: React.FC = () => {
   const totalClients = branches.reduce((s, b) => s + b.totalClients, 0);
 
   const sampleStaff = [
-    { name: 'Roberto Villanueva', role: 'Branch Manager', email: 'roberto.v@hoscomo.coop' },
-    { name: 'Maria Santos', role: 'Loan Officer', email: 'maria.santos@hoscomo.coop' },
-    { name: 'Anna Reyes', role: 'Client Services Staff', email: 'ana.reyes@hoscomo.coop' },
-    { name: 'Juan Dela Cruz', role: 'Teller', email: 'juan.delacruz@hoscomo.coop' },
-    { name: 'Pedro Mendoza', role: 'Bookkeeper', email: 'pedro.mendoza@hoscomo.coop' },
+    { name: 'Roberto Villanueva', role: 'Branch Manager', email: 'roberto.v@HOSCOMCO.coop' },
+    { name: 'Maria Santos', role: 'Loan Officer', email: 'maria.santos@HOSCOMCO.coop' },
+    { name: 'Anna Reyes', role: 'Client Services Staff', email: 'ana.reyes@HOSCOMCO.coop' },
+    { name: 'Juan Dela Cruz', role: 'Teller', email: 'juan.delacruz@HOSCOMCO.coop' },
+    { name: 'Pedro Mendoza', role: 'Bookkeeper', email: 'pedro.mendoza@HOSCOMCO.coop' },
   ];
 
   const inputCls = "w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition text-slate-800";

@@ -49,7 +49,7 @@ const DocumentsPage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `HOSCOMO-savings-statement-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `HOSCOMCO-savings-statement-${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -60,7 +60,7 @@ const DocumentsPage: React.FC = () => {
   const printDoc = (doc: PortalDocument) => {
     const w = window.open('', '_blank');
     if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>${doc.name}</title></head><body style="font-family:system-ui;padding:40px;color:#0f172a"><h2>HOSCOMO Microfinance Cooperative</h2><h3>${doc.name}</h3><p style="color:#64748b">${doc.type} · ${formatDate(doc.date)}${doc.relatedLoanNumber ? ' · ' + doc.relatedLoanNumber : ''}</p><hr/><p>This is a digitally generated copy for your records. To keep a copy, use the print dialog (Ctrl+P → Save as PDF).</p></body></html>`);
+    w.document.write(`<!doctype html><html><head><title>${doc.name}</title></head><body style="font-family:system-ui;padding:40px;color:#0f172a"><h2>HOSCOMCO Microfinance Cooperative</h2><h3>${doc.name}</h3><p style="color:#64748b">${doc.type} · ${formatDate(doc.date)}${doc.relatedLoanNumber ? ' · ' + doc.relatedLoanNumber : ''}</p><hr/><p>This is a digitally generated copy for your records. To keep a copy, use the print dialog (Ctrl+P → Save as PDF).</p></body></html>`);
     w.document.close();
     w.focus();
     setTimeout(() => w.print(), 300);

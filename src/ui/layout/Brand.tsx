@@ -13,7 +13,7 @@ export interface BrandProps {
 }
 
 export const Brand: React.FC<BrandProps> = ({
-  name = 'HOSCOMO',
+  name = 'HOSCOMCO',
   subtitle = 'Microfinance Cooperative',
   tag,
   meta,

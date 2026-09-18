@@ -51,13 +51,13 @@ export const SystemSettingsPage: React.FC = () => {
   });
 
   const [coopInfo, setCoopInfo] = useState({
-    coopName: 'HOSCOMO Multi-Purpose Cooperative',
-    acronym: 'HOSCOMO',
+    coopName: 'HOSCOMCO Multi-Purpose Cooperative',
+    acronym: 'HOSCOMCO',
     address: 'Magallanes St., Tacloban City, Leyte 6500',
     contact: '+63 (053) 321-8765',
-    email: 'info@hoscomo.coop',
-    email2: 'credit@hoscomo.coop',
-    website: 'www.hoscomo.coop',
+    email: 'info@HOSCOMCO.coop',
+    email2: 'credit@HOSCOMCO.coop',
+    website: 'www.HOSCOMCO.coop',
     tin: '123-456-789-000',
     ceaLicense: 'CDA-003-TR-2023',
   });
@@ -169,7 +169,7 @@ export const SystemSettingsPage: React.FC = () => {
                 <p className="text-[11px] text-slate-400 mt-0.5">Core localization, reporting currency, and administrative defaults.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                {field('Registered Cooperative Name', 'HOSCOMO Multi-Purpose Cooperative', () => {})}
+                {field('Registered Cooperative Name', 'HOSCOMCO Multi-Purpose Cooperative', () => {})}
                 {field('System Administrative Language', 'English (PH Banking Standard)', () => {})}
                 {field('Operating Currency Code', 'PHP (Philippine Peso, ₱)', () => {})}
                 {field('Fiscal Accounting Cycle Start', 'January 1, 2026', () => {})}
@@ -336,7 +336,7 @@ export const SystemSettingsPage: React.FC = () => {
                 {field('30+ Days Delinquency Administrative Fee (%)', `${fees.delinquencyFee}`, (v) => { setFees((p) => ({ ...p, delinquencyFee: Number(v) })); markDirty(); })}
               </div>
               <p className="text-[11px] text-slate-400 mt-4 italic">
-                * All tariffs are officially enacted under HOSCOMO General Assembly Resolution 2024-B and BSP circular guidelines.
+                * All tariffs are officially enacted under HOSCOMCO General Assembly Resolution 2024-B and BSP circular guidelines.
               </p>
             </div>
           )}

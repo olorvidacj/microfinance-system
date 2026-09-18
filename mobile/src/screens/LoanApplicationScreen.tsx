@@ -551,7 +551,7 @@ export const LoanApplicationScreen: React.FC = () => {
 
               <View style={styles.disclaimerBox}>
                 <Text style={styles.disclaimerText}>
-                  ⚖️ By clicking Submit, you authorize HOSCOMO Microfinance to conduct credit verification and acknowledge adherence to cooperative lending rules.
+                  ⚖️ By clicking Submit, you authorize HOSCOMCO Microfinance to conduct credit verification and acknowledge adherence to cooperative lending rules.
                 </Text>
               </View>
 

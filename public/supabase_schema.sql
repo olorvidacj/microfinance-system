@@ -1,9 +1,9 @@
 -- ========================================================
--- HOSCOMO MICROFINANCE INSTITUTION
+-- HOSCOMCO MICROFINANCE INSTITUTION
 -- SUPABASE POSTGRESQL DATABASE SCHEMA & SEED SCRIPT
 -- ========================================================
 -- This script sets up all tables, indexes, Row Level Security (RLS) policies,
--- and seed data for the HOSCOMO Client Services and Financial Transaction Management System.
+-- and seed data for the HOSCOMCO Client Services and Financial Transaction Management System.
 --
 -- Instructions:
 -- 1. Open your Supabase Dashboard (https://supabase.com/dashboard)
@@ -408,18 +408,18 @@ CREATE POLICY "Allow full access to audit_logs" ON public.audit_logs FOR ALL USI
 -- Seed Data
 INSERT INTO public.branches (id, code, name, city, address, phone, manager_name, manager_email, active_disbursed_pool, cash_vault_balance, active_loans_count, color)
 VALUES
-('b-1', 'HO-MAIN', 'HOSCOMO Main Office', 'Tacloban City', 'Coop Bldg, Real St., Tacloban City', '+63 917 111 2222', 'Elena Rostata', 'elena.rostata@hoscomo.coop', 2450000, 850000, 38, '#2563EB'),
-('b-2', 'HO-PALO', 'Palo Community Center Branch', 'Palo, Leyte', 'Poblacion Commercial Complex, Palo', '+63 917 333 4444', 'Roberto Gualvez', 'roberto.g@hoscomo.coop', 1680000, 420000, 24, '#059669'),
-('b-3', 'HO-ORMOC', 'Ormoc Agri-Microfinance Unit', 'Ormoc City', 'Agri-Trade Center, Ormoc City', '+63 917 555 6666', 'Maria Carmela Tan', 'carmela.tan@hoscomo.coop', 1920000, 610000, 29, '#D97706')
+('b-1', 'HO-MAIN', 'HOSCOMCO Main Office', 'Tacloban City', 'Coop Bldg, Real St., Tacloban City', '+63 917 111 2222', 'Elena Rostata', 'elena.rostata@HOSCOMCO.coop', 2450000, 850000, 38, '#2563EB'),
+('b-2', 'HO-PALO', 'Palo Community Center Branch', 'Palo, Leyte', 'Poblacion Commercial Complex, Palo', '+63 917 333 4444', 'Roberto Gualvez', 'roberto.g@HOSCOMCO.coop', 1680000, 420000, 24, '#059669'),
+('b-3', 'HO-ORMOC', 'Ormoc Agri-Microfinance Unit', 'Ormoc City', 'Agri-Trade Center, Ormoc City', '+63 917 555 6666', 'Maria Carmela Tan', 'carmela.tan@HOSCOMCO.coop', 1920000, 610000, 29, '#D97706')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.staff (id, name, email, role, assigned_branch_id, title, avatar, committee)
 VALUES
-('s-1', 'Elena Rostata', 'elena.rostata@hoscomo.coop', 'SUPER_ADMIN', 'all', 'General Manager & CEO', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150', 'Management'),
-('s-2', 'Roberto Gualvez', 'roberto.g@hoscomo.coop', 'MANAGER', 'b-2', 'Branch Manager - Palo', 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150', 'Credit Committee'),
-('s-3', 'Maria Carmela Tan', 'carmela.tan@hoscomo.coop', 'MANAGER', 'b-3', 'Branch Manager - Ormoc', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150', 'Credit Committee'),
-('s-4', 'Grace Mendoza', 'grace.m@hoscomo.coop', 'LOAN_PROCESSOR', 'b-1', 'Senior Microfinance Loan Officer', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', 'Operations'),
-('s-5', 'Danilo Santos', 'danilo.s@hoscomo.coop', 'TELLER', 'b-1', 'Head Teller & Cashier', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', 'Operations')
+('s-1', 'Elena Rostata', 'elena.rostata@HOSCOMCO.coop', 'SUPER_ADMIN', 'all', 'General Manager & CEO', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150', 'Management'),
+('s-2', 'Roberto Gualvez', 'roberto.g@HOSCOMCO.coop', 'MANAGER', 'b-2', 'Branch Manager - Palo', 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150', 'Credit Committee'),
+('s-3', 'Maria Carmela Tan', 'carmela.tan@HOSCOMCO.coop', 'MANAGER', 'b-3', 'Branch Manager - Ormoc', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150', 'Credit Committee'),
+('s-4', 'Grace Mendoza', 'grace.m@HOSCOMCO.coop', 'LOAN_PROCESSOR', 'b-1', 'Senior Microfinance Loan Officer', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', 'Operations'),
+('s-5', 'Danilo Santos', 'danilo.s@HOSCOMCO.coop', 'TELLER', 'b-1', 'Head Teller & Cashier', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', 'Operations')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.loan_products (id, code, name, category, interest_rate, interest_type, min_amount, max_amount, min_term_months, max_term_months, repayment_frequency, default_repayment_frequency, processing_fee_percentage, late_penalty_rate, early_settlement_rebate_rate, requires_collateral, requires_guarantor, description, badge_color)

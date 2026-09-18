@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   HOSCOMO brand design tokens (navy + gold)
+   HOSCOMCO brand design tokens (navy + gold)
    Tailwind v4 CSS-first theme. Generates utilities such as:
    bg-navy-950, text-gold-400, border-navy-700, ring-gold-500, ...
    ========================================================================== */
@@ -61,7 +61,7 @@
    class names used across the app (previously inert — no plugin installed).
    ========================================================================== */
 @layer utilities {
-  @keyframes hoscomo-enter {
+  @keyframes HOSCOMCO-enter {
     from {
       opacity: var(--tw-enter-opacity, 1);
       transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
@@ -70,7 +70,7 @@
   }
 
   .animate-in {
-    animation-name: hoscomo-enter;
+    animation-name: HOSCOMCO-enter;
     animation-duration: 150ms;
     animation-fill-mode: both;
   }
@@ -94,23 +94,23 @@
     --tw-enter-translate-y: 100%;
   }
 
-  @keyframes hoscomo-fade-in {
+  @keyframes HOSCOMCO-fade-in {
     from {
       opacity: 0;
     }
   }
   .animate-fade-in,
   .animate-fadeIn {
-    animation: hoscomo-fade-in 200ms ease-out both;
+    animation: HOSCOMCO-fade-in 200ms ease-out both;
   }
 
-  @keyframes hoscomo-scale-up {
+  @keyframes HOSCOMCO-scale-up {
     from {
       opacity: 0;
       transform: scale(0.95);
     }
   }
   .animate-scale-up {
-    animation: hoscomo-scale-up 180ms ease-out both;
+    animation: HOSCOMCO-scale-up 180ms ease-out both;
   }
 }

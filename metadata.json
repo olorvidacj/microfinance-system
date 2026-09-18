@@ -1,6 +1,6 @@
 {
   "name": "Loan Management System",
-  "description": "Client Services and Financial Transaction Management System for HOSCOMO Microfinance Institution with Mobile-Based Client Self-Service Portal and Group Lending Solidarity Support.",
+  "description": "Client Services and Financial Transaction Management System for HOSCOMCO Microfinance Institution with Mobile-Based Client Self-Service Portal and Group Lending Solidarity Support.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

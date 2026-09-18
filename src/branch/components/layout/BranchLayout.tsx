@@ -108,7 +108,7 @@ const BranchLayoutInner: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = 'HOSCOMO Microfinance Cooperative · Staff Portal (Tacloban)';
+    document.title = 'HOSCOMCO Microfinance Cooperative · Staff Portal (Tacloban)';
   }, []);
 
   const refreshBadges = useCallback(async () => {
@@ -176,7 +176,7 @@ const BranchLayoutInner: React.FC = () => {
   return (
     <AppShell
       sections={sections}
-      brandName="HOSCOMO"
+      brandName="HOSCOMCO"
       brandSubtitle="Microfinance Cooperative"
       brandTag="Staff"
       brandMeta="Tacloban, Leyte, PH"
@@ -273,7 +273,7 @@ const BranchLayoutInner: React.FC = () => {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold-400 text-xs font-black text-navy-950">
                   H
                 </div>
-                <span className="text-sm font-bold text-slate-900">HOSCOMO</span>
+                <span className="text-sm font-bold text-slate-900">HOSCOMCO</span>
               </div>
 
               {/* Desktop Breadcrumbs & Title */}
@@ -372,7 +372,7 @@ const REQUIRED_BRANCH_FALLBACK = {
   id: 'br-main',
   name: 'Tacloban Main Branch',
   code: 'TAC-MAIN',
-  address: 'HOSCOMO Cooperative Building, Real Street, Tacloban City, Leyte',
+  address: 'HOSCOMCO Cooperative Building, Real Street, Tacloban City, Leyte',
   city: 'Tacloban City',
   phone: '+63 (053) 832-4190',
 };
@@ -456,7 +456,7 @@ const BranchAssignmentGate: React.FC = () => {
           <Loader2 className="h-4 w-4 animate-spin" />
           Checking cooperative branch assignment…
         </div>
-        <p className="text-xs text-slate-500">HOSCOMO Microfinance Cooperative · Staff Operations Portal</p>
+        <p className="text-xs text-slate-500">HOSCOMCO Microfinance Cooperative · Staff Operations Portal</p>
       </div>
     );
   }

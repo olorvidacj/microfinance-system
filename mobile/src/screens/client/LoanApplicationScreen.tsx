@@ -218,7 +218,7 @@ export const LoanApplicationScreen: React.FC<Props> = ({ navigation }) => {
           </View>
           <Text style={styles.blockedTitle}>KYC Verification Required</Text>
           <Text style={styles.blockedMsg}>
-            Complete your KYC verification before applying for a loan. This helps HOSCOMO serve you faster and keeps your account secure.
+            Complete your KYC verification before applying for a loan. This helps HOSCOMCO serve you faster and keeps your account secure.
           </Text>
           <View style={styles.blockedActions}>
             <AppButton
@@ -538,7 +538,7 @@ export const LoanApplicationScreen: React.FC<Props> = ({ navigation }) => {
               <View style={styles.consentRow}>
                 <Ionicons name="shield-checkmark-outline" size={18} color={colors.teal} />
                 <Text style={styles.consentText}>
-                  I declare that the information provided is true and correct, and I agree to the loan terms and conditions of HOSCOMO Microfinance Cooperative.
+                  I declare that the information provided is true and correct, and I agree to the loan terms and conditions of HOSCOMCO Microfinance Cooperative.
                 </Text>
               </View>
             </View>

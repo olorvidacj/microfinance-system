@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bell, BellOff, ShieldCheck, UserPlus, Landmark, ArrowLeftRight, Settings,
   CheckCheck, Trash2, TriangleAlert, Inbox, Clock,
@@ -7,7 +7,8 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
 import { Badge } from '../components/Badge';
 import { ConfirmDialog } from '../components/Modal';
-import { MOCK_NOTIFICATIONS, AdminNotification, formatDate } from '../data/mockData';
+import { AdminNotification, formatDate } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
 
 const TYPE_META: Record<AdminNotification['type'], { icon: React.ElementType; bg: string; fg: string; label: string }> = {
   KYC: { icon: ShieldCheck, bg: 'bg-gold-500/10 border-gold-400/30', fg: 'text-gold-600', label: 'KYC Compliance' },
@@ -18,11 +19,15 @@ const TYPE_META: Record<AdminNotification['type'], { icon: React.ElementType; bg
 };
 
 export const NotificationsPage: React.FC = () => {
-  const [notifications, setNotifications] = useState<AdminNotification[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [tab, setTab] = useState<'all' | 'unread' | 'read'>('all');
   const [typeFilter, setTypeFilter] = useState('');
   const [clearTarget, setClearTarget] = useState(false);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.notifications().then(setNotifications).catch(() => setNotifications([]));
+  }, []);
 
   const unread = notifications.filter((n) => !n.isRead).length;
 

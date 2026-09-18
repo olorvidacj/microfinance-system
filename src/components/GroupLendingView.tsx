@@ -483,7 +483,7 @@ export const GroupLendingView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 text-gold-300 text-xs font-semibold uppercase tracking-wider mb-2">
               <ShieldCheck className="w-4 h-4" />
-              <span>HOSCOMO Microfinance Group Lending & Solidarity System</span>
+              <span>HOSCOMCO Microfinance Group Lending & Solidarity System</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
               Group Lending & Solidarity Mechanism
@@ -1223,7 +1223,7 @@ export const GroupLendingView: React.FC = () => {
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base">HOSCOMO Solidarity & Peer Guarantee</h3>
+                <h3 className="font-bold text-slate-900 text-base">HOSCOMCO Solidarity & Peer Guarantee</h3>
                 <p className="text-xs text-slate-500">Social collateral & joint liability architecture</p>
               </div>
             </div>

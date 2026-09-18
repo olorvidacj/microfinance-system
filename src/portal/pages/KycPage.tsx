@@ -173,7 +173,7 @@ const KycPage: React.FC = () => {
               </div>
               <h2 className="text-lg font-semibold text-slate-900">You are KYC verified</h2>
               <p className="max-w-md text-sm text-slate-500">
-                Your identity has been verified by HOSCOMO. You are eligible to apply for loan products.
+                Your identity has been verified by HOSCOMCO. You are eligible to apply for loan products.
               </p>
               {kyc.verifiedAt && (
                 <p className="text-xs text-slate-400">
@@ -463,7 +463,7 @@ const KycPage: React.FC = () => {
                   className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span className="text-sm text-slate-700">
-                  I confirm that the information I provided is accurate and complete. I authorize HOSCOMO Microfinance Cooperative to
+                  I confirm that the information I provided is accurate and complete. I authorize HOSCOMCO Microfinance Cooperative to
                   verify this information and the documents I have submitted.
                 </span>
               </label>

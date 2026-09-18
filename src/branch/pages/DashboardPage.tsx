@@ -67,16 +67,8 @@ const greeting = () => {
   return 'Good evening';
 };
 
-// Trend mock data for Recharts
-const TREND_DATA = [
-  { month: 'Jan', applications: 24, approved: 19, collections: 210000 },
-  { month: 'Feb', applications: 28, approved: 22, collections: 245000 },
-  { month: 'Mar', applications: 35, approved: 29, collections: 320000 },
-  { month: 'Apr', applications: 31, approved: 26, collections: 290000 },
-  { month: 'May', applications: 42, approved: 36, collections: 380000 },
-  { month: 'Jun', applications: 48, approved: 41, collections: 450000 },
-  { month: 'Jul', applications: 52, approved: 45, collections: 490000 },
-];
+// Portfolio trend data for Recharts, populated from live branch records.
+const TREND_DATA: { month: string; applications: number; approved: number; collections: number }[] = [];
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -109,7 +101,7 @@ export const DashboardPage: React.FC = () => {
   const notifsFetcher = useCallback(() => notificationsService.list(), []);
   const notifsData = useBranchData(notifsFetcher);
 
-  if (loading) return <LoadingState label="Loading HOSCOMO operations dashboard…" />;
+  if (loading) return <LoadingState label="Loading HOSCOMCO operations dashboard…" />;
   if (error || !data) return <ErrorState message={error} onRetry={reload} />;
 
   const s = data.summary;
@@ -133,7 +125,7 @@ export const DashboardPage: React.FC = () => {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-amber-400/20 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-amber-300 ring-1 ring-amber-400/30">
-                HOSCOMO Microfinance
+                HOSCOMCO Microfinance
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />

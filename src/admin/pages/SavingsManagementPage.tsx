@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { PiggyBank, Wallet, CheckCircle2, Clock, Eye, PlusCircle, MinusCircle, ArrowUpRight, ArrowDownRight, Plus, Download } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
@@ -6,7 +6,8 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_SAVINGS_ACCOUNTS, AdminSavingsAccount, formatPHP, formatDate } from '../data/mockData';
+import { AdminSavingsAccount, formatPHP, formatDate } from '../data/mockData';
+import { adminApi, SavingsDetail } from '../services/adminApi';
 
 const STATUSES = ['Active', 'Dormant', 'Suspended', 'Closed'];
 const ACCOUNT_TYPES = ['Regular Savings', 'Capital Build-up', 'Time Deposit', 'Special Savings', 'Youth Savings'];
@@ -30,15 +31,25 @@ const SAMPLE_PRODUCTS: SavingsProduct[] = [
 ];
 
 export const SavingsManagementPage: React.FC = () => {
-  const [accounts, setAccounts] = useState<AdminSavingsAccount[]>(MOCK_SAVINGS_ACCOUNTS);
+  const [accounts, setAccounts] = useState<AdminSavingsAccount[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [selected, setSelected] = useState<AdminSavingsAccount | null>(null);
+  const [detail, setDetail] = useState<SavingsDetail | null>(null);
   const [txnModal, setTxnModal] = useState<{ mode: 'deposit' | 'withdrawal'; account: AdminSavingsAccount } | null>(null);
   const [txnAmount, setTxnAmount] = useState('');
   const [txnNote, setTxnNote] = useState('');
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.savings().then(setAccounts).catch(() => setAccounts([]));
+  }, []);
+
+  useEffect(() => {
+    if (!selected) { setDetail(null); return; }
+    adminApi.savingsDetail(selected.id).then(setDetail).catch(() => setDetail(null));
+  }, [selected?.id]);
 
   const filtered = useMemo(() => {
     return accounts.filter((a) => {
@@ -69,13 +80,6 @@ export const SavingsManagementPage: React.FC = () => {
     setTxnAmount('');
     setTxnNote('');
   };
-
-  const sampleHistory = [
-    { ref: 'OR-2025-1840', type: 'Deposit', amount: 5000, balance: 15200, date: '2025-09-10 09:00', by: 'Juan Dela Cruz' },
-    { ref: 'GC-8723451', type: 'Deposit', amount: 2000, balance: 10200, date: '2025-08-01 14:05', by: 'Grace Bautista' },
-    { ref: 'OR-2025-1712', type: 'Withdrawal', amount: 3000, balance: 8200, date: '2025-07-18 11:30', by: 'Juan Dela Cruz' },
-    { ref: 'OR-2025-1650', type: 'Deposit', amount: 4200, balance: 11200, date: '2025-06-15 10:15', by: 'Juan Dela Cruz' },
-  ];
 
   const inputCls = "w-full px-3.5 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition text-slate-800";
 
@@ -278,10 +282,10 @@ export const SavingsManagementPage: React.FC = () => {
               </div>
               <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-slate-700/60 text-xs text-slate-300">
                 <span className="flex items-center gap-1">
-                  <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> Cumulative Inflows: {formatPHP(selected.balance * 2.2)}
+                  <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" /> Cumulative Inflows: {formatPHP(detail?.inflows || 0)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <ArrowDownRight className="w-3.5 h-3.5 text-amber-400" /> Cumulative Outflows: {formatPHP(selected.balance * 1.2)}
+                  <ArrowDownRight className="w-3.5 h-3.5 text-amber-400" /> Cumulative Outflows: {formatPHP(detail?.outflows || 0)}
                 </span>
               </div>
             </div>
@@ -297,7 +301,7 @@ export const SavingsManagementPage: React.FC = () => {
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
                 <p className="text-[10px] text-slate-400 uppercase font-bold">Yield Rate</p>
-                <p className="font-bold text-amber-600 text-xs mt-1">1.0% p.a.</p>
+                <p className="font-bold text-amber-600 text-xs mt-1">{detail?.account?.interestRate ? `${detail.account.interestRate}% p.a.` : '—'}</p>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
                 <p className="text-[10px] text-slate-400 uppercase font-bold">Status</p>
@@ -308,8 +312,8 @@ export const SavingsManagementPage: React.FC = () => {
             <div>
               <h4 className="text-xs font-bold text-slate-900 mb-2.5 uppercase tracking-wider">Recent Passbook Ledger Activity</h4>
               <DataTable
-                data={sampleHistory}
-                keyField="ref"
+                data={detail?.ledger || []}
+                keyField="id"
                 columns={[
                   { key: 'ref', header: 'Receipt Ref', render: (t) => <span className="font-mono text-xs font-bold text-slate-700">{t.ref}</span> },
                   {

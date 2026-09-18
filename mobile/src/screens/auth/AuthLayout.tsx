@@ -33,7 +33,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
           <Ionicons name="business" size={20} color={colors.white} />
         </View>
         <View>
-          <Text style={styles.brandName}>HOSCOMO</Text>
+          <Text style={styles.brandName}>HOSCOMCO</Text>
           <Text style={styles.brandSub}>Microfinance Cooperative</Text>
         </View>
       </View>

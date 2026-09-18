@@ -38,7 +38,7 @@ export const daysAgo = (n: number) => addDays(new Date(), -n);
 // ---------------------------------------------------------------------------
 
 export const mockUserSession: UserSession = {
-  token: 'mock-token-hoscomo-client-001',
+  token: 'mock-token-HOSCOMCO-client-001',
   user: {
     id: 'b-1',
     email: 'teresa.alcantara@example.com',
@@ -53,10 +53,10 @@ export const mockUserSession: UserSession = {
 
 // A staff session is used by the branch personnel demo login.
 export const mockBranchUserSession: UserSession = {
-  token: 'mock-token-hoscomo-staff-001',
+  token: 'mock-token-HOSCOMCO-staff-001',
   user: {
     id: 'u-201',
-    email: 'branch.officer@hoscomo.ph',
+    email: 'branch.officer@HOSCOMCO.ph',
     fullName: 'Elena Santos',
     name: 'Elena Santos',
     role: 'STAFF',

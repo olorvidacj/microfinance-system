@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight,
@@ -20,21 +20,27 @@ import {
 } from 'lucide-react';
 import { AppShell, AppNavSection } from '../../ui';
 import { TopNav } from '../components/TopNav';
-import { MOCK_NOTIFICATIONS } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
 import { useAuth } from '../../context/AuthContext';
 
 export const AdminLayout: React.FC = () => {
-  const unreadCount = MOCK_NOTIFICATIONS.filter((n) => !n.isRead).length;
+  const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+
+  useEffect(() => {
+    adminApi.notifications()
+      .then((items) => setUnreadCount(items.filter((n) => !n.isRead).length))
+      .catch(() => setUnreadCount(0));
+  }, []);
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  const adminName = user?.fullName || 'Elena Rostata';
-  const adminRole = 'System Administrator';
+  const adminName = user?.fullName || 'Administrator';
+  const adminRole = user?.staffRole ? String(user.staffRole).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'System Administrator';
 
   const sections: AppNavSection[] = [
     {
@@ -72,7 +78,7 @@ export const AdminLayout: React.FC = () => {
     <AppShell
       sections={sections}
       collapsible
-      brandName="HOSCOMO"
+      brandName="HOSCOMCO"
       brandSubtitle="Tacloban, Leyte · Microfinance"
       brandTag="COOP"
       showStatusDot

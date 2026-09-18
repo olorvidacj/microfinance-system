@@ -133,64 +133,11 @@ interface OtpEntry {
 }
 const otpStore = new Map<string, OtpEntry>();
 
-// In-memory notifications store for clients
-interface MobileNotification {
-  id: string;
-  borrowerId: string;
-  userId?: string;
-  title: string;
-  message: string;
-  category: 'loan_update' | 'approval_rejection' | 'upcoming_payment' | 'overdue_payment' | 'payment_confirmation' | 'announcement';
-  isRead: boolean;
-  createdAt: string;
-  meta?: any;
-}
-
-const mockClientNotifications: MobileNotification[] = [
-  {
-    id: 'notif-1',
-    borrowerId: 'b-1',
-    title: 'Loan Payment Reminder',
-    message: 'Your monthly installment of ₱4,850.00 for Loan #LN-2026-001 is due on the 15th.',
-    category: 'upcoming_payment',
-    isRead: false,
-    createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    meta: { loanNumber: 'LN-2026-001', amount: 4850, dueDate: '2026-09-15' },
-  },
-  {
-    id: 'notif-2',
-    borrowerId: 'b-1',
-    title: 'Payment Confirmed',
-    message: 'Your repayment of ₱4,850.00 has been verified. Official Receipt #OR-2026-0091 is available.',
-    category: 'payment_confirmation',
-    isRead: true,
-    createdAt: new Date(Date.now() - 3600000 * 48).toISOString(),
-    meta: { receiptNumber: 'OR-2026-0091', amount: 4850 },
-  },
-  {
-    id: 'notif-3',
-    borrowerId: 'b-1',
-    title: 'Loan Application Approved',
-    message: 'Congratulations! Your Micro-Enterprise Working Capital loan application of ₱50,000.00 has been approved.',
-    category: 'approval_rejection',
-    isRead: true,
-    createdAt: new Date(Date.now() - 3600000 * 120).toISOString(),
-  },
-  {
-    id: 'notif-4',
-    borrowerId: 'b-1',
-    title: 'Cooperative Announcement',
-    message: 'Annual General Membership Assembly scheduled for November 15, 2026. Patronage refunds distribution starts next week.',
-    category: 'announcement',
-    isRead: false,
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-  },
-];
+// Notifications are stored in the branch_notifications table.
 
 // Helper to get client identifier (borrowerId or userId)
-function getClientBorrowerId(req: AuthedRequest): string {
-  if (req.authUser?.borrowerId) return req.authUser.borrowerId;
-  return 'b-1'; // Default fallback for demonstration
+function getClientBorrowerId(req: AuthedRequest): string | null {
+  return req.authUser?.borrowerId || null;
 }
 
 // -------------------------------------------------------------
@@ -228,19 +175,18 @@ clientMobileRouter.post('/auth/send-registration-otp', async (req: Request, res:
     const otpKey = digitsOnly.slice(-10);
 
     otpStore.set(`phone:${otpKey}`, {
-      email: email || `user.${otpKey}@hoscomo.coop`,
+      email: email || `user.${otpKey}@HOSCOMCO.coop`,
       otp,
       expiresAt,
       verified: false,
     });
 
-    console.log(`[Mobile Auth] SMS OTP dispatched to ${formattedPhone} (${otpKey}): ${otp}`);
+    console.log(`[Mobile Auth] SMS OTP dispatched to ${formattedPhone} (${otpKey})`);
 
     res.json({
       success: true,
       message: `A 6-digit verification code has been sent via SMS to ${formattedPhone}.`,
       formattedPhone,
-      demoOtp: otp,
       expiresInSeconds: 600,
     });
   } catch (err: any) {
@@ -260,14 +206,6 @@ clientMobileRouter.post('/auth/verify-registration-otp', async (req: Request, re
     const entry = otpStore.get(`phone:${otpKey}`);
 
     if (!entry) {
-      // If no entry found or demo code entered, allow demo fallback '123456' or generate instant match for seamless testing
-      if (String(otp).trim() === '123456' || String(otp).length === 6) {
-        return res.json({
-          success: true,
-          verified: true,
-          message: 'Mobile number verified successfully.',
-        });
-      }
       return res.status(400).json({ success: false, error: 'No active OTP verification code found for this phone number' });
     }
 
@@ -276,7 +214,7 @@ clientMobileRouter.post('/auth/verify-registration-otp', async (req: Request, re
       return res.status(400).json({ success: false, error: 'Verification code has expired. Please tap Resend.' });
     }
 
-    if (entry.otp !== String(otp).trim() && String(otp).trim() !== '123456') {
+    if (entry.otp !== String(otp).trim()) {
       return res.status(400).json({ success: false, error: 'Incorrect 6-digit OTP code. Please check SMS and try again.' });
     }
 
@@ -311,13 +249,11 @@ clientMobileRouter.post('/auth/forgot-password', async (req: Request, res: Respo
       verified: false,
     });
 
-    console.log(`[Mobile Auth] Generated OTP for ${normEmail}: ${otp}`);
+    console.log(`[Mobile Auth] Generated OTP for ${normEmail}`);
 
     res.json({
       success: true,
       message: `A 6-digit verification code has been sent to ${normEmail}.`,
-      // For demo/testing convenience:
-      demoOtp: otp,
       expiresInMinutes: 15,
     });
   } catch (err: any) {
@@ -407,13 +343,40 @@ clientMobileRouter.get('/dashboard', requireAuth(), async (req: AuthedRequest, r
     const borrowerId = getClientBorrowerId(req);
     const db = getDb();
 
+    if (!borrowerId) {
+      return res.json({
+        success: true,
+        data: {
+          borrowerName: req.authUser?.fullName || '',
+          memberNumber: 'PENDING',
+          totalActiveLoan: 0,
+          remainingBalance: 0,
+          nextPayment: 0,
+          nextPaymentDueDate: null,
+          loanStatus: 'NO_ACTIVE_LOAN',
+          activeLoansCount: 0,
+          savingsBalance: 0,
+          shareCapital: 0,
+          recentTransactions: [],
+        },
+      });
+    }
+
     let clientLoans: any[] = [];
     let clientPayments: any[] = [];
+    let savingsAccounts: any[] = [];
+    let savingsTxns: any[] = [];
     let borrowerInfo: any = null;
 
     if (db) {
       clientLoans = await db.select().from(schema.loans).where(eq(schema.loans.borrowerId, borrowerId));
       clientPayments = await db.select().from(schema.payments).where(eq(schema.payments.borrowerId, borrowerId));
+      savingsAccounts = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId));
+      if (savingsAccounts.length > 0) {
+        savingsTxns = await db.select().from(schema.savingsTransactions)
+          .where(eq(schema.savingsTransactions.memberId, borrowerId))
+          .orderBy(desc(schema.savingsTransactions.createdAt));
+      }
       const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
       if (bRows.length > 0) borrowerInfo = bRows[0];
     }
@@ -424,51 +387,47 @@ clientMobileRouter.get('/dashboard', requireAuth(), async (req: AuthedRequest, r
     const remainingBalance = activeLoans.reduce((sum, l) => sum + (Number(l.remainingBalance) || 0), 0);
 
     const primaryLoan = activeLoans[0] || null;
-    const nextPayment = primaryLoan ? Number(primaryLoan.monthlyInstallment) || (remainingBalance > 0 ? Math.min(remainingBalance, 4850) : 0) : 0;
-    const nextPaymentDueDate = primaryLoan?.nextPaymentDate || '2026-09-15';
+    const nextPayment = primaryLoan ? Number(primaryLoan.monthlyInstallment) || remainingBalance : 0;
+    const nextPaymentDueDate = primaryLoan?.nextPaymentDate || null;
     const loanStatus = primaryLoan ? primaryLoan.status : 'NO_ACTIVE_LOAN';
 
-    const recentTransactions = clientPayments.slice(0, 5).map((p) => ({
-      id: p.id,
-      type: 'REPAYMENT',
-      amount: Number(p.amount) || 0,
-      date: p.paymentDate || p.createdAt,
-      referenceNumber: p.referenceNumber || `OR-${p.id}`,
-      paymentMethod: p.paymentMethod || 'CASH',
-      status: 'COMPLETED',
-    }));
+    const recentTransactions = [
+      ...clientPayments.slice(0, 3).map((p) => ({
+        id: p.id,
+        type: 'REPAYMENT',
+        amount: Number(p.amount) || 0,
+        date: p.paymentDate || p.createdAt,
+        referenceNumber: p.referenceNumber || `OR-${p.id}`,
+        paymentMethod: p.paymentMethod || 'CASH',
+        status: 'COMPLETED',
+      })),
+      ...savingsTxns.slice(0, 3).map((t) => ({
+        id: t.id,
+        type: t.type,
+        amount: Number(t.amount) || 0,
+        date: t.date || t.createdAt,
+        referenceNumber: t.transactionNumber || t.id,
+        paymentMethod: t.processedBy || 'CASH',
+        status: 'COMPLETED',
+      })),
+    ].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 5);
+
+    const savingsBalance = savingsAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
 
     res.json({
       success: true,
       data: {
-        borrowerName: borrowerInfo?.fullName || req.authUser?.fullName || 'Teresa Alcantara',
-        memberNumber: borrowerInfo?.borrowerNumber || 'MBR-2024-001',
+        borrowerName: borrowerInfo?.fullName || req.authUser?.fullName || '',
+        memberNumber: borrowerInfo?.borrowerNumber || 'PENDING',
         totalActiveLoan,
         remainingBalance,
         nextPayment,
         nextPaymentDueDate,
         loanStatus,
         activeLoansCount: activeLoans.length,
-        recentTransactions: recentTransactions.length > 0 ? recentTransactions : [
-          {
-            id: 'tx-1',
-            type: 'REPAYMENT',
-            amount: 4850,
-            date: '2026-08-15',
-            referenceNumber: 'OR-2026-0091',
-            paymentMethod: 'GCASH',
-            status: 'COMPLETED',
-          },
-          {
-            id: 'tx-2',
-            type: 'SAVINGS_DEPOSIT',
-            amount: 1500,
-            date: '2026-08-10',
-            referenceNumber: 'DEP-2026-0422',
-            paymentMethod: 'OVER_THE_COUNTER',
-            status: 'COMPLETED',
-          },
-        ],
+        savingsBalance,
+        shareCapital: Number(borrowerInfo?.shareCapital) || 0,
+        recentTransactions,
       },
     });
   } catch (err: any) {
@@ -508,16 +467,16 @@ clientMobileRouter.get('/profile', requireAuth(), async (req: AuthedRequest, res
       phone: borrower?.phone || defaultPhone,
       address: borrower?.address || '',
       dateOfBirth: borrower?.dateOfBirth || '',
-      civilStatus: borrower?.civilStatus || 'Single',
+      civilStatus: borrower?.civilStatus || '',
       occupation: borrower?.occupation || '',
-      employer: borrower?.businessName || '',
+      employer: borrower?.employerOrBusiness || '',
       monthlyIncome: Number(borrower?.monthlyIncome) || 0,
       avatar: req.authUser?.avatar || userRow?.avatar || borrower?.avatar || `https://ui-avatars.com/api/?background=059669&color=fff&name=${encodeURIComponent(defaultName)}`,
-      memberNumber: borrower?.borrowerNumber || 'MBR-PENDING',
-      membershipDate: borrower?.createdAt ? String(borrower.createdAt).split('T')[0] : new Date().toISOString().split('T')[0],
-      kycStatus: borrower?.kycStatus || 'PENDING',
-      creditScore: borrower?.creditScore || 680,
-      creditTier: borrower?.creditTier || 'STANDARD',
+      memberNumber: borrower?.borrowerNumber || 'PENDING',
+      membershipDate: borrower?.createdAt ? String(borrower.createdAt).split('T')[0] : (borrower?.membershipDate || ''),
+      kycStatus: borrower?.kycStatus || 'NOT_STARTED',
+      creditScore: Number(borrower?.creditScore) || 0,
+      creditTier: borrower?.creditTier || 'PENDING',
     };
 
     res.json({ success: true, profile: profileData });
@@ -530,7 +489,7 @@ clientMobileRouter.get('/profile', requireAuth(), async (req: AuthedRequest, res
 clientMobileRouter.patch('/profile', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
-    const { fullName, email, phone, address, dateOfBirth, civilStatus, occupation, employer, monthlyIncome } = req.body;
+    const { fullName, email, phone, address, dateOfBirth, civilStatus, occupation, employer, employerOrBusiness, monthlyIncome, barangay, cityMunicipality, province, gender } = req.body;
     const db = getDb();
 
     // 1. Update Borrower Record
@@ -545,8 +504,14 @@ clientMobileRouter.patch('/profile', requireAuth(), async (req: AuthedRequest, r
           ...(dateOfBirth !== undefined ? { dateOfBirth: String(dateOfBirth).trim() } : {}),
           ...(civilStatus !== undefined ? { civilStatus: String(civilStatus).trim() } : {}),
           ...(occupation !== undefined ? { occupation: String(occupation).trim() } : {}),
-          ...(employer !== undefined ? { businessName: String(employer).trim() } : {}),
+          ...(employerOrBusiness !== undefined ? { employerOrBusiness: String(employerOrBusiness).trim() } : {}),
+          ...(employer !== undefined ? { employerOrBusiness: String(employer).trim() } : {}),
           ...(monthlyIncome !== undefined ? { monthlyIncome: Number(monthlyIncome) || 0 } : {}),
+          ...(barangay !== undefined ? { barangay: String(barangay).trim() } : {}),
+          ...(cityMunicipality !== undefined ? { cityMunicipality: String(cityMunicipality).trim() } : {}),
+          ...(province !== undefined ? { province: String(province).trim() } : {}),
+          ...(gender !== undefined ? { gender: String(gender).trim() } : {}),
+          profileCompleted: true,
         })
         .where(eq(schema.borrowers.id, borrowerId));
     }
@@ -816,16 +781,6 @@ clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest,
     } else {
       res.json({ success: true, message: 'KYC submitted for review.', referenceNumber: `KYC-${Date.now().toString(36)}` });
     }
-
-    mockClientNotifications.unshift({
-      id: `notif-${Date.now()}`,
-      borrowerId,
-      title: 'KYC Submitted',
-      message: 'Your KYC application has been received and is pending review.',
-      category: 'announcement',
-      isRead: false,
-      createdAt: now,
-    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1147,11 +1102,13 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
     const totalInterest = (monthlyInstallment * term) - principal;
 
     const applicationId = `LN-APP-${Date.now().toString().slice(-6)}`;
+    const borrowerName = req.authUser?.fullName || '';
+    const borrowerPhone = req.authUser?.phone || '';
     const newApplication = {
       id: applicationId,
       loanNumber: applicationId,
       borrowerId,
-      borrowerName: req.authUser?.fullName || 'Teresa Alcantara',
+      borrowerName,
       productId: productId || 'prod-1',
       productName: productName || 'Micro-Enterprise Working Capital',
       principalAmount: principal,
@@ -1174,15 +1131,20 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
 
     if (db) {
       try {
+        let branchId = 'br-main';
+        try {
+          const bRows = await db.select({ branchId: schema.borrowers.branchId }).from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+          if (bRows.length > 0 && bRows[0].branchId) branchId = bRows[0].branchId;
+        } catch {}
         await db.insert(schema.loans).values({
           id: applicationId,
           loanNumber: applicationId,
           borrowerId,
-          borrowerName: req.authUser?.fullName || 'Teresa Alcantara',
-          borrowerPhone: req.authUser?.phone || '+63 917 555 4321',
+          borrowerName,
+          borrowerPhone,
           productId: productId || 'prod-1',
           productName: productName || 'Micro-Enterprise Working Capital',
-          branchId: 'branch-tacloban-main',
+          branchId,
           principalAmount: principal,
           interestRate: monthlyRate * 12,
           interestType: 'REDUCING_BALANCE',
@@ -1206,17 +1168,6 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
       }
     }
 
-    // Create Notification
-    mockClientNotifications.unshift({
-      id: `notif-${Date.now()}`,
-      borrowerId,
-      title: 'Loan Application Submitted',
-      message: `Your application for ₱${principal.toLocaleString()} (${productName || 'Loan'}) has been received and is under Credit Investigation.`,
-      category: 'loan_update',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
-
     res.status(201).json({
       success: true,
       message: 'Loan application submitted successfully and routed to the Credit Committee.',
@@ -1234,34 +1185,8 @@ clientMobileRouter.get('/loan-applications', requireAuth(), async (req: AuthedRe
     const db = getDb();
     let applications: any[] = [];
 
-    if (db) {
+    if (db && borrowerId) {
       applications = await db.select().from(schema.loans).where(eq(schema.loans.borrowerId, borrowerId));
-    }
-
-    if (applications.length === 0) {
-      applications = [
-        {
-          id: 'LN-APP-2026-004',
-          productName: 'Micro-Enterprise Working Capital',
-          principalAmount: 50000,
-          termMonths: 12,
-          applicationDate: '2026-08-20',
-          status: 'PENDING',
-          coopStep: 'CREDIT_INVESTIGATION',
-          rejectionReason: null,
-        },
-        {
-          id: 'LN-2026-001',
-          productName: 'Micro-Enterprise Revolving Loan',
-          principalAmount: 50000,
-          termMonths: 12,
-          applicationDate: '2026-01-10',
-          status: 'APPROVED',
-          coopStep: 'DISBURSED',
-          rejectionReason: null,
-          disbursedAt: '2026-01-15',
-        },
-      ];
     }
 
     res.json({ success: true, applications });
@@ -1279,44 +1204,8 @@ clientMobileRouter.get('/loans', requireAuth(), async (req: AuthedRequest, res: 
     const db = getDb();
     let allLoans: any[] = [];
 
-    if (db) {
+    if (db && borrowerId) {
       allLoans = await db.select().from(schema.loans).where(eq(schema.loans.borrowerId, borrowerId));
-    }
-
-    if (allLoans.length === 0) {
-      allLoans = [
-        {
-          id: 'LN-2026-001',
-          loanNumber: 'LN-2026-001',
-          productName: 'Micro-Enterprise Revolving Loan',
-          principalAmount: 50000,
-          interestRate: 18,
-          termMonths: 12,
-          monthlyInstallment: 4850,
-          remainingBalance: 24250,
-          paidAmount: 29100,
-          status: 'ACTIVE',
-          startDate: '2026-01-15',
-          maturityDate: '2027-01-15',
-          nextPaymentDate: '2026-09-15',
-          purpose: 'Store inventory replenishment',
-        },
-        {
-          id: 'LN-2025-088',
-          loanNumber: 'LN-2025-088',
-          productName: 'Solidarity Group Microloan',
-          principalAmount: 25000,
-          interestRate: 15,
-          termMonths: 6,
-          monthlyInstallment: 4479,
-          remainingBalance: 0,
-          paidAmount: 26875,
-          status: 'COMPLETED',
-          startDate: '2025-06-01',
-          maturityDate: '2025-12-01',
-          purpose: 'Working capital for dry goods stall',
-        },
-      ];
     }
 
     const activeLoans = allLoans.filter((l) => ['ACTIVE', 'DISBURSED', 'OVERDUE', 'APPROVED'].includes(l.status));
@@ -1347,34 +1236,11 @@ clientMobileRouter.get('/loans/:loanId/schedule', requireAuth(), async (req: Aut
         loan = lRows[0];
         if (Array.isArray(loan.schedule)) {
           schedule = loan.schedule;
+        } else if (typeof loan.schedule === 'string') {
+          try { schedule = JSON.parse(loan.schedule); } catch {}
         }
-      }
-    }
-
-    if (schedule.length === 0) {
-      // Generate standard 12-month amortization schedule
-      const principal = Number(loan?.principalAmount) || 50000;
-      const term = Number(loan?.termMonths) || 12;
-      const monthlyRate = (Number(loan?.interestRate) || 18) / 12 / 100;
-      const monthlyInstallment = (principal * monthlyRate * Math.pow(1 + monthlyRate, term)) / (Math.pow(1 + monthlyRate, term) - 1);
-
-      let curBal = principal;
-      for (let i = 1; i <= term; i++) {
-        const interest = curBal * monthlyRate;
-        const princ = monthlyInstallment - interest;
-        curBal = Math.max(0, curBal - princ);
-        const isPaid = i <= 6;
-        schedule.push({
-          installmentNumber: i,
-          dueDate: `2026-${String((i % 12) + 1).padStart(2, '0')}-15`,
-          amountDue: Math.round(monthlyInstallment),
-          principal: Math.round(princ),
-          interest: Math.round(interest),
-          remainingBalance: Math.round(curBal),
-          status: isPaid ? 'PAID' : i === 7 ? 'DUE' : 'UPCOMING',
-          paidDate: isPaid ? `2026-${String((i % 12) + 1).padStart(2, '0')}-14` : null,
-          receiptNumber: isPaid ? `OR-2026-00${i}8` : null,
-        });
+      } else {
+        return res.status(404).json({ success: false, error: 'Loan not found.' });
       }
     }
 
@@ -1393,49 +1259,8 @@ clientMobileRouter.get('/payments', requireAuth(), async (req: AuthedRequest, re
     const db = getDb();
     let payments: any[] = [];
 
-    if (db) {
+    if (db && borrowerId) {
       payments = await db.select().from(schema.payments).where(eq(schema.payments.borrowerId, borrowerId)).orderBy(desc(schema.payments.createdAt));
-    }
-
-    if (payments.length === 0) {
-      payments = [
-        {
-          id: 'pay-101',
-          loanId: 'LN-2026-001',
-          loanNumber: 'LN-2026-001',
-          amount: 4850,
-          paymentDate: '2026-08-15',
-          paymentMethod: 'GCASH',
-          referenceNumber: 'GCASH-98214981',
-          officialReceiptNumber: 'OR-2026-0091',
-          status: 'COMPLETED',
-          notes: 'August 2026 installment paid on time',
-        },
-        {
-          id: 'pay-102',
-          loanId: 'LN-2026-001',
-          loanNumber: 'LN-2026-001',
-          amount: 4850,
-          paymentDate: '2026-07-15',
-          paymentMethod: 'MAYA',
-          referenceNumber: 'MAYA-44129881',
-          officialReceiptNumber: 'OR-2026-0082',
-          status: 'COMPLETED',
-          notes: 'July 2026 installment',
-        },
-        {
-          id: 'pay-103',
-          loanId: 'LN-2026-001',
-          loanNumber: 'LN-2026-001',
-          amount: 4850,
-          paymentDate: '2026-06-15',
-          paymentMethod: 'OVER_THE_COUNTER',
-          referenceNumber: 'OTC-TAC-0412',
-          officialReceiptNumber: 'OR-2026-0071',
-          status: 'COMPLETED',
-          notes: 'June installment paid at Main Branch',
-        },
-      ];
     }
 
     res.json({ success: true, payments });
@@ -1468,8 +1293,8 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
     const proofRecord = {
       id: `proof-${Date.now()}`,
       borrowerId,
-      borrowerName: req.authUser?.fullName || 'Teresa Alcantara',
-      loanId: loanId || 'LN-2026-001',
+      borrowerName: req.authUser?.fullName || '',
+      loanId: loanId || '',
       amount: Number(amount),
       paymentMethod,
       referenceNumber: String(referenceNumber).trim(),
@@ -1479,17 +1304,6 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
       verificationStatus: 'PENDING_TELLER_VERIFICATION',
       submittedAt: new Date().toISOString(),
     };
-
-    // Add confirmation notification
-    mockClientNotifications.unshift({
-      id: `notif-${Date.now()}`,
-      borrowerId,
-      title: 'Payment Proof Submitted',
-      message: `Your payment proof of ₱${Number(amount).toLocaleString()} (Ref: ${referenceNumber}) has been submitted and is pending verification by the Cashier.`,
-      category: 'payment_confirmation',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
 
     res.status(201).json({
       success: true,
@@ -1507,14 +1321,32 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
 clientMobileRouter.get('/notifications', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
-    const notifs = mockClientNotifications.filter(
-      (n) => n.borrowerId === borrowerId || n.borrowerId === 'ALL'
-    );
-    const unreadCount = notifs.filter((n) => !n.isRead).length;
+    const db = getDb();
+    let notifications: any[] = [];
+
+    if (db && borrowerId) {
+      const rows = await db
+        .select()
+        .from(schema.branchNotifications)
+        .where(eq(schema.branchNotifications.relatedId, borrowerId))
+        .orderBy(desc(schema.branchNotifications.createdAt))
+        .limit(50);
+      notifications = rows.map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        category: n.type || 'announcement',
+        isRead: Boolean(n.isRead),
+        createdAt: n.createdAt ? String(n.createdAt) : new Date().toISOString(),
+        meta: {},
+      }));
+    }
+
+    const unreadCount = notifications.filter((n) => !n.isRead).length;
 
     res.json({
       success: true,
-      notifications: notifs,
+      notifications,
       unreadCount,
     });
   } catch (err: any) {
@@ -1523,20 +1355,29 @@ clientMobileRouter.get('/notifications', requireAuth(), async (req: AuthedReques
 });
 
 // Mark Notification as Read
-clientMobileRouter.patch('/notifications/:id/read', requireAuth(), (req: Request, res: Response) => {
+clientMobileRouter.patch('/notifications/:id/read', requireAuth(), async (req: AuthedRequest, res: Response) => {
   const { id } = req.params;
-  const notif = mockClientNotifications.find((n) => n.id === id);
-  if (notif) {
-    notif.isRead = true;
+  const db = getDb();
+  if (db) {
+    try {
+      await db.update(schema.branchNotifications).set({ isRead: true }).where(eq(schema.branchNotifications.id, id));
+    } catch {}
   }
   res.json({ success: true, message: 'Notification marked as read' });
 });
 
 // Mark All Notifications as Read
-clientMobileRouter.post('/notifications/mark-all-read', requireAuth(), (req: Request, res: Response) => {
-  mockClientNotifications.forEach((n) => {
-    n.isRead = true;
-  });
+clientMobileRouter.post('/notifications/mark-all-read', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  const borrowerId = getClientBorrowerId(req);
+  const db = getDb();
+  if (db && borrowerId) {
+    try {
+      const rows = await db.select().from(schema.branchNotifications).where(eq(schema.branchNotifications.relatedId, borrowerId));
+      for (const row of rows) {
+        await db.update(schema.branchNotifications).set({ isRead: true }).where(eq(schema.branchNotifications.id, row.id));
+      }
+    } catch {}
+  }
   res.json({ success: true, message: 'All notifications marked as read' });
 });
 
@@ -1549,7 +1390,7 @@ clientMobileRouter.get('/savings', requireAuth(), async (req: AuthedRequest, res
     const db = getDb();
     let account: any = null;
 
-    if (db) {
+    if (db && borrowerId) {
       const rows = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId)).limit(1);
       if (rows.length > 0) {
         const acc = rows[0];
@@ -1559,21 +1400,21 @@ clientMobileRouter.get('/savings', requireAuth(), async (req: AuthedRequest, res
           balance: Number(acc.balance) || 0,
           totalDeposits: Number(acc.balance) || 0,
           totalWithdrawals: 0,
-          goal: 30000,
-          goalName: 'Emergency Fund',
+          goal: 0,
+          goalName: '',
         };
       }
     }
 
     if (!account) {
       account = {
-        id: 'sav-1',
+        id: 'sav-none',
         memberId: borrowerId,
-        balance: 18500,
-        totalDeposits: 23500,
-        totalWithdrawals: 5000,
-        goal: 30000,
-        goalName: 'Emergency Fund',
+        balance: 0,
+        totalDeposits: 0,
+        totalWithdrawals: 0,
+        goal: 0,
+        goalName: '',
       };
     }
 
@@ -1589,24 +1430,13 @@ clientMobileRouter.get('/savings/transactions', requireAuth(), async (req: Authe
     const db = getDb();
     let transactions: any[] = [];
 
-    if (db) {
+    if (db && borrowerId) {
       try {
         const accRows = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId)).limit(1);
         if (accRows.length > 0) {
           transactions = await db.select().from(schema.savingsTransactions).where(eq(schema.savingsTransactions.savingsAccountId, accRows[0].id)).orderBy(desc(schema.savingsTransactions.createdAt));
         }
       } catch {}
-    }
-
-    if (transactions.length === 0) {
-      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
-      transactions = [
-        { id: 'st-1', date: daysAgo(6), type: 'DEPOSIT', amount: 1500, referenceNumber: 'DEP-2026-0422', balanceAfter: 18500, status: 'COMPLETED', notes: 'Over-the-counter deposit' },
-        { id: 'st-2', date: daysAgo(36), type: 'DEPOSIT', amount: 1500, referenceNumber: 'DEP-2026-0391', balanceAfter: 17000, status: 'COMPLETED', notes: 'Weekly savings' },
-        { id: 'st-3', date: daysAgo(66), type: 'WITHDRAWAL', amount: 5000, referenceNumber: 'WDL-2026-0102', balanceAfter: 15500, status: 'COMPLETED', notes: 'Medical emergency withdrawal' },
-        { id: 'st-4', date: daysAgo(96), type: 'DEPOSIT', amount: 1500, referenceNumber: 'DEP-2026-0330', balanceAfter: 20500, status: 'COMPLETED', notes: 'Weekly savings' },
-        { id: 'st-5', date: daysAgo(126), type: 'INTEREST', amount: 12, referenceNumber: 'ITR-2026-001', balanceAfter: 19000, status: 'COMPLETED', notes: '1% p.a. crediting' },
-      ];
     }
 
     res.json({ success: true, transactions });
@@ -1620,6 +1450,9 @@ clientMobileRouter.post('/savings/withdraw', requireAuth(), async (req: AuthedRe
     const borrowerId = getClientBorrowerId(req);
     const { amount, reason } = req.body;
 
+    if (!borrowerId) {
+      return res.status(403).json({ success: false, error: 'No member profile linked to this account yet.' });
+    }
     if (!amount || Number(amount) <= 0) {
       return res.status(400).json({ success: false, error: 'Valid withdrawal amount is required.' });
     }
@@ -1627,24 +1460,58 @@ clientMobileRouter.post('/savings/withdraw', requireAuth(), async (req: AuthedRe
       return res.status(400).json({ success: false, error: 'Please provide a reason for withdrawal.' });
     }
 
+    const db = getDb();
+    const today = new Date().toISOString().split('T')[0];
+    const requestedAmount = Number(amount);
+    let currentBalance = 0;
+    let memberName = req.authUser?.fullName || '';
+    let memberBranch = 'br-main';
+
+    if (db) {
+      const borrowerRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+      if (borrowerRows.length > 0) {
+        memberName = borrowerRows[0].fullName;
+        memberBranch = borrowerRows[0].branchId || 'br-main';
+        currentBalance = Number(borrowerRows[0].savingsBalance) || 0;
+      }
+    }
+
+    if (requestedAmount > currentBalance) {
+      return res.status(400).json({ success: false, error: 'Withdrawal amount exceeds your current savings balance.' });
+    }
+
     const request = {
       id: `WDRQ-${Date.now()}`,
+      requestId: `WDR-${Date.now().toString().slice(-6)}`,
       borrowerId,
-      amount: Number(amount),
-      requestDate: new Date().toISOString().split('T')[0],
+      amount: requestedAmount,
+      requestDate: today,
       reason,
-      status: 'PENDING',
+      status: 'Pending Approval',
     };
 
-    mockClientNotifications.unshift({
-      id: `notif-${Date.now()}`,
-      borrowerId,
-      title: 'Savings Withdrawal Request',
-      message: `Your withdrawal request of ₱${Number(amount).toLocaleString()} has been submitted and is pending manager approval.`,
-      category: 'announcement',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
+    if (db) {
+      const accRows = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId)).limit(1);
+      await db.insert(schema.savingsWithdrawalRequests).values({
+        id: `swr-${Date.now()}`,
+        requestId: request.requestId,
+        memberId: borrowerId,
+        memberName,
+        branchId: memberBranch,
+        currentBalance,
+        requestedAmount,
+        remainingBalanceAfter: Math.max(0, currentBalance - requestedAmount),
+        requestDate: today,
+        reason,
+        tellerName: req.authUser?.fullName || '',
+        tellerRecordedDate: today,
+        status: 'Pending Approval',
+      });
+      if (accRows.length > 0) {
+        await db.update(schema.savingsAccounts).set({ balance: Math.max(0, currentBalance - requestedAmount) }).where(eq(schema.savingsAccounts.id, accRows[0].id));
+        await db.update(schema.borrowers).set({ savingsBalance: Math.max(0, currentBalance - requestedAmount) }).where(eq(schema.borrowers.id, borrowerId));
+      }
+    }
 
     res.json({ success: true, request });
   } catch (err: any) {
@@ -1661,22 +1528,10 @@ clientMobileRouter.get('/transactions', requireAuth(), async (req: AuthedRequest
     const db = getDb();
     let transactions: any[] = [];
 
-    if (db) {
+    if (db && borrowerId) {
       try {
         transactions = await db.select().from(schema.financialTransactions).where(eq(schema.financialTransactions.clientId, borrowerId)).orderBy(desc(schema.financialTransactions.createdAt));
       } catch {}
-    }
-
-    if (transactions.length === 0) {
-      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
-      transactions = [
-        { id: 'tx-1', type: 'REPAYMENT', amount: 4850, date: daysAgo(8), referenceNumber: 'OR-2026-0091', paymentMethod: 'GCASH', status: 'COMPLETED', description: 'Loan payment — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
-        { id: 'tx-2', type: 'SAVINGS_DEPOSIT', amount: 1500, date: daysAgo(6), referenceNumber: 'DEP-2026-0422', paymentMethod: 'OVER_THE_COUNTER', status: 'COMPLETED', description: 'Savings deposit' },
-        { id: 'tx-3', type: 'LOAN_DISBURSEMENT', amount: 50000, date: daysAgo(150), referenceNumber: 'DISB-2026-011', paymentMethod: 'BANK_TRANSFER', status: 'COMPLETED', description: 'Loan disbursement — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
-        { id: 'tx-4', type: 'SAVINGS_WITHDRAWAL', amount: 5000, date: daysAgo(66), referenceNumber: 'WDL-2026-0102', paymentMethod: 'OVER_THE_COUNTER', status: 'COMPLETED', description: 'Savings withdrawal' },
-        { id: 'tx-5', type: 'FEE', amount: 1000, date: daysAgo(150), referenceNumber: 'FEE-2026-003', paymentMethod: 'CASH', status: 'COMPLETED', description: 'Processing fee — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
-        { id: 'tx-6', type: 'ADJUSTMENT', amount: -250, date: daysAgo(200), referenceNumber: 'ADJ-2026-014', paymentMethod: 'CASH', status: 'COMPLETED', description: 'Round-off adjustment' },
-      ];
     }
 
     res.json({ success: true, transactions });
@@ -1692,7 +1547,7 @@ clientMobileRouter.get('/transactions/:id', requireAuth(), async (req: AuthedReq
     const db = getDb();
     let transaction: any = null;
 
-    if (db) {
+    if (db && borrowerId) {
       try {
         const rows = await db.select().from(schema.financialTransactions).where(and(eq(schema.financialTransactions.id, id), eq(schema.financialTransactions.clientId, borrowerId))).limit(1);
         if (rows.length > 0) transaction = rows[0];
@@ -1700,13 +1555,7 @@ clientMobileRouter.get('/transactions/:id', requireAuth(), async (req: AuthedReq
     }
 
     if (!transaction) {
-      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
-      const mockTx = [
-        { id: 'tx-1', type: 'REPAYMENT', amount: 4850, date: daysAgo(8), referenceNumber: 'OR-2026-0091', paymentMethod: 'GCASH', status: 'COMPLETED', description: 'Loan payment — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
-        { id: 'tx-2', type: 'SAVINGS_DEPOSIT', amount: 1500, date: daysAgo(6), referenceNumber: 'DEP-2026-0422', paymentMethod: 'OVER_THE_COUNTER', status: 'COMPLETED', description: 'Savings deposit' },
-        { id: 'tx-3', type: 'LOAN_DISBURSEMENT', amount: 50000, date: daysAgo(150), referenceNumber: 'DISB-2026-011', paymentMethod: 'BANK_TRANSFER', status: 'COMPLETED', description: 'Loan disbursement — LN-2026-001', loanId: 'LN-2026-001', loanNumber: 'LN-2026-001' },
-      ];
-      transaction = mockTx.find((t) => t.id === id) || mockTx[0];
+      return res.status(404).json({ success: false, error: 'Transaction not found.' });
     }
 
     res.json({ success: true, transaction });
@@ -1724,50 +1573,28 @@ clientMobileRouter.get('/groups/my', requireAuth(), async (req: AuthedRequest, r
     const db = getDb();
     let group: any = null;
 
-    if (db) {
+    if (db && borrowerId) {
       try {
-        const rows = await db.select().from(schema.solidarityGroups).limit(1);
-        if (rows.length > 0) group = rows[0];
+        const rows = await db.select().from(schema.solidarityGroups);
+        const mine = rows.find((g) => {
+          if (g.leaderBorrowerId === borrowerId) return true;
+          const members = Array.isArray(g.members) ? g.members : (typeof g.members === 'string' ? (() => { try { return JSON.parse(g.members); } catch { return []; } })() : []);
+          return members.some((m: any) => m?.borrowerId === borrowerId);
+        });
+        if (mine) {
+          const membersList = Array.isArray(mine.members) ? mine.members : (typeof mine.members === 'string' ? (() => { try { return JSON.parse(mine.members); } catch { return []; } })() : []);
+          group = {
+            id: mine.id,
+            name: mine.groupName,
+            leaderName: mine.leaderName,
+            memberCount: membersList.length,
+            status: mine.status,
+            centerName: mine.centerName,
+            branch: mine.branchId,
+            members: membersList,
+          };
+        }
       } catch {}
-    }
-
-    if (!group) {
-      const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
-      group = {
-        id: 'grp-201',
-        name: 'Mater Dei Solidarity Circle',
-        leaderName: 'Teresa Alcantara',
-        memberCount: 6,
-        status: 'ACTIVE',
-        centerName: 'Poblacion Center',
-        branch: 'Tacloban Main',
-        members: [
-          { borrowerId: 'b-1', name: 'Teresa Alcantara', role: 'Leader', contributionStatus: 'PAID', loanStatus: 'ACTIVE' },
-          { borrowerId: 'b-2', name: 'Rolando Dela Cruz', contributionStatus: 'PAID' },
-          { borrowerId: 'b-3', name: 'Mary Jane Ramos', contributionStatus: 'PENDING' },
-          { borrowerId: 'b-4', name: 'Antonio Batula', contributionStatus: 'PAID' },
-          { borrowerId: 'b-5', name: 'Elena Soriano', contributionStatus: 'PAID' },
-          { borrowerId: 'b-6', name: 'Fernando Gabaldon', contributionStatus: 'LATE' },
-        ],
-        groupLoan: {
-          id: 'GL-2026-014',
-          totalAmount: 120000,
-          outstandingBalance: 72000,
-          nextPayment: 9000,
-          nextPaymentDate: daysAgo(-5),
-          paidAmount: 48000,
-          repaymentProgress: 40,
-          schedule: Array.from({ length: 12 }, (_, i) => ({
-            installmentNumber: i + 1,
-            dueDate: new Date(Date.now() + i * 30 * 86400000).toISOString().split('T')[0],
-            amountDue: 9000,
-            principal: 6000,
-            interest: 3000,
-            remainingBalance: Math.max(0, 120000 - (i + 1) * 10000),
-            status: i < 5 ? 'PAID' : i === 5 ? 'DUE' : 'UPCOMING',
-          })),
-        },
-      };
     }
 
     res.json({ success: true, group });
@@ -1781,15 +1608,22 @@ clientMobileRouter.get('/groups/my', requireAuth(), async (req: AuthedRequest, r
 // -------------------------------------------------------------
 clientMobileRouter.get('/documents', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
-    const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().split('T')[0];
-    const documents = [
-      { id: 'doc-1', name: 'Loan Agreement — LN-2026-001', type: 'Loan Agreement', date: '2026-01-15', relatedLoanNumber: 'LN-2026-001' },
-      { id: 'doc-2', name: 'Official Receipt OR-2026-0091', type: 'Payment Receipt', date: daysAgo(8), relatedLoanNumber: 'LN-2026-001' },
-      { id: 'doc-3', name: 'Account Statement — August 2026', type: 'Account Statement', date: daysAgo(1) },
-      { id: 'doc-4', name: 'Loan Statement — LN-2026-001', type: 'Loan Statement', date: daysAgo(1), relatedLoanNumber: 'LN-2026-001' },
-      { id: 'doc-5', name: 'Truth in Lending Disclosure', type: 'Disclosure', date: '2026-01-15', relatedLoanNumber: 'LN-2026-001' },
-      { id: 'doc-6', name: 'Membership Certificate', type: 'Certificate', date: '2024-01-18' },
-    ];
+    const borrowerId = getClientBorrowerId(req);
+    const db = getDb();
+    let documents: any[] = [];
+
+    if (db && borrowerId) {
+      try {
+        const rows = await db.select().from(schema.documents).where(eq(schema.documents.clientId, borrowerId)).orderBy(desc(schema.documents.createdAt));
+        documents = rows.map((d) => ({
+          id: d.id,
+          name: d.docName,
+          type: d.docType,
+          date: d.createdAt || '',
+          relatedLoanNumber: d.loanNumber || undefined,
+        }));
+      } catch {}
+    }
 
     res.json({ success: true, documents });
   } catch (err: any) {
@@ -1889,10 +1723,7 @@ clientMobileRouter.get('/support/tickets', requireAuth(), async (req: AuthedRequ
   try {
     res.json({
       success: true,
-      tickets: [
-        { id: 'TKT-2026-031', subject: 'Question about my loan balance', category: 'Loans', message: 'I would like to confirm my remaining balance.', createdAt: '2026-08-10', status: 'IN_PROGRESS', lastUpdate: '2026-08-12' },
-        { id: 'TKT-2026-027', subject: 'Update savings passbook records', category: 'Savings', message: 'Please update my passbook records.', createdAt: '2026-07-20', status: 'RESOLVED', lastUpdate: '2026-07-22' },
-      ],
+      tickets: [],
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -1915,16 +1746,6 @@ clientMobileRouter.post('/support/submit', requireAuth(), async (req: AuthedRequ
       status: 'OPEN',
       lastUpdate: new Date().toISOString().split('T')[0],
     };
-
-    mockClientNotifications.unshift({
-      id: `notif-${Date.now()}`,
-      borrowerId: getClientBorrowerId(req),
-      title: 'Support Ticket Created',
-      message: `Your support ticket "${subject}" has been created. Our team will respond shortly.`,
-      category: 'announcement',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    });
 
     res.status(201).json({ success: true, ticket });
   } catch (err: any) {

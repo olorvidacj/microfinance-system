@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollText, ShieldCheck, AlertTriangle, ShieldAlert, Download, Eye, FileJson, Calendar } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
@@ -6,7 +6,8 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_AUDIT_LOGS, AuditLog, formatDate } from '../data/mockData';
+import { AuditLog, formatDate } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
 
 const MODULES = [
   'User Management', 'Client Management', 'KYC Verification', 'Loan Management',
@@ -14,7 +15,7 @@ const MODULES = [
 ];
 
 export const AuditLogsPage: React.FC = () => {
-  const [logs] = useState<AuditLog[]>(MOCK_AUDIT_LOGS);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -22,6 +23,10 @@ export const AuditLogsPage: React.FC = () => {
   const [dateTo, setDateTo] = useState('');
   const [selected, setSelected] = useState<AuditLog | null>(null);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.auditLogs().then(setLogs).catch(() => setLogs([]));
+  }, []);
 
   const filtered = useMemo(() => {
     return logs.filter((log) => {

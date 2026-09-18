@@ -11,7 +11,7 @@ interface RegisterPageProps {
 const RegisterPage: React.FC<RegisterPageProps> = ({ onBack, onSwitchToLogin, onSuccess }) => {
   return (
     <AuthLayout
-      title="Join HOSCOMO Microfinance"
+      title="Join HOSCOMCO Microfinance"
       subtitle="Create your member account in under 2 minutes to apply for loans, manage savings passbooks, and access community solidarity programs."
     >
       <RegisterForm

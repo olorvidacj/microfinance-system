@@ -439,7 +439,22 @@ const LoanContext = createContext<LoanContextType | null>(null);
 
 const STORAGE_KEY = 'coop_lms_master_data_v2';
 
+function purgeLegacyMockStorage() {
+  try {
+    const prefix = `${STORAGE_KEY}_`;
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) toRemove.push(key);
+    }
+    toRemove.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // localStorage unavailable — ignore
+  }
+}
+
 export function LoanProvider({ children }: { children: React.ReactNode }) {
+  purgeLegacyMockStorage();
   // Branches
   const [branches, setBranches] = useState<Branch[]>(() => {
     try {

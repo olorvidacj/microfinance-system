@@ -4,9 +4,11 @@ import {
   Building2, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShieldCheck, MapPin, Phone, ArrowLeft,
 } from 'lucide-react';
 import { COOP_INFO } from '../data/mockData';
+import { useAuth } from '../../context/AuthContext';
 
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -14,7 +16,7 @@ export const AdminLoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!email.trim() || !password.trim()) {
@@ -22,14 +24,15 @@ export const AdminLoginPage: React.FC = () => {
       return;
     }
     setLoading(true);
-    // Mock authentication - any credentials accepted for the demo
-    setTimeout(() => {
-      setLoading(false);
-      try {
-        sessionStorage.setItem('hoscomo_admin_session', '1');
-      } catch {}
+    try {
+      await login(email.trim(), password);
+      sessionStorage.setItem('HOSCOMCO_admin_session', '1');
       navigate('/admin');
-    }, 900);
+    } catch (err: any) {
+      setError(err?.message || 'Invalid email/username or password.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -44,7 +47,7 @@ export const AdminLoginPage: React.FC = () => {
             H
           </div>
           <div>
-            <div className="font-bold text-lg tracking-tight leading-tight">HOSCOMO</div>
+            <div className="font-bold text-lg tracking-tight leading-tight">HOSCOMCO</div>
             <div className="text-[11px] text-amber-400 uppercase tracking-widest font-medium">Microfinance Cooperative</div>
           </div>
         </div>
@@ -95,7 +98,7 @@ export const AdminLoginPage: React.FC = () => {
                 H
               </div>
               <div>
-                <div className="font-bold text-slate-900 leading-tight">HOSCOMO</div>
+                <div className="font-bold text-slate-900 leading-tight">HOSCOMCO</div>
                 <div className="text-[10px] text-amber-600 uppercase tracking-widest font-medium">Admin Console</div>
               </div>
             </div>
@@ -121,7 +124,7 @@ export const AdminLoginPage: React.FC = () => {
                     type="text"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@hoscomo.coop"
+                    placeholder="admin@HOSCOMCO.coop"
                     className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold-500/30 focus:border-gold-500 transition placeholder:text-slate-400"
                   />
                 </div>

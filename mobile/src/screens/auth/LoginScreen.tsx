@@ -58,7 +58,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
       subtitle="Sign in to your member account to access loans, savings, and self-service services."
       footer={
         <View style={styles.signupWrap}>
-          <Text style={styles.signupText}>New to HOSCOMO? </Text>
+          <Text style={styles.signupText}>New to HOSCOMCO? </Text>
           <TouchableOpacity onPress={() => navigation.navigate('Register')}>
             <Text style={styles.signupLink}>Register as Client</Text>
           </TouchableOpacity>

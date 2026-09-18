@@ -168,7 +168,7 @@ const SupportPage: React.FC = () => {
                   <span className="font-semibold">Hotline:</span> (053) 555-0100
                 </p>
                 <p className="flex items-center gap-2 text-emerald-50">
-                  <span className="font-semibold">Email:</span> membercare@hoscomo.coop
+                  <span className="font-semibold">Email:</span> membercare@HOSCOMCO.coop
                 </p>
                 <p className="flex items-center gap-2 text-emerald-50">
                   <span className="font-semibold">Main branch:</span> Tacloban City, Leyte

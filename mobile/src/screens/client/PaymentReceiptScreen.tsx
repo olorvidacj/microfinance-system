@@ -32,7 +32,7 @@ export const PaymentReceiptScreen: React.FC<Props> = ({ navigation, route }) => 
 
         <AppCard style={styles.receiptCard}>
           <View style={styles.receiptHeader}>
-            <Text style={styles.receiptTitle}>HOSCOMO Microfinance Coop</Text>
+            <Text style={styles.receiptTitle}>HOSCOMCO Microfinance Coop</Text>
             <Text style={styles.receiptSub}>Official Payment Receipt</Text>
           </View>
           <View style={styles.divider} />

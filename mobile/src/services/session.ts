@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSession } from '../types';
 
-const SESSION_KEY = 'hoscomo.session.v1';
+const SESSION_KEY = 'HOSCOMCO.session.v1';
 
 export async function saveSession(session: UserSession): Promise<void> {
   try {
@@ -32,7 +32,7 @@ export async function clearSession(): Promise<void> {
   }
 }
 
-const REMEMBER_KEY = 'hoscomo.remember.v1';
+const REMEMBER_KEY = 'HOSCOMCO.remember.v1';
 
 export async function saveRememberme(identifier: string, remember: boolean): Promise<void> {
   try {

@@ -142,7 +142,7 @@ export const SettingsScreen: React.FC = () => {
           <View style={styles.row}>
             <View style={styles.rowBody}>
               <Text style={styles.rowTitle}>Share data for analytics</Text>
-              <Text style={styles.rowSub}>Help HOSCOMO improve its services</Text>
+              <Text style={styles.rowSub}>Help HOSCOMCO improve its services</Text>
             </View>
             <Switch
               value={privacyPrefs.shareDataAnalytics}

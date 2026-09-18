@@ -218,7 +218,7 @@ const ProfilePage: React.FC = () => {
                 <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                 <div className="text-sm text-emerald-800">
                   <p className="font-semibold">Your identity is verified.</p>
-                  <p className="mt-0.5">You are eligible to apply for all HOSCOMO loan products.</p>
+                  <p className="mt-0.5">You are eligible to apply for all HOSCOMCO loan products.</p>
                   {kyc.verifiedAt && (
                     <p className="mt-1 text-xs text-emerald-700">
                       Verified on {formatDate(kyc.verifiedAt)}

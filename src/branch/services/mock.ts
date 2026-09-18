@@ -35,7 +35,7 @@ export const mockBranchContext: BranchContextData = {
     id: 'br-main',
     name: 'Tacloban Main Branch',
     code: 'TAC-MAIN',
-    address: 'HOSCOMO Cooperative Building, Real Street, Tacloban City, Leyte',
+    address: 'HOSCOMCO Cooperative Building, Real Street, Tacloban City, Leyte',
     branchManager: 'Eduardo Manalo',
     contactPhone: '+63 (053) 832-4190',
     status: 'Active',

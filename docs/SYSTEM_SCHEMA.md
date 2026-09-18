@@ -1,6 +1,6 @@
-# HOSCOMO System Schema
+# HOSCOMCO System Schema
 
-Complete architecture, data model, and API reference for the **HOSCOMO Cooperative Loan & Savings Management System**.
+Complete architecture, data model, and API reference for the **HOSCOMCO Cooperative Loan & Savings Management System**.
 
 ---
 

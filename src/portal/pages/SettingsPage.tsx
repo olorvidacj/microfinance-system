@@ -133,7 +133,7 @@ const SettingsPage: React.FC = () => {
           <div className="space-y-3">
             <ToggleRow
               label="Share analytics data"
-              desc="Help HOSCOMO improve its services with anonymized usage data."
+              desc="Help HOSCOMCO improve its services with anonymized usage data."
               checked={privacy.shareDataAnalytics}
               onChange={(v) => setPrivacy({ ...privacy, shareDataAnalytics: v })}
             />

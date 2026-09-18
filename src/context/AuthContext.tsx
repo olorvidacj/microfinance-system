@@ -35,7 +35,7 @@ interface AuthContextType {
   refreshUser: () => Promise<AuthUser | null>;
 }
 
-const TOKEN_KEY = 'hoscomo_auth_token';
+const TOKEN_KEY = 'HOSCOMCO_auth_token';
 const REQUEST_TIMEOUT_MS = 8000;
 
 function timedInit(init?: RequestInit): RequestInit {

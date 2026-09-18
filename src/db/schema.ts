@@ -19,6 +19,13 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const idSequences = pgTable("id_sequences", {
+  name: text("name").primaryKey(),
+  year: integer("year").notNull(),
+  lastValue: integer("last_value").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const branches = pgTable("branches", {
   id: text("id").primaryKey(),
   code: text("code").notNull(),
@@ -90,11 +97,20 @@ export const borrowers = pgTable("borrowers", {
   monthlyExpenses: doublePrecision("monthly_expenses").notNull(),
   creditScore: integer("credit_score").notNull(),
   creditTier: text("credit_tier").notNull(),
+  emailVerified: integer("email_verified").default(0),
+  emailVerifiedAt: text("email_verified_at"),
   kycStatus: text("kyc_status").notNull(),
   memberStatus: text("member_status").notNull(),
   membershipDate: text("membership_date").notNull(),
-  savingsBalance: doublePrecision("savings_balance").default(1000),
-  shareCapital: doublePrecision("share_capital").default(15000),
+  profileCompleted: boolean("profile_completed").default(false),
+  profileCompletedAt: text("profile_completed_at"),
+  existingMemberId: text("existing_member_id"),
+  barangay: text("barangay"),
+  cityMunicipality: text("city_municipality"),
+  province: text("province"),
+  sourceOfIncome: text("source_of_income"),
+  savingsBalance: doublePrecision("savings_balance").default(0),
+  shareCapital: doublePrecision("share_capital").default(0),
   activeLoansCount: integer("active_loans_count").default(0),
   totalBorrowed: doublePrecision("total_borrowed").default(0),
   totalRepaid: doublePrecision("total_repaid").default(0),
@@ -183,7 +199,7 @@ export const savingsAccounts = pgTable("savings_accounts", {
   memberId: text("member_id").notNull(),
   memberName: text("member_name").notNull(),
   passbookNumber: text("passbook_number").notNull(),
-  balance: doublePrecision("balance").default(1000),
+  balance: doublePrecision("balance").default(0),
   maintainingBalance: doublePrecision("maintaining_balance").default(1000),
   interestRate: doublePrecision("interest_rate").default(1.0),
   createdAt: timestamp("created_at").defaultNow(),

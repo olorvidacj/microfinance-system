@@ -76,7 +76,7 @@ export default function App() {
             <Text style={{ fontSize: 16 }}>🏛️</Text>
           </View>
           <View>
-            <Text style={styles.brandName}>HOSCOMO Mobile</Text>
+            <Text style={styles.brandName}>HOSCOMCO Mobile</Text>
             <Text style={styles.userName}>{session.user.fullName}</Text>
           </View>
         </View>

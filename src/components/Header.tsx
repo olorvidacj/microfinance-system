@@ -85,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900 text-lg tracking-tight">HOSCOMO</span>
+                <span className="font-bold text-slate-900 text-lg tracking-tight">HOSCOMCO</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-gold-500/10 text-gold-700 font-bold uppercase tracking-wider border border-gold-400/30">
                   Microfinance
                 </span>
@@ -239,30 +239,6 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                       </button>
                     ))}
-
-                    {/* Client Persona */}
-                    <button
-                      onClick={() => {
-                        switchRole('CLIENT');
-                        setShowRoleDropdown(false);
-                      }}
-                      className={`w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-3 transition hover:bg-emerald-50/50 border-t border-slate-100 ${
-                        normalizeRole(currentUser.role) === 'CLIENT' ? 'bg-emerald-50/80 font-semibold text-emerald-900' : 'text-slate-700'
-                      }`}
-                    >
-                      <img
-                        src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150"
-                        alt="Teresa Alcantara"
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                      <div className="flex-1 truncate">
-                        <div className="text-xs font-semibold text-slate-900">Teresa Alcantara</div>
-                        <div className="text-[11px] text-slate-400">Cooperative Member (Borrower & Depositor)</div>
-                        <span className="inline-block mt-0.5 text-[9px] px-2 py-0.5 rounded-full border font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
-                          Client (Self-Service Portal Only)
-                        </span>
-                      </div>
-                    </button>
                   </div>
                 </div>
               )}

@@ -122,7 +122,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       });
 
       if (!linked.borrowerId) {
-        setInfo('Account created successfully! Welcome to HOSCOMO Microfinance.');
+        setInfo('Account created successfully! Welcome to HOSCOMCO Microfinance.');
       }
       onAuthenticated?.();
     } catch (err: any) {
@@ -149,13 +149,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <Building2 className="w-6 h-6 text-white" />
               </div>
               <div>
-                <span className="font-bold text-xl tracking-tight">HOSCOMO</span>
+                <span className="font-bold text-xl tracking-tight">HOSCOMCO</span>
                 <p className="text-[11px] text-slate-300 uppercase tracking-widest font-semibold">Microfinance Cooperative</p>
               </div>
             </div>
 
             <h1 className="mt-12 text-2xl sm:text-3xl font-extrabold leading-snug">
-              {mode === 'register' ? 'Join HOSCOMO Microfinance' : 'Cooperative Access Portal'}
+              {mode === 'register' ? 'Join HOSCOMCO Microfinance' : 'Cooperative Access Portal'}
             </h1>
             <p className="mt-3 text-xs sm:text-sm text-slate-200/90 leading-relaxed">
               {mode === 'register'
@@ -180,7 +180,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </div>
 
           <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400/70">
-            <span>© 2026 HOSCOMO Cooperative</span>
+            <span>© 2026 HOSCOMCO Cooperative</span>
             <span>Tacloban, Leyte</span>
           </div>
         </div>
@@ -194,7 +194,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-gold-500 to-gold-400 flex items-center justify-center text-navy-950 shadow-md">
                 <Building2 className="w-4 h-4" />
               </div>
-              <span className="font-bold text-slate-900 text-base">HOSCOMO</span>
+              <span className="font-bold text-slate-900 text-base">HOSCOMCO</span>
             </div>
             {onBack && (
               <button
@@ -265,7 +265,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     required
                     value={emailOrPhone}
                     onChange={(e) => setEmailOrPhone(e.target.value)}
-                    placeholder="e.g. staff@hoscomo.coop or 09175554321"
+                    placeholder="e.g. staff@HOSCOMCO.coop or 09175554321"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-sm transition"
                   />
                 </div>

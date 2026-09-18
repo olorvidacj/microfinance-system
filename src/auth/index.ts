@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { getDb, schema, markConnectionStringFailed } from '../db/index';
 import { initDbSchema } from '../db/initDb';
 import { getServerSupabase, isServerSupabaseFailed, markServerSupabaseFailed } from '../db/supabaseServer';
-import { INITIAL_STAFF, INITIAL_BORROWERS } from '../data/initialData';
+import { INITIAL_STAFF } from '../data/initialData';
 import { eq, or, ilike } from 'drizzle-orm';
 
 export interface AuthUserRecord {
@@ -31,8 +31,22 @@ export interface TokenPayload {
   exp: number;
 }
 
-const AUTH_SECRET = process.env.AUTH_SECRET || 'hoscomo-dev-secret-change-me';
+const AUTH_SECRET = process.env.AUTH_SECRET || 'HOSCOMCO-dev-secret-change-me';
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Some Supabase projects use the migration schema (profiles/clients) instead of
+ * a legacy `users` table. Querying a missing table must NOT permanently disable
+ * the server-side Supabase client — only real connectivity/credential failures
+ * should mark it failed.
+ */
+function isLegacyTableMissing(err: any): boolean {
+  const msg = String(err?.message || '');
+  const code = String(err?.code || '');
+  if (code === 'PGRST205' || code === '42P01' || code === 'PGRST200') return true;
+  if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('not exist')) return true;
+  return false;
+}
 
 // ---------- Password Hashing (scrypt, no external deps) ----------
 
@@ -42,22 +56,13 @@ export function hashPassword(password: string): string {
   return `${salt}:${derived}`;
 }
 
-export const DEFAULT_ADMIN_PASS_HASH = hashPassword(process.env.HOSCOMO_BOOTSTRAP_PASSWORD || 'Admin@123');
-export const DEFAULT_CLIENT_PASS_HASH = hashPassword('Client@123');
+export const DEFAULT_ADMIN_PASS_HASH = hashPassword(process.env.HOSCOMCO_BOOTSTRAP_PASSWORD || 'Admin@123');
 
 export function verifyPassword(password: string, stored: string): boolean {
   try {
     if (!stored || !password) return false;
     // Allow direct match
     if (stored === password) return true;
-
-    // Standard demo passwords accepted for initial demo accounts
-    const devPasswords = ['Admin@123', 'Staff@123', 'Client@123', 'admin123', 'staff123', 'client123', 'password123'];
-    if (devPasswords.includes(password)) {
-      if (stored === DEFAULT_ADMIN_PASS_HASH || stored === DEFAULT_CLIENT_PASS_HASH) {
-        return true;
-      }
-    }
 
     const [salt, expectedHash] = stored.split(':');
     if (!salt || !expectedHash) return false;
@@ -76,7 +81,7 @@ const inMemoryUsers = new Map<string, AuthUserRecord>();
 // Pre-seed default Administrator
 const defaultAdmin: AuthUserRecord = {
   id: 'u-bootstrap-admin',
-  email: (process.env.HOSCOMO_BOOTSTRAP_EMAIL || 'admin@hoscomo.coop').toLowerCase(),
+  email: (process.env.HOSCOMCO_BOOTSTRAP_EMAIL || 'admin@HOSCOMCO.coop').toLowerCase(),
   passwordHash: DEFAULT_ADMIN_PASS_HASH,
   fullName: 'System Administrator',
   role: 'STAFF',
@@ -105,27 +110,6 @@ for (const s of INITIAL_STAFF) {
       avatar: s.avatar,
       isActive: true,
       branchId: s.assignedBranchId || null,
-    });
-  }
-}
-
-// Seed initial client borrowers
-for (const b of INITIAL_BORROWERS) {
-  const clientUserId = `u-${b.id}`;
-  if (!inMemoryUsers.has(clientUserId)) {
-    inMemoryUsers.set(clientUserId, {
-      id: clientUserId,
-      email: b.email.toLowerCase(),
-      passwordHash: DEFAULT_CLIENT_PASS_HASH,
-      fullName: b.fullName,
-      role: 'CLIENT',
-      staffRole: null,
-      staffId: null,
-      borrowerId: b.id,
-      phone: b.phone,
-      avatar: null,
-      isActive: b.memberStatus !== 'Inactive' && b.memberStatus !== 'Rejected' && b.memberStatus !== 'Resigned',
-      branchId: b.branchId || null,
     });
   }
 }
@@ -263,8 +247,8 @@ class AuthStore {
           };
           return this.decorate(rec);
         }
-      } catch {
-        markServerSupabaseFailed();
+      } catch (err: any) {
+        if (!isLegacyTableMissing(err)) markServerSupabaseFailed();
       }
     }
 
@@ -339,8 +323,8 @@ class AuthStore {
             return this.decorate(rec);
           }
         }
-      } catch {
-        markServerSupabaseFailed();
+      } catch (err: any) {
+        if (!isLegacyTableMissing(err)) markServerSupabaseFailed();
       }
     }
 
@@ -399,8 +383,8 @@ class AuthStore {
           };
           return this.decorate(rec);
         }
-      } catch {
-        markServerSupabaseFailed();
+      } catch (err: any) {
+        if (!isLegacyTableMissing(err)) markServerSupabaseFailed();
       }
     }
 
@@ -465,8 +449,8 @@ class AuthStore {
             ...(updates.isActive !== undefined ? { is_active: updates.isActive } : {}),
           })
           .eq('id', id);
-      } catch {
-        markServerSupabaseFailed();
+      } catch (err: any) {
+        if (!isLegacyTableMissing(err)) markServerSupabaseFailed();
       }
     }
 
@@ -533,8 +517,8 @@ class AuthStore {
           avatar: user.avatar,
           is_active: true,
         });
-      } catch {
-        markServerSupabaseFailed();
+      } catch (err: any) {
+        if (!isLegacyTableMissing(err)) markServerSupabaseFailed();
       }
     }
 
@@ -561,17 +545,17 @@ export async function ensureDefaultUsers(): Promise<void> {
   // Initializes DB schema tables if database connection is available
   await initDbSchema().catch(() => {});
 
-  if (process.env.HOSCOMO_SKIP_BOOTSTRAP === '1') return;
+  if (process.env.HOSCOMCO_SKIP_BOOTSTRAP === '1') return;
   try {
     const db = getDb();
     if (!db) return;
     const [existing] = await db.select({ id: schema.users.id }).from(schema.users).limit(1);
     if (existing) return;
 
-    const password = process.env.HOSCOMO_BOOTSTRAP_PASSWORD || 'Admin@123';
+    const password = process.env.HOSCOMCO_BOOTSTRAP_PASSWORD || 'Admin@123';
     await db.insert(schema.users).values({
       id: 'u-bootstrap-admin',
-      email: process.env.HOSCOMO_BOOTSTRAP_EMAIL || 'admin@hoscomo.coop',
+      email: process.env.HOSCOMCO_BOOTSTRAP_EMAIL || 'admin@HOSCOMCO.coop',
       passwordHash: hashPassword(password),
       fullName: 'System Administrator',
       role: 'STAFF',

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "HOSCOMO Mobile Portal",
-    "slug": "hoscomo-mobile",
+    "name": "HOSCOMCO Mobile Portal",
+    "slug": "HOSCOMCO-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,14 +13,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hoscomo.microfinance"
+      "bundleIdentifier": "com.HOSCOMCO.microfinance"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#059669"
       },
-      "package": "com.hoscomo.microfinance"
+      "package": "com.HOSCOMCO.microfinance"
     },
     "web": {
       "favicon": "./assets/favicon.png"

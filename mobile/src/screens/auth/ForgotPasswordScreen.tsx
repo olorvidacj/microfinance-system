@@ -41,7 +41,7 @@ export const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <AuthLayout
       title="Forgot Password"
-      subtitle="Enter the email address registered with your HOSCOMO account and we will send you a verification code."
+      subtitle="Enter the email address registered with your HOSCOMCO account and we will send you a verification code."
     >
       {serverError ? <Text style={styles.errorText}>{serverError}</Text> : null}
       <AppTextInput

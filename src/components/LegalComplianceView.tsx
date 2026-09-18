@@ -25,17 +25,7 @@ interface LegalNote {
   addedAt: string;
 }
 
-const INITIAL_NOTES: LegalNote[] = [
-  {
-    id: 'leg-note-1',
-    loanId: '',
-    loanNumber: 'LN-2026-0009',
-    borrowerName: 'Teresa Alcantara',
-    note: 'Contract reviewed for chattel mortgage registration. Pending DTI annotation.',
-    addedBy: 'Atty. Benjamin Cruz',
-    addedAt: '2026-08-20 10:12:00',
-  },
-];
+const INITIAL_NOTES: LegalNote[] = [];
 
 export const LegalComplianceView: React.FC = () => {
   const { filteredLoans, filteredBorrowers, currentUser } = useLoan();

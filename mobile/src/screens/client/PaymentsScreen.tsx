@@ -26,7 +26,7 @@ const METHODS: { key: PaymentMethod; icon: keyof typeof Ionicons.glyphMap; hint:
   { key: 'GCASH', icon: 'phone-portrait-outline', hint: 'GCash transfer or cash-in' },
   { key: 'MAYA', icon: 'wallet-outline', hint: 'Maya transfer' },
   { key: 'BANK_TRANSFER', icon: 'business-outline', hint: 'Bank transfer (InstaPay/PESONet)' },
-  { key: 'OVER_THE_COUNTER', icon: 'storefront-outline', hint: 'Pay at any HOSCOMO branch' },
+  { key: 'OVER_THE_COUNTER', icon: 'storefront-outline', hint: 'Pay at any HOSCOMCO branch' },
 ];
 
 export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {

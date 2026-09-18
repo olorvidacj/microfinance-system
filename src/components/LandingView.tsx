@@ -23,14 +23,14 @@ interface LandingViewProps {
   onSignIn: (initialMode?: 'signin' | 'register') => void;
 }
 
-const APP_DOWNLOAD_URL = '/HOSCOMO-Mobile.apk';
-const APP_DOWNLOAD_FILENAME = 'HOSCOMO-Mobile.apk';
+const APP_DOWNLOAD_URL = '/HOSCOMCO-Mobile.apk';
+const APP_DOWNLOAD_FILENAME = 'HOSCOMCO-Mobile.apk';
 
 const NAV_LINKS = [
   { label: 'Products', href: '#products' },
   { label: 'Savings', href: '#savings' },
   { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Why HOSCOMO', href: '#why-us' },
+  { label: 'Why HOSCOMCO', href: '#why-us' },
 ];
 
 const PRODUCTS = [
@@ -131,7 +131,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               <Building2 className="w-5 h-5" />
             </div>
             <div className="leading-tight">
-              <span className="font-bold text-slate-900 tracking-tight">HOSCOMO</span>
+              <span className="font-bold text-slate-900 tracking-tight">HOSCOMCO</span>
               <p className="text-[10px] text-slate-400 uppercase tracking-widest">Microfinance Cooperative</p>
             </div>
           </a>
@@ -195,7 +195,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               </span>
             </h1>
             <p className="mt-5 text-base sm:text-lg text-slate-200/90 leading-relaxed max-w-xl">
-              HOSCOMO gives families and small entrepreneurs access to fair loans,
+              HOSCOMCO gives families and small entrepreneurs access to fair loans,
               secure savings, and a community that invests in your success.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -352,7 +352,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       <section id="why-us" className="py-20 lg:py-24 bg-white border-y border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-2 gap-14">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">Why HOSCOMO</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">Why HOSCOMCO</span>
             <h2 className="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
               A cooperative you can trust
             </h2>
@@ -379,7 +379,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
                 ))}
               </div>
               <blockquote className="mt-5 text-lg font-medium leading-relaxed">
-                “HOSCOMO believed in my small eatery when banks wouldn’t. Three loan cycles later,
+                “HOSCOMCO believed in my small eatery when banks wouldn’t. Three loan cycles later,
                 I employ six people from my barangay.”
               </blockquote>
               <figcaption className="mt-6 flex items-center gap-3">
@@ -459,7 +459,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
                 <Building2 className="w-5 h-5" />
               </div>
               <div className="leading-tight">
-                <span className="font-bold text-white tracking-tight">HOSCOMO</span>
+                <span className="font-bold text-white tracking-tight">HOSCOMCO</span>
                 <p className="text-[10px] uppercase tracking-widest text-slate-500">Microfinance Cooperative</p>
               </div>
             </div>
@@ -475,7 +475,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
                 <Phone className="w-3.5 h-3.5 text-gold-400" /> (053) 555-0134
               </div>
               <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-gold-400" /> hello@hoscomo.coop
+                <Mail className="w-3.5 h-3.5 text-gold-400" /> hello@HOSCOMCO.coop
               </div>
             </div>
           </div>
@@ -519,7 +519,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
         </div>
         <div className="border-t border-slate-800">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
-            <span>© 2026 HOSCOMO Microfinance Cooperative • Tacloban, Leyte</span>
+            <span>© 2026 HOSCOMCO Microfinance Cooperative • Tacloban, Leyte</span>
             <span>All deposits are member share-backed and audited annually.</span>
           </div>
         </div>

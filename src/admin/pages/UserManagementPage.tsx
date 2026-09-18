@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { UserPlus, Pencil, Trash2, Power, KeyRound, Eye, Users, UserCheck, UserX, Clock, ShieldCheck, Mail, Phone, Building } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
@@ -6,7 +6,8 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_USERS, AdminUser, formatDate } from '../data/mockData';
+import { AdminUser, formatDate } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
 
 const ROLES = ['Administrator', 'Manager', 'Loan Officer', 'Teller', 'Client Services Staff', 'Bookkeeper', 'Auditor'];
 const STATUSES = ['Active', 'Inactive', 'Pending', 'Suspended'];
@@ -22,7 +23,11 @@ interface UserFormState {
 const EMPTY_FORM: UserFormState = { fullName: '', email: '', phone: '', role: 'Teller', branch: 'Tacloban Main' };
 
 export const UserManagementPage: React.FC = () => {
-  const [users, setUsers] = useState<AdminUser[]>(MOCK_USERS);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+
+  useEffect(() => {
+    adminApi.users().then(setUsers).catch(() => setUsers([]));
+  }, []);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -110,7 +115,7 @@ export const UserManagementPage: React.FC = () => {
               Cooperative Staff
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500">Configure role-based access permissions, branches, and security status for HOSCOMO personnel.</p>
+          <p className="text-xs sm:text-sm text-slate-500">Configure role-based access permissions, branches, and security status for HOSCOMCO personnel.</p>
         </div>
         <button
           onClick={openAdd}
@@ -236,7 +241,7 @@ export const UserManagementPage: React.FC = () => {
           </div>
           <div>
             <label className={labelCls}>Work Email Address</label>
-            <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@hoscomo.coop" />
+            <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@HOSCOMCO.coop" />
           </div>
           <div>
             <label className={labelCls}>Mobile Contact Number</label>
@@ -314,7 +319,7 @@ export const UserManagementPage: React.FC = () => {
                 <span>Security & Authorization Notice</span>
               </div>
               <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                This account operates under HOSCOMO Cooperative Security Guidelines. Any privilege escalation or role alteration is logged in the permanent audit trail.
+                This account operates under HOSCOMCO Cooperative Security Guidelines. Any privilege escalation or role alteration is logged in the permanent audit trail.
               </p>
             </div>
           </div>

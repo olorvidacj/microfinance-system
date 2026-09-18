@@ -70,7 +70,7 @@ const PortalLayoutInner: React.FC = () => {
   const location = useLocation();
 
   useEffect(() => {
-    document.title = 'Client Portal · HOSCOMO';
+    document.title = 'Client Portal · HOSCOMCO';
   }, []);
 
   const refreshBadge = useCallback(async () => {
@@ -100,7 +100,7 @@ const PortalLayoutInner: React.FC = () => {
   return (
     <AppShell
       sections={sections}
-      brandName="HOSCOMO"
+      brandName="HOSCOMCO"
       brandSubtitle="Client Portal"
       brandTag="Member"
       contentMaxWidth="max-w-6xl"
@@ -147,7 +147,7 @@ const PortalLayoutInner: React.FC = () => {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="lg:hidden">
-                <span className="block text-base font-bold leading-none text-slate-900">HOSCOMO</span>
+                <span className="block text-base font-bold leading-none text-slate-900">HOSCOMCO</span>
                 <span className="text-[10px] uppercase tracking-wider text-slate-400">Client Portal</span>
               </div>
               <div className="hidden text-sm text-slate-500 lg:block">

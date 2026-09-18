@@ -126,7 +126,7 @@ export const RolesAdminView: React.FC = () => {
   const fetchUsers = async () => {
     setIsLoadingUsers(true);
     try {
-      const token = localStorage.getItem('hoscomo_auth_token') || '';
+      const token = localStorage.getItem('HOSCOMCO_auth_token') || '';
       const res = await fetch('/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -139,7 +139,8 @@ export const RolesAdminView: React.FC = () => {
       }
     } catch {}
 
-    // Fallback: populate with staffList and client accounts
+    // Fallback: populate with staff accounts only. Client accounts are created
+    // through real portal registration and are returned by /api/admin/users.
     const initialMapped = staffList.map((s) => ({
       id: s.id,
       email: s.email,
@@ -155,22 +156,6 @@ export const RolesAdminView: React.FC = () => {
       permissions: ROLE_DEFINITIONS[s.role]?.permissions || [],
     }));
 
-    // Add Client accounts
-    initialMapped.push({
-      id: 'usr-client-01',
-      email: 'client@gmail.com',
-      fullName: 'Teresa Alcantara',
-      role: 'CLIENT',
-      staffRole: 'CLIENT',
-      staffId: null,
-      borrowerId: 'borrower-01',
-      phone: '+63 918 222 9011',
-      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
-      isActive: true,
-      lastLoginAt: new Date().toISOString(),
-      permissions: ROLE_DEFINITIONS.CLIENT.permissions,
-    });
-
     setUsersList(initialMapped);
     setIsLoadingUsers(false);
   };
@@ -184,7 +169,7 @@ export const RolesAdminView: React.FC = () => {
     if (!newUserForm.fullName || !newUserForm.email || !newUserForm.password) return;
 
     try {
-      const token = localStorage.getItem('hoscomo_auth_token') || '';
+      const token = localStorage.getItem('HOSCOMCO_auth_token') || '';
       await fetch('/api/admin/users', {
         method: 'POST',
         headers: {
@@ -666,7 +651,7 @@ export const RolesAdminView: React.FC = () => {
                     <input
                       type="email"
                       required
-                      placeholder="e.g. maria.s@hoscomo.coop"
+                      placeholder="e.g. maria.s@HOSCOMCO.coop"
                       value={newUserForm.email}
                       onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:outline-hidden"

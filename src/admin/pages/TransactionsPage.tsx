@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ArrowDownToLine, ArrowUpFromLine, CreditCard, Wallet, RefreshCw, Eye, Printer, Download, FileText, CheckCircle2, ShieldCheck, Building2,
 } from 'lucide-react';
@@ -8,20 +8,25 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_TRANSACTIONS, AdminTransaction, formatPHP } from '../data/mockData';
+import { AdminTransaction, formatPHP } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
 
 const TYPES = ['Deposit', 'Withdrawal', 'Loan Payment', 'Loan Disbursement', 'Savings Deposit', 'Savings Withdrawal'];
 const STATUSES = ['Completed', 'Pending', 'Failed', 'Cancelled'];
 const METHODS = ['Cash', 'GCash', 'Bank Transfer', 'Maya', 'Cheque'];
 
 export const FinancialTransactionsPage: React.FC = () => {
-  const [transactions, setTransactions] = useState<AdminTransaction[]>(MOCK_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [selected, setSelected] = useState<AdminTransaction | null>(null);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.transactions().then(setTransactions).catch(() => setTransactions([]));
+  }, []);
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
@@ -219,7 +224,7 @@ export const FinancialTransactionsPage: React.FC = () => {
               <div className="bg-[#091527] text-white px-5 py-4 text-center border-b border-amber-500/30">
                 <div className="flex items-center justify-center gap-1.5 mb-0.5">
                   <Building2 className="w-4 h-4 text-amber-400" />
-                  <p className="font-black text-sm tracking-wide text-white uppercase">HOSCOMO Microfinance Cooperative</p>
+                  <p className="font-black text-sm tracking-wide text-white uppercase">HOSCOMCO Microfinance Cooperative</p>
                 </div>
                 <p className="text-[11px] text-slate-300">CDA Registration No. 9520-08000123 · Tacloban City, Leyte</p>
                 <p className="text-[11px] font-mono text-amber-300/90 font-bold mt-1">OFFICIAL CASH RECEIPT: {selected.referenceNumber}</p>
@@ -252,14 +257,16 @@ export const FinancialTransactionsPage: React.FC = () => {
                   <span className="text-xl font-black text-slate-900">{formatPHP(selected.amount)}</span>
                 </div>
 
-                <div className="flex justify-between text-[11px] pt-1 text-slate-500">
-                  <span>General Ledger Breakdown:</span>
-                  <span className="font-mono">Principal (85%): {formatPHP(selected.amount * 0.85)} · Int/Fee (15%): {formatPHP(selected.amount * 0.15)}</span>
-                </div>
+                {selected.notes ? (
+                  <div className="flex justify-between text-[11px] pt-1 text-slate-500">
+                    <span>General Ledger Note:</span>
+                    <span className="font-mono max-w-[60%] text-right">{selected.notes}</span>
+                  </div>
+                ) : null}
               </div>
 
               <div className="bg-slate-100 px-5 py-2.5 text-center text-[10px] text-slate-500 border-t border-slate-200">
-                System-generated microfinance transaction record. Approved under HOSCOMO Cooperative By-Laws.
+                System-generated microfinance transaction record. Approved under HOSCOMCO Cooperative By-Laws.
               </div>
             </div>
 

@@ -538,7 +538,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-gold-600 uppercase tracking-wider mb-1">
             <Smartphone className="w-4 h-4" />
-            <span>HOSCOMO Client Self-Service Portal {isClientSession ? '' : '(Staff Simulation View)'}</span>
+            <span>HOSCOMCO Client Self-Service Portal {isClientSession ? '' : '(Staff Simulation View)'}</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900">
             {isClientSession
@@ -731,7 +731,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 <div className="flex justify-between items-start">
                   <div>
                     <span className="text-[11px] text-slate-200/90 uppercase tracking-wider font-semibold">
-                      HOSCOMO Regular Savings Passbook
+                      HOSCOMCO Regular Savings Passbook
                     </span>
                     <div className="flex items-center gap-3 mt-1.5">
                       <span className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -1287,7 +1287,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-gold-400 text-xs font-semibold mb-1">
                     <Sparkles className="w-4 h-4" />
-                    <span>HOSCOMO Automated Loan Origination</span>
+                    <span>HOSCOMCO Automated Loan Origination</span>
                   </div>
                   <h3 className="text-lg font-bold text-white">Self-Service Loan Application</h3>
                   <p className="text-xs text-slate-400">

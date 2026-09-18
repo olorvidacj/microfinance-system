@@ -60,7 +60,7 @@ export const StaffManagementView: React.FC = () => {
   const fetchStaff = async () => {
     setIsLoading(true);
     try {
-      const token = localStorage.getItem('hoscomo_auth_token') || '';
+      const token = localStorage.getItem('HOSCOMCO_auth_token') || '';
       const res = await fetch('/api/admin/staff', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -167,7 +167,7 @@ export const StaffManagementView: React.FC = () => {
   const handleToggleActive = async (staff: StaffRecord) => {
     const nextActive = !staff.isActive;
     try {
-      const token = localStorage.getItem('hoscomo_auth_token') || '';
+      const token = localStorage.getItem('HOSCOMCO_auth_token') || '';
       await fetch(`/api/admin/staff/${staff.id}`, {
         method: 'PUT',
         headers: {
@@ -216,7 +216,7 @@ export const StaffManagementView: React.FC = () => {
     };
 
     try {
-      const token = localStorage.getItem('hoscomo_auth_token') || '';
+      const token = localStorage.getItem('HOSCOMCO_auth_token') || '';
       if (editingStaff) {
         await fetch(`/api/admin/staff/${editingStaff.id}`, {
           method: 'PUT',

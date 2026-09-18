@@ -14,7 +14,7 @@ export const PublicPortalLayout: React.FC<{ children?: React.ReactNode }> = ({ c
           <Building2 className="h-6 w-6" />
         </div>
         <div>
-          <span className="block text-xl font-bold leading-none text-white">HOSCOMO</span>
+          <span className="block text-xl font-bold leading-none text-white">HOSCOMCO</span>
           <span className="text-[11px] uppercase tracking-widest text-gold-300">Microfinance Cooperative</span>
         </div>
       </div>
@@ -24,7 +24,7 @@ export const PublicPortalLayout: React.FC<{ children?: React.ReactNode }> = ({ c
           Your cooperative, <span className="text-gold-300">in your pocket.</span>
         </h1>
         <p className="mt-4 max-w-md text-sm leading-relaxed text-slate-200/90">
-          Apply for loans, track repayments, build your savings, and reach your goals — all from the HOSCOMO Client Portal.
+          Apply for loans, track repayments, build your savings, and reach your goals — all from the HOSCOMCO Client Portal.
         </p>
 
         <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -42,7 +42,7 @@ export const PublicPortalLayout: React.FC<{ children?: React.ReactNode }> = ({ c
         </div>
       </div>
 
-      <p className="relative text-xs text-slate-400/60">© {new Date().getFullYear()} HOSCOMO Microfinance Cooperative. All rights reserved.</p>
+      <p className="relative text-xs text-slate-400/60">© {new Date().getFullYear()} HOSCOMCO Microfinance Cooperative. All rights reserved.</p>
     </div>
 
     {/* Right content panel */}
@@ -53,7 +53,7 @@ export const PublicPortalLayout: React.FC<{ children?: React.ReactNode }> = ({ c
             <Building2 className="h-5 w-5" />
           </div>
           <div>
-            <span className="block text-lg font-bold leading-none text-slate-900">HOSCOMO</span>
+            <span className="block text-lg font-bold leading-none text-slate-900">HOSCOMCO</span>
             <span className="text-[10px] uppercase tracking-wider text-slate-400">Client Portal</span>
           </div>
         </div>

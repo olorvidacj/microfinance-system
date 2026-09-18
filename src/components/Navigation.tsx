@@ -103,7 +103,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
     },
     {
       id: 'brochure' as NavTab,
-      label: 'HOSCOMO Policies',
+      label: 'HOSCOMCO Policies',
       icon: BookOpen,
     },
     { id: 'calculator' as NavTab, label: 'Calculator', icon: Calculator },

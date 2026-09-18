@@ -74,7 +74,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegister, on
             required
             value={emailOrPhone}
             onChange={(e) => setEmailOrPhone(e.target.value)}
-            placeholder="e.g. staff@hoscomo.coop or 09175554321"
+            placeholder="e.g. staff@HOSCOMCO.coop or 09175554321"
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-sm transition"
           />
         </div>

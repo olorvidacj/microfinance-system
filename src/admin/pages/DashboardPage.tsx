@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users, UserCheck, ShieldCheck, FileSpreadsheet, CheckCircle2, PiggyBank,
@@ -12,13 +12,29 @@ import {
 import { StatCard } from '../components/StatCard';
 import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
-import {
-  LOAN_TREND_DATA, TRANSACTION_CHART_DATA, CLIENT_REGISTRATION_DATA,
-  MOCK_LOANS, MOCK_TRANSACTIONS, MOCK_NOTIFICATIONS, formatPHP,
-} from '../data/mockData';
+import { formatPHP } from '../data/mockData';
+import { adminApi, AdminOverview } from '../services/adminApi';
 
 export const DashboardPage: React.FC = () => {
   const [quickLoading, setQuickLoading] = useState(false);
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+
+  useEffect(() => {
+    adminApi.overview().then(setOverview).catch(() => setOverview(null));
+  }, []);
+
+  const stats = overview?.stats;
+  const recentLoans = overview?.recentLoans || [];
+  const recentTxns = overview?.recentTxns || [];
+  const unreadNotifications = (overview?.notifications || []).filter((n) => !n.isRead);
+
+  const kycTotal =
+    (stats?.verifiedKyc || 0) +
+    (stats?.pendingKycCount || 0) +
+    (stats?.rejectedKyc || 0) +
+    (stats?.underReviewKyc || 0) +
+    (stats?.correctionKyc || 0);
+  const kycPct = (n: number) => (kycTotal > 0 ? `${Math.round((n / kycTotal) * 100)}%` : '0%');
 
   const quickActions = [
     { label: 'Register User', icon: PlusCircle, path: '/admin/users', color: 'text-gold-600 bg-gold-500/10 border-gold-400/30' },
@@ -26,10 +42,6 @@ export const DashboardPage: React.FC = () => {
     { label: 'Review Loans', icon: FileSpreadsheet, path: '/admin/loans', color: 'text-emerald-600 bg-emerald-50/80 border-emerald-100' },
     { label: 'Financial Reports', icon: Download, path: '/admin/reports', color: 'text-gold-600 bg-gold-500/10 border-gold-400/30' },
   ];
-
-  const recentLoans = MOCK_LOANS.slice(0, 5);
-  const recentTxns = MOCK_TRANSACTIONS.slice(0, 5);
-  const unreadNotifications = MOCK_NOTIFICATIONS.filter((n) => !n.isRead);
 
   const handleQuickAction = (path: string) => {
     setQuickLoading(true);
@@ -51,7 +63,7 @@ export const DashboardPage: React.FC = () => {
           <div className="max-w-2xl">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                HOSCOMO Microfinance Cooperative
+                HOSCOMCO Microfinance Cooperative
               </span>
               <span className="text-slate-400 text-xs flex items-center gap-1">
                 <Landmark className="w-3.5 h-3.5 text-amber-400" /> Tacloban, Leyte
@@ -61,7 +73,7 @@ export const DashboardPage: React.FC = () => {
               Executive Management Console
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Monitoring credit operations, KYC verifications, group lending liability, and savings liquidity for HOSCOMO Cooperative.
+              Monitoring credit operations, KYC verifications, group lending liability, and savings liquidity for HOSCOMCO Cooperative.
             </p>
           </div>
 
@@ -111,79 +123,72 @@ export const DashboardPage: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Registered Users"
-          value="48"
+          value={(stats?.totalUsers || 0).toLocaleString()}
           icon={Users}
           iconColor="text-gold-600"
           iconBg="bg-gold-500/10"
-          change={8}
-          changeLabel="vs last month"
+          subtitle="Staff accounts"
         />
         <StatCard
           title="Total Active Clients"
-          value="995"
+          value={(stats?.activeClients || 0).toLocaleString()}
           icon={UserCheck}
           iconColor="text-emerald-600"
           iconBg="bg-emerald-50"
-          change={5.2}
-          changeLabel="vs last month"
+          subtitle="of {(stats?.totalClients || 0).toLocaleString()} registered"
         />
         <StatCard
           title="Pending KYC Requests"
-          value="45"
+          value={(stats?.pendingKyc || 0).toLocaleString()}
           icon={ShieldCheck}
           iconColor="text-amber-600"
           iconBg="bg-amber-50"
-          change={-12}
-          changeLabel="vs last month"
+          subtitle="Awaiting verification"
           accentBorder
         />
         <StatCard
           title="Total Loan Applications"
-          value="112"
+          value={(stats?.totalLoanApplications || 0).toLocaleString()}
           icon={FileSpreadsheet}
           iconColor="text-gold-600"
           iconBg="bg-gold-500/10"
-          change={18}
-          changeLabel="vs last month"
+          subtitle="All-time pipeline"
         />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Approved Loans"
-          value="89"
+          value={(stats?.approvedLoans || 0).toLocaleString()}
           icon={CheckCircle2}
           iconColor="text-emerald-600"
           iconBg="bg-emerald-50"
-          subtitle="79.5% approval rate"
+          subtitle={`${stats?.approvalRate || 0}% approval rate`}
         />
         <StatCard
           title="Total Savings Liquidity"
-          value={formatPHP(6700000)}
+          value={formatPHP(stats?.totalSavingsLiquidity || 0)}
           icon={PiggyBank}
           iconColor="text-amber-600"
           iconBg="bg-amber-50"
-          change={4.8}
-          changeLabel="vs last month"
+          subtitle="Members' aggregate balance"
           accentBorder
         />
         <StatCard
           title="Transactions Recorded"
-          value="1,428"
+          value={(stats?.transactionsRecorded || 0).toLocaleString()}
           icon={ArrowLeftRight}
           iconColor="text-cyan-600"
           iconBg="bg-cyan-50"
-          change={10.4}
-          changeLabel="vs last month"
+          subtitle="Across all ledgers"
         />
         <StatCard
           title="Active Lending Groups"
-          value="32"
+          value={(stats?.activeGroups || 0).toLocaleString()}
           icon={Users2}
           iconColor="text-purple-600"
           iconBg="bg-purple-50"
-          change={2}
-          changeLabel="this quarter"
+          subtitle="Solidarity groups"
         />
       </div>
 
@@ -196,16 +201,15 @@ export const DashboardPage: React.FC = () => {
               <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                 Loan Origination & Approval Trajectory
               </h3>
-              <p className="text-xs text-slate-400">Monthly loan volume across all Tacloban branches</p>
+              <p className="text-xs text-slate-400">Monthly loan volume across all branches</p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="gold" dot>79.5% Avg Approval</Badge>
-              <Badge variant="success" dot>+12.5% Growth</Badge>
+              {stats && stats.totalLoanApplications > 0 && <Badge variant="gold" dot>{stats.approvalRate}% Avg Approval</Badge>}
             </div>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={LOAN_TREND_DATA} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <AreaChart data={overview?.loanTrend || []} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gradApps" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#0B192C" stopOpacity={0.25} />
@@ -246,7 +250,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={TRANSACTION_CHART_DATA} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
+              <BarChart data={overview?.transactionChart || []} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <YAxis
@@ -284,7 +288,7 @@ export const DashboardPage: React.FC = () => {
               <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                 New Client Membership Onboarding
               </h3>
-              <p className="text-xs text-slate-400">Tacloban Main, Palo, and Ormoc Branches</p>
+              <p className="text-xs text-slate-400">Client registration across all branches</p>
             </div>
             <Link to="/admin/clients" className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1">
               Client Registry <ArrowUpRight className="w-3 h-3" />
@@ -292,7 +296,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={CLIENT_REGISTRATION_DATA} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+              <LineChart data={overview?.registrationData || []} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} width={30} />
@@ -335,21 +339,21 @@ export const DashboardPage: React.FC = () => {
 
             <div className="grid grid-cols-3 gap-2 my-4">
               <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-100 text-center">
-                <span className="text-xl font-bold text-emerald-700">89%</span>
+                <span className="text-xl font-bold text-emerald-700">{kycPct(stats?.verifiedKyc || 0)}</span>
                 <p className="text-xs font-semibold text-emerald-800 mt-0.5">Verified</p>
-                <p className="text-[10px] text-emerald-600">685 clients</p>
+                <p className="text-[10px] text-emerald-600">{(stats?.verifiedKyc || 0).toLocaleString()} clients</p>
               </div>
 
               <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-100 text-center">
-                <span className="text-xl font-bold text-amber-700">6%</span>
+                <span className="text-xl font-bold text-amber-700">{kycPct(stats?.pendingKycCount || 0)}</span>
                 <p className="text-xs font-semibold text-amber-800 mt-0.5">Pending</p>
-                <p className="text-[10px] text-amber-600">45 clients</p>
+                <p className="text-[10px] text-amber-600">{(stats?.pendingKycCount || 0).toLocaleString()} clients</p>
               </div>
 
               <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-100 text-center">
-                <span className="text-xl font-bold text-rose-700">2%</span>
+                <span className="text-xl font-bold text-rose-700">{kycPct(stats?.rejectedKyc || 0)}</span>
                 <p className="text-xs font-semibold text-rose-800 mt-0.5">Rejected</p>
-                <p className="text-[10px] text-rose-600">12 clients</p>
+                <p className="text-[10px] text-rose-600">{(stats?.rejectedKyc || 0).toLocaleString()} clients</p>
               </div>
             </div>
           </div>
@@ -357,11 +361,11 @@ export const DashboardPage: React.FC = () => {
           <div className="pt-3 border-t border-slate-100 space-y-2 text-xs">
             <div className="flex justify-between py-1">
               <span className="text-slate-500">Under Investigation / Review</span>
-              <span className="font-bold text-slate-800">22 files</span>
+              <span className="font-bold text-slate-800">{(stats?.underReviewKyc || 0).toLocaleString()} files</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-slate-500">Document Correction Required</span>
-              <span className="font-bold text-amber-600">8 files</span>
+              <span className="font-bold text-amber-600">{(stats?.correctionKyc || 0).toLocaleString()} files</span>
             </div>
           </div>
         </div>
@@ -440,6 +444,9 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="space-y-3 flex-1 overflow-y-auto max-h-[380px] pr-1">
+            {unreadNotifications.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-6">No pending alerts.</p>
+            )}
             {unreadNotifications.map((n) => (
               <div
                 key={n.id}

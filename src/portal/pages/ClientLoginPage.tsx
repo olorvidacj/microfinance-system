@@ -20,7 +20,6 @@ const ClientLoginPage: React.FC = () => {
 
   // Forgot / reset flow
   const [otp, setOtp] = useState('');
-  const [demoOtp, setDemoOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [sentTo, setSentTo] = useState('');
@@ -56,7 +55,6 @@ const ClientLoginPage: React.FC = () => {
       try {
         const res = await authService.forgotPassword(identifier.trim().toLowerCase());
         setNotice(res.message || 'A verification code has been sent.');
-        setDemoOtp(res.demoOtp || '');
         setSentTo(identifier.trim().toLowerCase());
       } catch (err: any) {
         setError(err.message || 'Unable to send code. Please try again.');
@@ -104,7 +102,6 @@ const ClientLoginPage: React.FC = () => {
       setConfirmPassword('');
       setOtp('');
       setSentTo('');
-      setDemoOtp('');
     } catch (err: any) {
       setError(err.message || 'Unable to reset password.');
     } finally {
@@ -138,13 +135,6 @@ const ClientLoginPage: React.FC = () => {
         >
           {error ? <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" /> : <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />}
           <span>{error || notice}</span>
-        </div>
-      )}
-
-      {demoOtp && mode === 'forgot' && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="font-semibold">Demo mode:</span> your verification code is{' '}
-          <span className="font-mono font-bold">{demoOtp}</span>
         </div>
       )}
 
@@ -253,7 +243,6 @@ const ClientLoginPage: React.FC = () => {
                 onClick={() => {
                   setError('');
                   setNotice('');
-                  setDemoOtp('');
                   setSentTo('');
                 }}
                 className="text-xs font-medium text-gold-700 hover:underline"
@@ -309,7 +298,7 @@ const ClientLoginPage: React.FC = () => {
       )}
 
       <p className="mt-6 text-center text-xs text-slate-400">
-        New to HOSCOMO?{' '}
+        New to HOSCOMCO?{' '}
         <Link to="/portal/register" className="font-medium text-gold-700 hover:underline">
           Register as a member
         </Link>

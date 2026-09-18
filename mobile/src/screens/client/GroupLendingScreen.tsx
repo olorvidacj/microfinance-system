@@ -58,7 +58,7 @@ export const GroupLendingScreen: React.FC = () => {
           <EmptyState
             icon="people-outline"
             title="You are not in a group yet"
-            message="HOSCOMO uses solidarity group lending — members mutually guarantee each other's loans. Ask your branch how to join a group near you."
+            message="HOSCOMCO uses solidarity group lending — members mutually guarantee each other's loans. Ask your branch how to join a group near you."
           />
           <AppCard style={styles.infoCard}>
             <Text style={styles.infoTitle}>What is Group Lending?</Text>

@@ -30,7 +30,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const handleDownload = () => {
     const textContent = `
 ============================================================
-           HOSCOMO MICROFINANCE COOPERATIVE
+           HOSCOMCO MICROFINANCE COOPERATIVE
            OFFICIAL PAYMENT COLLECTION RECEIPT
 ============================================================
 OR Number:          ${payment.receiptNumber}
@@ -133,7 +133,7 @@ Thank you for your prompt loan payment!
                 H
               </div>
               <h2 className="text-base md:text-lg font-black text-slate-900 tracking-tight uppercase">
-                HOSCOMO Microfinance Cooperative
+                HOSCOMCO Microfinance Cooperative
               </h2>
             </div>
             <p className="text-[11px] font-medium text-slate-600">
@@ -290,7 +290,7 @@ Thank you for your prompt loan payment!
 
             <div className="text-right">
               <div className="font-medium text-slate-700">Thank you for your prompt payment!</div>
-              <div className="text-slate-400 italic text-[9px]">HOSCOMO Cooperative Management System</div>
+              <div className="text-slate-400 italic text-[9px]">HOSCOMCO Cooperative Management System</div>
             </div>
           </div>
         </div>

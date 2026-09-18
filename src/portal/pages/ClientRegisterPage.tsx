@@ -93,7 +93,6 @@ const ClientRegisterPage: React.FC = () => {
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  const [demoOtp, setDemoOtp] = useState('');
   const [otpVerified, setOtpVerified] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -157,7 +156,6 @@ const ClientRegisterPage: React.FC = () => {
       const res = await authService.sendRegistrationOtp(form.phone);
       setOtpSent(true);
       setNotice(res.message || 'Verification code sent.');
-      setDemoOtp(res.demoOtp || '');
     } catch (err: any) {
       setError(err.message || 'Unable to send verification code.');
     } finally {
@@ -224,7 +222,7 @@ const ClientRegisterPage: React.FC = () => {
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
           <Check className="h-8 w-8 text-emerald-600" />
         </div>
-        <h2 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">Welcome to HOSCOMO!</h2>
+        <h2 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">Welcome to HOSCOMCO!</h2>
         <p className="mt-2 text-sm text-slate-500">Your member account has been created. Taking you to your portal…</p>
       </div>
     );
@@ -278,13 +276,6 @@ const ClientRegisterPage: React.FC = () => {
         >
           {error ? <MessageSquareWarning className="mt-0.5 h-4 w-4 shrink-0" /> : <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0" />}
           <span>{error || notice}</span>
-        </div>
-      )}
-
-      {demoOtp && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="font-semibold">Demo mode:</span> verification code is{' '}
-          <span className="font-mono font-bold">{demoOtp}</span>
         </div>
       )}
 
@@ -437,7 +428,7 @@ const ClientRegisterPage: React.FC = () => {
         {step === 6 && (
           <>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">Already an HOSCOMO member?</span> Enter your member number
+              <span className="font-semibold text-slate-700">Already an HOSCOMCO member?</span> Enter your member number
               below to link this account to your existing records. Otherwise leave it blank.
             </div>
             <Field label="Member number" hint="Optional — e.g. MBR-2024-001">
@@ -474,7 +465,7 @@ const ClientRegisterPage: React.FC = () => {
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
               />
               <span>
-                I agree to the HOSCOMO <span className="font-medium text-gold-700">Terms of Service</span> and confirm
+                I agree to the HOSCOMCO <span className="font-medium text-gold-700">Terms of Service</span> and confirm
                 that the information I provided is true and complete.
               </span>
             </label>
@@ -487,7 +478,7 @@ const ClientRegisterPage: React.FC = () => {
               />
               <span>
                 I consent to the processing of my personal data for member services, in accordance with the{' '}
-                <span className="font-medium text-gold-700">Data Privacy Policy</span> of HOSCOMO.
+                <span className="font-medium text-gold-700">Data Privacy Policy</span> of HOSCOMCO.
               </span>
             </label>
           </>

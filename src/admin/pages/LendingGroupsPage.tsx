@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Users2, CheckCircle2, Clock, UserPlus, UserMinus, Eye, PlusCircle, RefreshCw, ShieldCheck, Plus, Building2, Calendar } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
@@ -6,7 +6,8 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_LENDING_GROUPS, LendingGroup, formatPHP, formatDate } from '../data/mockData';
+import { LendingGroup, formatPHP, formatDate } from '../data/mockData';
+import { adminApi, GroupDetail } from '../services/adminApi';
 
 const STATUSES = ['Active', 'Pending', 'Inactive', 'Graduated'];
 
@@ -20,23 +21,25 @@ interface GroupMember {
   status: 'Good Standing' | 'Due' | 'In Arrears';
 }
 
-const SAMPLE_MEMBERS: GroupMember[] = [
-  { id: 'M-001', name: 'Teresa Alcantara', phone: '+63 917 111 2222', role: 'Leader', loanAmount: 50000, balance: 32500, status: 'Good Standing' },
-  { id: 'M-002', name: 'Carmen Lopez', phone: '+63 921 555 6666', role: 'Treasurer', loanAmount: 40000, balance: 28000, status: 'Good Standing' },
-  { id: 'M-003', name: 'Isabelle Fernandez', phone: '+63 925 999 0000', role: 'Secretary', loanAmount: 100000, balance: 62500, status: 'Good Standing' },
-  { id: 'M-004', name: 'Patricia Soriano', phone: '+63 923 777 8888', role: 'Member', loanAmount: 20000, balance: 0, status: 'Good Standing' },
-  { id: 'M-005', name: 'Ramon Villanueva', phone: '+63 928 333 4444', role: 'Member', loanAmount: 80000, balance: 64500, status: 'Due' },
-];
-
 export const LendingGroupsPage: React.FC = () => {
-  const [groups, setGroups] = useState<LendingGroup[]>(MOCK_LENDING_GROUPS);
+  const [groups, setGroups] = useState<LendingGroup[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<LendingGroup | null>(null);
+  const [detail, setDetail] = useState<GroupDetail | null>(null);
   const [tab, setTab] = useState<'members' | 'loan' | 'payments'>('members');
   const [removeTarget, setRemoveTarget] = useState<GroupMember | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.groups().then(setGroups).catch(() => setGroups([]));
+  }, []);
+
+  useEffect(() => {
+    if (!selected) { setDetail(null); return; }
+    adminApi.groupDetail(selected.id).then(setDetail).catch(() => setDetail(null));
+  }, [selected?.id]);
 
   const filtered = useMemo(() => {
     return groups.filter((g) => {
@@ -225,7 +228,7 @@ export const LendingGroupsPage: React.FC = () => {
                     tab === t ? 'border-[#091527] text-[#091527]' : 'border-transparent text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  {t === 'members' ? 'Group Roster (Solidarity)' : t === 'loan' ? 'Group Loan Commitments' : 'Center Meeting Logs'}
+                  {t === 'members' ? 'Group Roster (Solidarity)' : t === 'loan' ? 'Group Loan Commitments' : 'Member Collections'}
                 </button>
               ))}
             </div>
@@ -233,7 +236,7 @@ export const LendingGroupsPage: React.FC = () => {
             {tab === 'members' && (
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{SAMPLE_MEMBERS.length} Registered Borrowers</h4>
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{(detail?.members || []).length} Registered Borrowers</h4>
                   <button
                     onClick={() => setAddMemberOpen(true)}
                     className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-2.5 py-1.5 transition"
@@ -242,7 +245,7 @@ export const LendingGroupsPage: React.FC = () => {
                   </button>
                 </div>
                 <DataTable
-                  data={SAMPLE_MEMBERS}
+                  data={detail?.members || []}
                   keyField="id"
                   columns={[
                     {
@@ -285,7 +288,7 @@ export const LendingGroupsPage: React.FC = () => {
                       header: '',
                       render: (m) => (
                         <button
-                          onClick={() => setRemoveTarget(m)}
+                          onClick={() => setRemoveTarget(m as GroupMember)}
                           className="p-1 rounded-lg hover:bg-rose-50 text-rose-500 transition"
                           title="Remove member"
                         >
@@ -300,13 +303,11 @@ export const LendingGroupsPage: React.FC = () => {
 
             {tab === 'loan' && (
               <DataTable
-                data={[
-                  { id: 'GLOAN-2024-0012', product: 'Group Solidarity Micro-Loan', amount: 525000, issued: '2024-02-15', paid: 412000, balance: 113000, status: 'Active' },
-                  { id: 'GLOAN-2023-0008', product: 'Group Solidarity Micro-Loan', amount: 400000, issued: '2023-05-01', paid: 400000, balance: 0, status: 'Completed' },
-                ]}
+                data={detail?.loans || []}
                 keyField="id"
                 columns={[
-                  { key: 'id', header: 'Facility ID', render: (l) => <span className="font-mono text-xs font-bold text-[#091527]">{l.id}</span> },
+                  { key: 'id', header: 'Facility ID', render: (l) => <span className="font-mono text-xs font-bold text-[#091527]">{l.loanId}</span> },
+                  { key: 'clientName', header: 'Borrower' },
                   { key: 'product', header: 'Credit Facility' },
                   { key: 'amount', header: 'Total Released', render: (l) => <span className="font-bold text-slate-800 text-xs">{formatPHP(l.amount)}</span> },
                   { key: 'issued', header: 'Disbursement Date', render: (l) => <span className="text-xs text-slate-500">{l.issued}</span> },
@@ -319,18 +320,15 @@ export const LendingGroupsPage: React.FC = () => {
 
             {tab === 'payments' && (
               <DataTable
-                data={[
-                  { id: 'MTG-2025-042', date: '2025-09-16', expected: 46880, collected: 44560, missed: 2, by: 'Teresa Alcantara' },
-                  { id: 'MTG-2025-041', date: '2025-09-09', expected: 46880, collected: 46880, missed: 0, by: 'Teresa Alcantara' },
-                  { id: 'MTG-2025-040', date: '2025-09-02', expected: 46880, collected: 44240, missed: 1, by: 'Teresa Alcantara' },
-                ]}
+                data={detail?.collections || []}
                 keyField="id"
                 columns={[
-                  { key: 'id', header: 'Meeting Serial', render: (m) => <span className="font-mono text-xs font-bold text-slate-700">{m.id}</span> },
-                  { key: 'date', header: 'Meeting Date', render: (m) => <span className="text-xs text-slate-600 font-medium">{m.date}</span> },
-                  { key: 'expected', header: 'Expected Collection', render: (m) => <span className="font-bold text-xs text-slate-800">{formatPHP(m.expected)}</span> },
-                  { key: 'collected', header: 'Actual Cash Collected', render: (m) => <span className="font-bold text-xs text-emerald-700">{formatPHP(m.collected)}</span> },
-                  { key: 'missed', header: 'Delinquent Dues', render: (m) => <Badge variant={m.missed > 0 ? 'warning' : 'success'}>{m.missed === 0 ? 'Full Attendance' : `${m.missed} Member(s)`}</Badge> },
+                  { key: 'id', header: 'Receipt Serial', render: (m) => <span className="font-mono text-xs font-bold text-slate-700">{m.id}</span> },
+                  { key: 'date', header: 'Collection Date', render: (m) => <span className="text-xs text-slate-600 font-medium">{m.date}</span> },
+                  { key: 'principal', header: 'Principal Portion', render: (m) => <span className="font-bold text-xs text-slate-800">{formatPHP(m.principal)}</span> },
+                  { key: 'interest', header: 'Interest Portion', render: (m) => <span className="font-bold text-xs text-slate-800">{formatPHP(m.interest)}</span> },
+                  { key: 'collected', header: 'Amount Collected', render: (m) => <span className="font-bold text-xs text-emerald-700">{formatPHP(m.collected)}</span> },
+                  { key: 'method', header: 'Method', render: (m) => <span className="text-xs text-slate-500">{m.method}</span> },
                   { key: 'by', header: 'Recorded By', render: (m) => <span className="text-xs text-slate-600">{m.by}</span> },
                 ]}
               />

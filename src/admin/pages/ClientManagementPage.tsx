@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Eye, Pencil, UserPlus, Mail, Phone, MapPin, Briefcase, Wallet, FileSpreadsheet, ArrowLeftRight, History, Building, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
@@ -6,21 +6,27 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { MOCK_CLIENTS, AdminClient, formatPHP, formatDate } from '../data/mockData';
+import { AdminClient, formatPHP, formatDate } from '../data/mockData';
+import { adminApi, ClientDetail } from '../services/adminApi';
 
 const STATUSES = ['Pending', 'Active', 'Inactive', 'Suspended', 'Rejected', 'Closed'];
 
 type ProfileTab = 'overview' | 'loans' | 'savings' | 'transactions';
 
 export const ClientManagementPage: React.FC = () => {
-  const [clients, setClients] = useState<AdminClient[]>(MOCK_CLIENTS);
+  const [clients, setClients] = useState<AdminClient[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedClient, setSelectedClient] = useState<AdminClient | null>(null);
+  const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [profileTab, setProfileTab] = useState<ProfileTab>('overview');
   const [statusTarget, setStatusTarget] = useState<AdminClient | null>(null);
   const [newStatus, setNewStatus] = useState<AdminClient['status']>('Active');
   const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    adminApi.clients().then(setClients).catch(() => setClients([]));
+  }, []);
 
   const filtered = useMemo(() => {
     return clients.filter((c) => {
@@ -44,7 +50,12 @@ export const ClientManagementPage: React.FC = () => {
     }
   };
 
-  const loadProfile = (c: AdminClient) => { setSelectedClient(c); setProfileTab('overview'); };
+  const loadProfile = (c: AdminClient) => {
+    setSelectedClient(c);
+    setProfileTab('overview');
+    setDetail(null);
+    adminApi.clientDetail(c.id).then(setDetail).catch(() => setDetail(null));
+  };
 
   const loadProfileFromState = () => {
     if (selectedClient) {
@@ -52,18 +63,6 @@ export const ClientManagementPage: React.FC = () => {
       if (fresh) setSelectedClient(fresh);
     }
   };
-
-  const sampleLoans = [
-    { id: 'LN-2025-0042', product: 'Regular Microloan', amount: 50000, balance: 32500, status: 'Active', nextDue: '2025-10-15' },
-    { id: 'LN-2024-0031', product: 'Livelihood Loan', amount: 25000, balance: 0, status: 'Completed', nextDue: '—' },
-  ];
-
-  const sampleTxns = [
-    { ref: 'OR-2025-1847', type: 'Loan Payment', amount: 4688, date: '2025-09-12 09:30', method: 'Cash' },
-    { ref: 'OR-2025-1840', type: 'Savings Deposit', amount: 5000, date: '2025-09-10 09:00', method: 'Cash' },
-    { ref: 'OR-2025-1788', type: 'Loan Payment', amount: 4688, date: '2025-08-15 10:20', method: 'GCash' },
-    { ref: 'OR-2025-1721', type: 'Savings Deposit', amount: 2000, date: '2025-08-01 14:05', method: 'Cash' },
-  ];
 
   const inputCls = "w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50/80 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition shadow-sm";
 
@@ -302,15 +301,15 @@ export const ClientManagementPage: React.FC = () => {
 
             {profileTab === 'loans' && (
               <DataTable
-                data={sampleLoans}
+                data={detail?.loans || []}
                 keyField="id"
                 columns={[
-                  { key: 'id', header: 'Loan ID', render: (l) => <span className="font-mono text-xs font-bold text-[#091527]">{l.id}</span> },
-                  { key: 'product', header: 'Product' },
-                  { key: 'amount', header: 'Principal Amount', render: (l) => <span className="font-bold text-slate-900">{formatPHP(l.amount)}</span> },
-                  { key: 'balance', header: 'Outstanding Balance', render: (l) => <span className="font-bold text-amber-700">{formatPHP(l.balance)}</span> },
+                  { key: 'id', header: 'Loan ID', render: (l) => <span className="font-mono text-xs font-bold text-[#091527]">{l.loanId}</span> },
+                  { key: 'loanProduct', header: 'Product' },
+                  { key: 'amount', header: 'Principal Amount', render: (l) => <span className="font-bold text-slate-900">{formatPHP(l.loanAmount)}</span> },
+                  { key: 'balance', header: 'Outstanding Balance', render: (l) => <span className="font-bold text-amber-700">{formatPHP(l.outstandingBalance)}</span> },
                   { key: 'status', header: 'Status', render: (l) => <Badge dot>{l.status}</Badge> },
-                  { key: 'nextDue', header: 'Next Due Date' },
+                  { key: 'applicationDate', header: 'Application Date', render: (l) => <span className="text-xs text-slate-500">{l.applicationDate}</span> },
                 ]}
               />
             )}
@@ -328,15 +327,17 @@ export const ClientManagementPage: React.FC = () => {
                   </div>
                   <div className="p-3 rounded-xl bg-white border border-emerald-200 shadow-sm">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Dividend Yield</p>
-                    <p className="text-base sm:text-lg font-bold text-slate-800 mt-1">1.25% p.a.</p>
+                    <p className="text-base sm:text-lg font-bold text-slate-800 mt-1">
+                      {detail?.savings?.length ? `${detail.savings[0].interestRate}% p.a.` : '—'}
+                    </p>
                   </div>
                   <div className="p-3 rounded-xl bg-white border border-emerald-200 shadow-sm">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Accumulated</p>
-                    <p className="text-base sm:text-lg font-bold text-slate-800 mt-1">{formatPHP(selectedClient.savingsBalance * 2.4)}</p>
+                    <p className="text-base sm:text-lg font-bold text-slate-800 mt-1">{formatPHP((detail?.savings || []).reduce((s, a) => s + a.inflows, 0))}</p>
                   </div>
                   <div className="p-3 rounded-xl bg-white border border-emerald-200 shadow-sm">
                     <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Total Withdrawn</p>
-                    <p className="text-base sm:text-lg font-bold text-slate-800 mt-1">{formatPHP(selectedClient.savingsBalance * 1.4)}</p>
+                    <p className="text-base sm:text-lg font-bold text-slate-800 mt-1">{formatPHP((detail?.savings || []).reduce((s, a) => s + a.outflows, 0))}</p>
                   </div>
                 </div>
               </div>
@@ -344,14 +345,14 @@ export const ClientManagementPage: React.FC = () => {
 
             {profileTab === 'transactions' && (
               <DataTable
-                data={sampleTxns}
-                keyField="ref"
+                data={detail?.transactions || []}
+                keyField="id"
                 columns={[
-                  { key: 'ref', header: 'Reference', render: (t) => <span className="font-mono text-xs font-semibold text-[#091527]">{t.ref}</span> },
+                  { key: 'ref', header: 'Reference', render: (t) => <span className="font-mono text-xs font-semibold text-[#091527]">{t.referenceNumber}</span> },
                   { key: 'type', header: 'Transaction Type', render: (t) => <Badge>{t.type}</Badge> },
                   { key: 'amount', header: 'Amount', render: (t) => <span className="font-bold text-slate-900">{formatPHP(t.amount)}</span> },
-                  { key: 'method', header: 'Channel / Method', render: (t) => <Badge variant="default">{t.method}</Badge> },
-                  { key: 'date', header: 'Timestamp', render: (t) => <span className="text-xs text-slate-500">{t.date}</span> },
+                  { key: 'method', header: 'Channel / Method', render: (t) => <Badge variant="default">{t.paymentMethod}</Badge> },
+                  { key: 'date', header: 'Timestamp', render: (t) => <span className="text-xs text-slate-500">{t.dateTime}</span> },
                 ]}
               />
             )}

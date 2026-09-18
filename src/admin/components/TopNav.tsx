@@ -14,7 +14,8 @@ import {
   Clock,
   Building,
 } from 'lucide-react';
-import { MOCK_NOTIFICATIONS } from '../data/mockData';
+import { adminApi } from '../services/adminApi';
+import type { AdminNotification } from '../data/mockData';
 
 interface TopNavProps {
   onToggleSidebar: () => void;
@@ -33,9 +34,14 @@ export const TopNav: React.FC<TopNavProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const unread = MOCK_NOTIFICATIONS.filter((n) => !n.isRead).length;
+  useEffect(() => {
+    adminApi.notifications().then(setNotifications).catch(() => setNotifications([]));
+  }, []);
+
+  const unread = notifications.filter((n) => !n.isRead).length;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -149,7 +155,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                 </div>
 
                 <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
-                  {MOCK_NOTIFICATIONS.slice(0, 5).map((n) => (
+                  {notifications.slice(0, 5).map((n) => (
                     <Link
                       key={n.id}
                       to="/admin/notifications"

@@ -16,7 +16,7 @@ import { AuditLogsPage } from './pages/AuditLogsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { SystemSettingsPage } from './pages/SystemSettingsPage';
 
-const ADMIN_SESSION_KEY = 'hoscomo_admin_session';
+const ADMIN_SESSION_KEY = 'HOSCOMCO_admin_session';
 
 export const AdminRouteGate: React.FC = () => {
   const hasSession = () => {

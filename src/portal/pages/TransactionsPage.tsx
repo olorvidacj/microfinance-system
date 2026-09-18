@@ -84,7 +84,7 @@ const TransactionsPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `HOSCOMO-transactions-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `HOSCOMCO-transactions-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

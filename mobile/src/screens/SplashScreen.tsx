@@ -33,7 +33,7 @@ export const SplashScreen: React.FC = () => {
             <Ionicons name="business" size={40} color={colors.white} />
           </View>
         </View>
-        <Text style={styles.title}>HOSCOMO</Text>
+        <Text style={styles.title}>HOSCOMCO</Text>
         <Text style={styles.subtitle}>Microfinance Cooperative</Text>
       </Animated.View>
 

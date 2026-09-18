@@ -216,7 +216,7 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
 
         {/* Footer */}
         <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500 px-4">
-          <span>HOSCOMO Cooperative Alerts</span>
+          <span>HOSCOMCO Cooperative Alerts</span>
           {onClearAll && notifications.length > 0 && (
             <button
               onClick={onClearAll}
