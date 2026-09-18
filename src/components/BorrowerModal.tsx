@@ -79,7 +79,7 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
       <div className="bg-white rounded-2xl max-w-2xl w-full my-8 shadow-2xl border border-gray-100 overflow-hidden animate-in zoom-in-95 duration-150">
         <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
+            <div className="w-8 h-8 rounded-lg bg-navy-900 text-white flex items-center justify-center font-bold">
               <UserPlus className="w-4 h-4" />
             </div>
             <h2 className="text-lg font-bold text-gray-900">
@@ -242,7 +242,7 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs flex items-center gap-1.5"
+              className="py-2 px-5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-semibold shadow-xs flex items-center gap-1.5"
             >
               <Save className="w-4 h-4" />
               <span>{editBorrower ? 'Save Changes' : 'Register Borrower'}</span>

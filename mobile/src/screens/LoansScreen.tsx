@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   scheduleButton: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFBEB',
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',

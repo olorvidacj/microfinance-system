@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   HOSCOMO brand design tokens (navy + gold)
+   Tailwind v4 CSS-first theme. Generates utilities such as:
+   bg-navy-950, text-gold-400, border-navy-700, ring-gold-500, ...
+   ========================================================================== */
+@theme {
+  /* Sidebar / brand navy */
+  --color-navy-950: #091527;
+  --color-navy-900: #0d1c33;
+  --color-navy-800: #11233f;
+  --color-navy-700: #15243d;
+
+  /* Accent gold */
+  --color-gold-200: #fde68a;
+  --color-gold-300: #fcd34d;
+  --color-gold-400: #fbbf24;
+  --color-gold-500: #f59e0b;
+  --color-gold-600: #d97706;
+  --color-gold-700: #b45309;
+  --color-gold-800: #92400e;
+}
+
 @layer base {
   body {
     background-color: #f8fafc;
@@ -30,4 +52,65 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* ==========================================================================
+   Enter animations
+   Minimal, dependency-free implementation compatible with the
+   `animate-in fade-in zoom-in-95` / `animate-fade-in` / `animate-scale-up`
+   class names used across the app (previously inert — no plugin installed).
+   ========================================================================== */
+@layer utilities {
+  @keyframes hoscomo-enter {
+    from {
+      opacity: var(--tw-enter-opacity, 1);
+      transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+        scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), 1);
+    }
+  }
+
+  .animate-in {
+    animation-name: hoscomo-enter;
+    animation-duration: 150ms;
+    animation-fill-mode: both;
+  }
+
+  .fade-in {
+    --tw-enter-opacity: 0;
+  }
+  .zoom-in-95 {
+    --tw-enter-scale: 0.95;
+  }
+  .slide-in-from-left {
+    --tw-enter-translate-x: -100%;
+  }
+  .slide-in-from-right {
+    --tw-enter-translate-x: 100%;
+  }
+  .slide-in-from-top {
+    --tw-enter-translate-y: -100%;
+  }
+  .slide-in-from-bottom {
+    --tw-enter-translate-y: 100%;
+  }
+
+  @keyframes hoscomo-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  .animate-fade-in,
+  .animate-fadeIn {
+    animation: hoscomo-fade-in 200ms ease-out both;
+  }
+
+  @keyframes hoscomo-scale-up {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+  .animate-scale-up {
+    animation: hoscomo-scale-up 180ms ease-out both;
+  }
 }

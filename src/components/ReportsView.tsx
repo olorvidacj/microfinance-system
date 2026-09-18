@@ -116,7 +116,7 @@ export const ReportsView: React.FC = () => {
           onClick={() => setActiveReportTab('aging')}
           className={`pb-3 px-3 transition border-b-2 flex items-center gap-2 ${
             activeReportTab === 'aging'
-              ? 'border-blue-600 text-blue-600 font-semibold'
+              ? 'border-gold-500 text-gold-600 font-semibold'
               : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
@@ -128,7 +128,7 @@ export const ReportsView: React.FC = () => {
           onClick={() => setActiveReportTab('disbursement')}
           className={`pb-3 px-3 transition border-b-2 flex items-center gap-2 ${
             activeReportTab === 'disbursement'
-              ? 'border-blue-600 text-blue-600 font-semibold'
+              ? 'border-gold-500 text-gold-600 font-semibold'
               : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
@@ -140,7 +140,7 @@ export const ReportsView: React.FC = () => {
           onClick={() => setActiveReportTab('audit')}
           className={`pb-3 px-3 transition border-b-2 flex items-center gap-2 ${
             activeReportTab === 'audit'
-              ? 'border-blue-600 text-blue-600 font-semibold'
+              ? 'border-gold-500 text-gold-600 font-semibold'
               : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
@@ -183,7 +183,7 @@ export const ReportsView: React.FC = () => {
               <div className="text-2xl font-bold text-gray-900 font-mono mt-1">
                 {formatCurrency(stats.totalPortfolio)}
               </div>
-              <div className="text-xs text-blue-600 font-medium mt-1">{stats.activeLoansCount} Total Active Loans</div>
+              <div className="text-xs text-gold-600 font-medium mt-1">{stats.activeLoansCount} Total Active Loans</div>
             </div>
           </div>
 
@@ -318,9 +318,9 @@ export const ReportsView: React.FC = () => {
                 {formatCurrency(stats.totalCollected)}
               </div>
             </div>
-            <div className="p-4 bg-blue-50/60 rounded-xl">
-              <div className="text-xs text-blue-800 font-semibold">Outstanding Loan Balance</div>
-              <div className="text-xl font-bold font-mono text-blue-700 mt-1">
+            <div className="p-4 bg-gold-500/10 rounded-xl">
+              <div className="text-xs text-gold-800 font-semibold">Outstanding Loan Balance</div>
+              <div className="text-xl font-bold font-mono text-gold-700 mt-1">
                 {formatCurrency(stats.totalPortfolio)}
               </div>
             </div>

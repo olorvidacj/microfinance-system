@@ -36,6 +36,18 @@ interface AuthContextType {
 }
 
 const TOKEN_KEY = 'hoscomo_auth_token';
+const REQUEST_TIMEOUT_MS = 8000;
+
+function timedInit(init?: RequestInit): RequestInit {
+  if (typeof AbortSignal.timeout !== 'function') return init || {};
+  let signal: AbortSignal | null = null;
+  if (init?.signal instanceof AbortSignal) {
+    signal = init.signal;
+  } else {
+    signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  }
+  return { ...(init || {}), signal };
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -47,6 +59,16 @@ export function getStoredToken(): string {
   }
 }
 
+export function setStoredToken(token: string): void {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {}
+}
+
 export async function authFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const token = getStoredToken();
   const headers = new Headers(init?.headers || {});
@@ -54,7 +76,7 @@ export async function authFetch(input: RequestInfo, init?: RequestInit): Promise
   if (init?.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  return fetch(input, { ...init, headers });
+  return fetch(input, timedInit(init ? { ...init, headers, signal: undefined } : { headers }));
 }
 
 async function parseJson(res: Response) {
@@ -81,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const res = await fetch('/api/auth/me', {
           headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         const data = await parseJson(res);
         if (!cancelled && res.ok && data.user) {
@@ -129,6 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const data = await parseJson(res);
     if (!res.ok || !data.success) {
@@ -143,6 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(reg),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const data = await parseJson(res);
     if (!res.ok || !data.success) {
@@ -165,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       const data = await parseJson(res);
       if (res.ok && data.user) {

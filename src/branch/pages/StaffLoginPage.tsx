@@ -11,39 +11,18 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { isBranchStaffRole } from '../components/layout/BranchLayout';
+import { INITIAL_BRANCHES, INITIAL_STAFF } from '../../data/initialData';
 import { Input, Label } from '../../portal/components/ui/Field';
 
-const DEMO_STAFF_ACCOUNTS = [
-  {
-    role: 'Senior Loan Officer',
-    name: 'Grace Mendoza',
-    email: 'loanofficer@hoscomo.coop',
-    password: 'Staff@123',
-    branch: 'Tacloban Main Branch',
-  },
-  {
-    role: 'Cashier & Savings Teller',
-    name: 'Chloe Simmons',
-    email: 'teller@hoscomo.coop',
-    password: 'Staff@123',
-    branch: 'Tacloban Main Branch',
-  },
-  {
-    role: 'Client Services & KYC',
-    name: 'Camille Bernardo',
-    email: 'clientservices@hoscomo.coop',
-    password: 'Staff@123',
-    branch: 'Tacloban Main Branch',
-  },
-  {
-    role: 'Branch General Manager',
-    name: 'Eduardo Manalo',
-    email: 'e.manalo@sanjosecoop.ph',
-    password: 'Admin@123',
-    branch: 'Tacloban Main Branch',
-  },
-];
+const BRANCH_LABELS = new Map(INITIAL_BRANCHES.map((b) => [b.id, b.name]));
+
+const DEMO_STAFF_ACCOUNTS = INITIAL_STAFF.map((s) => ({
+  role: s.title || s.role,
+  name: s.name,
+  email: s.email,
+  password: 'Staff@123',
+  branch: BRANCH_LABELS.get(s.assignedBranchId) || 'Tacloban Main Branch',
+}));
 
 export const StaffLoginPage: React.FC = () => {
   const { user, login } = useAuth();
@@ -53,7 +32,7 @@ export const StaffLoginPage: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (user && user.role === 'STAFF' && isBranchStaffRole(user.staffRole)) {
+  if (user && user.role === 'STAFF') {
     return <Navigate to="/staff/app" replace />;
   }
 
@@ -67,10 +46,10 @@ export const StaffLoginPage: React.FC = () => {
 
     try {
       const u = await login(loginEmail, loginPass);
-      if (u.role === 'STAFF' && isBranchStaffRole(u.staffRole)) {
+      if (u.role === 'STAFF') {
         navigate('/staff/app', { replace: true });
       } else {
-        setError('This account is not designated as authorized branch operational staff.');
+        setError('This is a client member account. Please use the Client Member Portal instead.');
       }
     } catch (err: any) {
       setError(err?.message || 'Unable to sign in. Verify your work credentials and try again.');
@@ -90,7 +69,7 @@ export const StaffLoginPage: React.FC = () => {
       {/* Background radial glows */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
+        <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-gold-500/10 blur-3xl" />
       </div>
 
       <div className="relative z-10 w-full max-w-lg">

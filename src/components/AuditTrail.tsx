@@ -113,11 +113,11 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
         return {
           label: 'Loan Action',
           icon: FileText,
-          bg: 'bg-blue-50',
-          text: 'text-blue-700',
-          border: 'border-blue-200',
-          badgeBg: 'bg-blue-100 text-blue-800',
-          dotBg: 'bg-blue-500',
+          bg: 'bg-gold-500/10',
+          text: 'text-gold-700',
+          border: 'border-gold-400/30',
+          badgeBg: 'bg-gold-500/20 text-gold-800',
+          dotBg: 'bg-gold-500',
         };
       case 'PAYMENT':
         return {
@@ -405,7 +405,7 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search actions, member name, OR #, loan #, or staff..."
-              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition"
             />
             {searchTerm && (
               <button
@@ -423,7 +423,7 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
               id="audit-branch-select"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition"
             >
               <option value="ALL">All Branches</option>
               {branches.map((b) => (
@@ -440,7 +440,7 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
               id="audit-time-horizon-select"
               value={timeHorizon}
               onChange={(e) => setTimeHorizon(e.target.value as any)}
-              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+              className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition"
             >
               <option value="ALL">All Recorded Time</option>
               <option value="TODAY">Today Only (24 Hours)</option>
@@ -489,9 +489,9 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
 
       {/* Active Filter Indicator / Clear */}
       {(searchTerm || selectedType !== 'ALL' || selectedBranch !== 'ALL' || timeHorizon !== 'ALL') && (
-        <div className="flex items-center justify-between bg-blue-50/70 border border-blue-100 px-3.5 py-2 rounded-xl text-xs text-blue-900 mb-4">
+        <div className="flex items-center justify-between bg-gold-500/10 border border-gold-400/30 px-3.5 py-2 rounded-xl text-xs text-navy-900 mb-4">
           <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-blue-600" />
+            <Filter className="w-3.5 h-3.5 text-gold-600" />
             <span>
               Filtered to <strong>{filteredLogs.length}</strong> matching event(s)
               {searchTerm && ` for "${searchTerm}"`}
@@ -504,7 +504,7 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
               setSelectedBranch('ALL');
               setTimeHorizon('ALL');
             }}
-            className="text-xs font-bold text-blue-700 hover:underline cursor-pointer"
+            className="text-xs font-bold text-gold-700 hover:underline cursor-pointer"
           >
             Clear all filters
           </button>
@@ -646,7 +646,7 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
 
                         <button
                           onClick={() => setInspectedLog(log)}
-                          className="px-2 py-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition flex items-center gap-1 text-[11px] font-semibold"
+                          className="px-2 py-1 text-gold-600 hover:text-gold-800 hover:bg-gold-500/10 rounded-md transition flex items-center gap-1 text-[11px] font-semibold"
                         >
                           <Eye className="w-3 h-3" />
                           <span>Inspect</span>
@@ -693,7 +693,7 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
                     <span className="font-mono text-[11px]">{getRelativeTime(log.timestamp)}</span>
                     <button
                       onClick={() => setInspectedLog(log)}
-                      className="p-1 text-slate-400 hover:text-blue-600 rounded transition"
+                      className="p-1 text-slate-400 hover:text-gold-600 rounded transition"
                       title="Inspect record"
                     >
                       <Eye className="w-3.5 h-3.5" />
@@ -764,7 +764,7 @@ export const AuditTrail: React.FC<AuditTrailProps> = ({
               {inspectedLog.targetId && (
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 col-span-2">
                   <span className="text-slate-400 block text-[10px] font-semibold uppercase">Target Reference</span>
-                  <span className="font-mono font-bold text-blue-600">{inspectedLog.targetId}</span>
+                  <span className="font-mono font-bold text-gold-600">{inspectedLog.targetId}</span>
                   {inspectedLog.targetType && (
                     <span className="text-slate-500 text-[11px] ml-2">({inspectedLog.targetType})</span>
                   )}

@@ -59,6 +59,26 @@ function genRef(prefix: string): string {
   return `${prefix}-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 }
 
+// Governance & oversight roles: granted read visibility across the branch, but
+// every mutating request is rejected so their view stays strictly read-only.
+const OBSERVER_ROLES = new Set([
+  'CREDIT_COMMITTEE',
+  'EDUCATION_COMMITTEE',
+  'BOARD_OF_DIRECTORS',
+  'AUDITOR',
+  'ADVISER',
+  'LEGAL_OFFICER',
+]);
+
+const OBSERVER_READ_PERMISSIONS: SystemPermission[] = [
+  'view_all_records',
+  'view_client_info',
+  'view_transaction_records',
+  'review_client_loan_info',
+  'monitor_loan_repayment',
+  'manage_kyc',
+];
+
 function requireBranch(permissions: SystemPermission[] = []) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const auth = (req as any).authUser as
@@ -70,6 +90,10 @@ function requireBranch(permissions: SystemPermission[] = []) {
     }
 
     const staffRole = normalizeRole(auth.staffRole || 'ADMINISTRATOR');
+    const isObserver = OBSERVER_ROLES.has(staffRole);
+    const effectivePermissions = isObserver
+      ? Array.from(new Set<SystemPermission>([...getRolePermissions(staffRole), ...OBSERVER_READ_PERMISSIONS]))
+      : getRolePermissions(staffRole);
     const db = getDb();
     let staffName = auth.email.split('@')[0] || 'Staff';
     let title = staffRole;
@@ -103,13 +127,19 @@ function requireBranch(permissions: SystemPermission[] = []) {
       viewAll,
     };
 
+    if (isObserver && req.method !== 'GET') {
+      return res.status(403).json({
+        error: `Role '${staffRole}' has read-only access to the cooperative portal.`,
+      });
+    }
+
     if (!viewAll && !branchId) {
       return res.status(403).json({
         error: 'This account is not associated with a branch. Please contact your system administrator.',
       });
     }
 
-    if (permissions.length > 0 && !hasAnyPermission(staffRole, permissions)) {
+    if (permissions.length > 0 && !permissions.some((p) => effectivePermissions.includes(p))) {
       return res.status(403).json({
         error: `Access denied: Role '${staffRole}' lacks required permissions: [${permissions.join(', ')}]`,
         requiredPermissions: permissions,

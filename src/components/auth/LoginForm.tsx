@@ -49,7 +49,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegister, on
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 transition"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-navy-950 transition"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to home
@@ -75,7 +75,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegister, on
             value={emailOrPhone}
             onChange={(e) => setEmailOrPhone(e.target.value)}
             placeholder="e.g. staff@hoscomo.coop or 09175554321"
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-sm transition"
           />
         </div>
       </div>
@@ -90,7 +90,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegister, on
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
-            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
+            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-sm transition"
           />
           <button
             type="button"
@@ -105,7 +105,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegister, on
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full mt-2 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-md shadow-blue-600/20 transition flex items-center justify-center gap-2 text-sm"
+        className="w-full mt-2 py-3 bg-gold-400 hover:bg-gold-300 disabled:opacity-60 disabled:cursor-not-allowed text-navy-950 font-semibold rounded-xl shadow-md shadow-gold-500/20 transition flex items-center justify-center gap-2 text-sm"
       >
         {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
         Sign In to Account
@@ -117,7 +117,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegister, on
           <button
             type="button"
             onClick={onSwitchToRegister}
-            className="text-xs font-bold text-blue-600 hover:text-blue-700 underline"
+            className="text-xs font-bold text-gold-600 hover:text-gold-700 underline"
           >
             Register as Client Now
           </button>

@@ -103,7 +103,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
               repaymentFrequency: frequency,
             })
           }
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-xs"
+          className="flex items-center gap-2 px-4 py-2.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-sm font-semibold transition shadow-xs"
         >
           <span>Originate This Loan</span>
           <ArrowRight className="w-4 h-4" />
@@ -115,7 +115,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
         {/* Controls Card (5 cols) */}
         <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-gray-200 shadow-2xs space-y-5">
           <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-gold-500/10 text-gold-600 flex items-center justify-center">
               <Calculator className="w-4 h-4" />
             </div>
             <h3 className="font-bold text-gray-900 text-base">Loan Parameters</h3>
@@ -125,7 +125,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1.5">
               <span>Principal Amount</span>
-              <span className="font-mono text-blue-600 text-sm font-bold">{formatCurrency(principal)}</span>
+              <span className="font-mono text-gold-600 text-sm font-bold">{formatCurrency(principal)}</span>
             </div>
             <input
               type="range"
@@ -134,7 +134,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
               step="500"
               value={principal}
               onChange={(e) => setPrincipal(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gold-600"
             />
             <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-mono">
               <span>$500</span>
@@ -147,7 +147,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1.5">
               <span>Loan Tenor (Duration)</span>
-              <span className="font-mono text-blue-600 text-sm font-bold">{termMonths} Months</span>
+              <span className="font-mono text-gold-600 text-sm font-bold">{termMonths} Months</span>
             </div>
             <input
               type="range"
@@ -156,7 +156,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
               step="1"
               value={termMonths}
               onChange={(e) => setTermMonths(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gold-600"
             />
             <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-mono">
               <span>1 Mo</span>
@@ -170,7 +170,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
           <div>
             <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1.5">
               <span>Annual Interest Rate</span>
-              <span className="font-mono text-blue-600 text-sm font-bold">{interestRate}% p.a.</span>
+              <span className="font-mono text-gold-600 text-sm font-bold">{interestRate}% p.a.</span>
             </div>
             <input
               type="range"
@@ -179,7 +179,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
               step="0.5"
               value={interestRate}
               onChange={(e) => setInterestRate(Number(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gold-600"
             />
             <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-mono">
               <span>3%</span>
@@ -220,15 +220,15 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
         {/* Calculation Result Summary (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
           {/* Main Big Highlight Card */}
-          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 p-6 rounded-2xl text-white shadow-md">
-            <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">
+          <div className="bg-gradient-to-br from-slate-900 to-navy-950 p-6 rounded-2xl text-white shadow-md">
+            <span className="text-xs font-semibold text-gold-300 uppercase tracking-wider">
               Calculated Periodic Repayment ({frequency})
             </span>
             <div className="flex items-baseline gap-3 mt-2">
               <span className="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono">
                 {formatCurrency(calc.installmentAmount)}
               </span>
-              <span className="text-xs text-indigo-200">/ per installment</span>
+              <span className="text-xs text-slate-300">/ per installment</span>
             </div>
 
             <div className="grid grid-cols-3 gap-3 mt-6 pt-5 border-t border-slate-800 text-xs">
@@ -240,7 +240,7 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
               </div>
               <div>
                 <div className="text-slate-400">Processing Fee ({processingFeeRate}%)</div>
-                <div className="text-base font-bold font-mono text-indigo-200 mt-0.5">
+                <div className="text-base font-bold font-mono text-slate-300 mt-0.5">
                   {formatCurrency(calc.processingFee)}
                 </div>
               </div>
@@ -266,8 +266,8 @@ export const CalculatorView: React.FC<CalculatorViewProps> = ({ onOriginateCalcu
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100">
-                <div className="text-[11px] text-blue-700 font-semibold">{interestType} (Selected)</div>
+              <div className="p-3 bg-gold-500/10 rounded-xl border border-gold-400/30">
+                <div className="text-[11px] text-gold-700 font-semibold">{interestType} (Selected)</div>
                 <div className="font-bold text-gray-900 font-mono mt-1">
                   Interest: {formatCurrency(calc.totalInterest)}
                 </div>

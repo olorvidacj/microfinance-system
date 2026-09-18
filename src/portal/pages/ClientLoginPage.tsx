@@ -184,14 +184,14 @@ const ClientLoginPage: React.FC = () => {
                 setError('');
                 setNotice('');
               }}
-              className="text-xs font-medium text-emerald-700 hover:underline"
+              className="text-xs font-medium text-gold-700 hover:underline"
             >
               Forgot password?
             </button>
             <button
               type="button"
               onClick={() => { navigate('/portal/register'); }}
-              className="text-xs font-medium text-emerald-700 hover:underline"
+              className="text-xs font-medium text-gold-700 hover:underline"
             >
               Create an account
             </button>
@@ -256,7 +256,7 @@ const ClientLoginPage: React.FC = () => {
                   setDemoOtp('');
                   setSentTo('');
                 }}
-                className="text-xs font-medium text-emerald-700 hover:underline"
+                className="text-xs font-medium text-gold-700 hover:underline"
               >
                 Use a different email
               </button>
@@ -310,7 +310,7 @@ const ClientLoginPage: React.FC = () => {
 
       <p className="mt-6 text-center text-xs text-slate-400">
         New to HOSCOMO?{' '}
-        <Link to="/portal/register" className="font-medium text-emerald-700 hover:underline">
+        <Link to="/portal/register" className="font-medium text-gold-700 hover:underline">
           Register as a member
         </Link>
       </p>

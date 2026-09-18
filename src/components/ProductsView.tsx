@@ -40,7 +40,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         </div>
         <button
           onClick={onOpenAddProduct}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-xs"
+          className="flex items-center gap-2 px-4 py-2.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-sm font-semibold transition shadow-xs"
         >
           <PlusCircle className="w-4 h-4" />
           <span>Create Loan Product</span>
@@ -62,7 +62,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-wider">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gold-500/10 text-gold-700 border border-gold-400/30 uppercase tracking-wider">
                       {product.category}
                     </span>
                     <h3 className="font-bold text-gray-900 text-base mt-2">{product.name}</h3>
@@ -137,7 +137,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               {/* Volume summary */}
               <div className="mt-5 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
                 <span className="text-gray-400">{associatedLoans.length} Originated Contracts</span>
-                <span className="font-bold font-mono text-blue-600">{formatCurrency(totalVolume)}</span>
+                <span className="font-bold font-mono text-gold-600">{formatCurrency(totalVolume)}</span>
               </div>
             </div>
           );

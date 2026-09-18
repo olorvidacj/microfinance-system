@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { getDb, schema, markConnectionStringFailed } from '../db/index';
 import { initDbSchema } from '../db/initDb';
-import { getServerSupabase } from '../db/supabaseServer';
+import { getServerSupabase, isServerSupabaseFailed, markServerSupabaseFailed } from '../db/supabaseServer';
 import { INITIAL_STAFF, INITIAL_BORROWERS } from '../data/initialData';
 import { eq, or, ilike } from 'drizzle-orm';
 
@@ -189,8 +189,10 @@ class AuthStore {
           .from(schema.staff)
           .where(eq(schema.staff.id, staffId))
           .limit(1);
-        if (rows.length > 0 && rows[0].assignedBranchId && rows[0].assignedBranchId !== 'all') {
-          return rows[0].assignedBranchId;
+        if (rows.length > 0 && rows[0].assignedBranchId) {
+          const ab = String(rows[0].assignedBranchId);
+          if (ab !== 'all' && ab !== 'unassigned') return ab;
+          return 'br-main';
         }
       } catch (err: any) {
         const msg = String(err?.message || '');
@@ -202,11 +204,13 @@ class AuthStore {
 
     // Check in-memory staff
     const match = INITIAL_STAFF.find((s) => s.id === staffId);
-    if (match && match.assignedBranchId && match.assignedBranchId !== 'all') {
-      return match.assignedBranchId;
+    if (match && match.assignedBranchId) {
+      const ab = String(match.assignedBranchId);
+      if (ab !== 'all' && ab !== 'unassigned') return ab;
+      return 'br-main';
     }
 
-    return null;
+    return 'br-main';
   }
 
   private async decorate(record: AuthUserRecord | null): Promise<AuthUserRecord | null> {
@@ -236,7 +240,7 @@ class AuthStore {
 
     // 2. Check Supabase Server Client if configured
     const supabase = getServerSupabase();
-    if (supabase) {
+    if (supabase && !isServerSupabaseFailed()) {
       try {
         const { data, error } = await supabase
           .from('users')
@@ -260,7 +264,7 @@ class AuthStore {
           return this.decorate(rec);
         }
       } catch {
-        /* ignore */
+        markServerSupabaseFailed();
       }
     }
 
@@ -307,7 +311,7 @@ class AuthStore {
 
     // 3. Lookup in Supabase Table if available
     const supabase = getServerSupabase();
-    if (supabase) {
+    if (supabase && !isServerSupabaseFailed()) {
       try {
         const { data, error } = await supabase.from('users').select('*');
         if (!error && Array.isArray(data)) {
@@ -336,7 +340,7 @@ class AuthStore {
           }
         }
       } catch {
-        /* ignore */
+        markServerSupabaseFailed();
       }
     }
 
@@ -376,7 +380,7 @@ class AuthStore {
     }
 
     const supabase = getServerSupabase();
-    if (supabase) {
+    if (supabase && !isServerSupabaseFailed()) {
       try {
         const { data, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
         if (!error && data) {
@@ -396,7 +400,7 @@ class AuthStore {
           return this.decorate(rec);
         }
       } catch {
-        /* ignore */
+        markServerSupabaseFailed();
       }
     }
 
@@ -445,7 +449,7 @@ class AuthStore {
     }
 
     const supabase = getServerSupabase();
-    if (supabase) {
+    if (supabase && !isServerSupabaseFailed()) {
       try {
         await supabase
           .from('users')
@@ -462,7 +466,7 @@ class AuthStore {
           })
           .eq('id', id);
       } catch {
-        /* ignore */
+        markServerSupabaseFailed();
       }
     }
 
@@ -514,7 +518,7 @@ class AuthStore {
 
     // Try Supabase table if configured
     const supabase = getServerSupabase();
-    if (supabase) {
+    if (supabase && !isServerSupabaseFailed()) {
       try {
         await supabase.from('users').upsert({
           id: user.id,
@@ -530,7 +534,7 @@ class AuthStore {
           is_active: true,
         });
       } catch {
-        /* ignore */
+        markServerSupabaseFailed();
       }
     }
 

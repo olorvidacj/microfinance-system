@@ -10,10 +10,10 @@ import { ConfirmDialog } from '../components/Modal';
 import { MOCK_NOTIFICATIONS, AdminNotification, formatDate } from '../data/mockData';
 
 const TYPE_META: Record<AdminNotification['type'], { icon: React.ElementType; bg: string; fg: string; label: string }> = {
-  KYC: { icon: ShieldCheck, bg: 'bg-blue-50 border-blue-200', fg: 'text-blue-600', label: 'KYC Compliance' },
+  KYC: { icon: ShieldCheck, bg: 'bg-gold-500/10 border-gold-400/30', fg: 'text-gold-600', label: 'KYC Compliance' },
   Client: { icon: UserPlus, bg: 'bg-emerald-50 border-emerald-200', fg: 'text-emerald-600', label: 'Member Services' },
   Loan: { icon: Landmark, bg: 'bg-amber-50 border-amber-200', fg: 'text-amber-600', label: 'Credit Facility' },
-  Transaction: { icon: ArrowLeftRight, bg: 'bg-indigo-50 border-indigo-200', fg: 'text-indigo-600', label: 'Ledger Transfer' },
+  Transaction: { icon: ArrowLeftRight, bg: 'bg-gold-500/10 border-gold-400/30', fg: 'text-gold-600', label: 'Ledger Transfer' },
   System: { icon: Settings, bg: 'bg-slate-100 border-slate-200', fg: 'text-slate-600', label: 'System Notice' },
 };
 
@@ -85,7 +85,7 @@ export const NotificationsPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Administrative Dispatches" value={notifications.length} icon={Bell} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Total Administrative Dispatches" value={notifications.length} icon={Bell} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Unread Compliance Items" value={unread} icon={BellOff} iconColor="text-amber-600" iconBg="bg-amber-50" accentBorder={unread > 0} />
         <StatCard title="Critical System Alerts" value={notifications.filter((n) => n.type === 'System').length} icon={TriangleAlert} iconColor="text-rose-600" iconBg="bg-rose-50" />
         <StatCard title="Acknowledged Alerts" value={notifications.length - unread} icon={CheckCheck} iconColor="text-emerald-600" iconBg="bg-emerald-50" />

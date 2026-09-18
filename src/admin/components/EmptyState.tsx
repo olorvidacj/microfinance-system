@@ -23,7 +23,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ icon: Icon = Inbox, titl
 
 export const LoadingSpinner: React.FC<{ text?: string }> = ({ text = 'Loading...' }) => (
   <div className="flex flex-col items-center justify-center py-16 text-center">
-    <div className="w-8 h-8 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin mb-3" />
+    <div className="w-8 h-8 border-[3px] border-gold-400/30 border-t-gold-600 rounded-full animate-spin mb-3" />
     <p className="text-sm text-slate-500">{text}</p>
   </div>
 );

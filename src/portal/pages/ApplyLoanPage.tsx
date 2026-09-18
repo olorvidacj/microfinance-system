@@ -106,8 +106,8 @@ const ApplyLoanPage: React.FC = () => {
   if (kycStatus && kycStatus !== 'VERIFIED') {
     const cfg: Record<string, { icon: React.ElementType; title: string; desc: string; cls: string }> = {
       NOT_STARTED: { icon: ShieldCheck, title: 'KYC verification required', desc: 'You must complete your KYC verification before you can apply for a loan.', cls: 'border-amber-200 bg-amber-50' },
-      PENDING: { icon: Clock, title: 'KYC under review', desc: 'Your KYC submission is being reviewed. You can apply for a loan once it is verified.', cls: 'border-blue-200 bg-blue-50' },
-      UNDER_REVIEW: { icon: Eye, title: 'KYC under review', desc: 'Your information is being reviewed by our staff. You can apply for a loan once verified.', cls: 'border-blue-200 bg-blue-50' },
+      PENDING: { icon: Clock, title: 'KYC under review', desc: 'Your KYC submission is being reviewed. You can apply for a loan once it is verified.', cls: 'border-gold-400/30 bg-gold-500/10' },
+      UNDER_REVIEW: { icon: Eye, title: 'KYC under review', desc: 'Your information is being reviewed by our staff. You can apply for a loan once verified.', cls: 'border-gold-400/30 bg-gold-500/10' },
       CORRECTION_REQUIRED: { icon: AlertTriangle, title: 'KYC correction required', desc: kyc?.correctionReason ? `Correction needed: ${kyc.correctionReason}` : 'Please update your KYC information before applying for a loan.', cls: 'border-amber-200 bg-amber-50' },
       REJECTED: { icon: XCircle, title: 'KYC rejected', desc: kyc?.rejectionReason ? `Reason: ${kyc.rejectionReason}` : 'Your KYC application was not approved. Please contact your branch.', cls: 'border-rose-200 bg-rose-50' },
       EXPIRED: { icon: Clock, title: 'KYC expired', desc: 'Your KYC verification has expired. Please update your information to apply for a loan.', cls: 'border-rose-200 bg-rose-50' },

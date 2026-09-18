@@ -58,15 +58,15 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
         return <AlertTriangle className="w-4 h-4 text-amber-500" />;
       case 'UPCOMING_PAYMENT':
       case 'PAYMENT_CONFIRMATION':
-        return <CreditCard className="w-4 h-4 text-blue-500" />;
+        return <CreditCard className="w-4 h-4 text-gold-500" />;
       case 'SAVINGS_TRANSACTION':
-        return <PiggyBank className="w-4 h-4 text-indigo-500" />;
+        return <PiggyBank className="w-4 h-4 text-gold-500" />;
       case 'GROUP_LENDING_ALERT':
         return <Users className="w-4 h-4 text-purple-500" />;
       case 'KYC_STATUS':
         return <ShieldCheck className="w-4 h-4 text-teal-500" />;
       default:
-        return <Bell className="w-4 h-4 text-blue-500" />;
+        return <Bell className="w-4 h-4 text-gold-500" />;
     }
   };
 
@@ -81,9 +81,9 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
         return 'bg-amber-50 border-amber-200 text-amber-800';
       case 'UPCOMING_PAYMENT':
       case 'PAYMENT_CONFIRMATION':
-        return 'bg-blue-50 border-blue-200 text-blue-800';
+        return 'bg-gold-500/10 border-gold-400/30 text-gold-800';
       case 'SAVINGS_TRANSACTION':
-        return 'bg-indigo-50 border-indigo-200 text-indigo-800';
+        return 'bg-gold-500/10 border-gold-400/30 text-gold-800';
       case 'GROUP_LENDING_ALERT':
         return 'bg-purple-50 border-purple-200 text-purple-800';
       default:
@@ -97,7 +97,7 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400">
+            <div className="w-8 h-8 rounded-xl bg-navy-900/30 border border-gold-500/40 flex items-center justify-center text-gold-400">
               <Bell className="w-4 h-4" />
             </div>
             <div>
@@ -113,7 +113,7 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
               <button
                 onClick={onMarkAllAsRead}
                 title="Mark all as read"
-                className="text-[11px] font-semibold text-blue-300 hover:text-white px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition flex items-center gap-1"
+                className="text-[11px] font-semibold text-gold-300 hover:text-white px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition flex items-center gap-1"
               >
                 <Check className="w-3 h-3" />
                 <span>Read all</span>
@@ -136,7 +136,7 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
               onClick={() => setSelectedCategory(cat)}
               className={`px-3 py-1 rounded-lg font-semibold transition whitespace-nowrap ${
                 selectedCategory === cat
-                  ? 'bg-blue-600 text-white shadow-xs'
+                  ? 'bg-navy-900 text-white shadow-xs'
                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
               }`}
             >
@@ -179,11 +179,11 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
                 className={`p-3.5 rounded-2xl border transition text-left cursor-pointer relative ${
                   notif.isRead
                     ? 'bg-white border-slate-200 hover:border-slate-300'
-                    : 'bg-blue-50/50 border-blue-200 shadow-xs hover:bg-blue-50'
+                    : 'bg-gold-500/10 border-gold-400/30 shadow-xs hover:bg-gold-500/10'
                 }`}
               >
                 {!notif.isRead && (
-                  <span className="absolute top-3.5 right-3.5 w-2 h-2 rounded-full bg-blue-600"></span>
+                  <span className="absolute top-3.5 right-3.5 w-2 h-2 rounded-full bg-navy-900"></span>
                 )}
 
                 <div className="flex items-start gap-3">
@@ -202,7 +202,7 @@ export const ClientNotificationDrawer: React.FC<ClientNotificationDrawerProps> =
                         {formatDate(notif.timestamp)}
                       </span>
                       {notif.actionTab && (
-                        <span className="font-semibold text-blue-600 flex items-center gap-0.5 hover:underline">
+                        <span className="font-semibold text-gold-600 flex items-center gap-0.5 hover:underline">
                           View details <ArrowRight className="w-2.5 h-2.5" />
                         </span>
                       )}

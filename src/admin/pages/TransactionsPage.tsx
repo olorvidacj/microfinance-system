@@ -85,8 +85,8 @@ export const FinancialTransactionsPage: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Total Cash Deposits" value={formatPHP(totals.deposits)} icon={ArrowDownToLine} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Member Withdrawals" value={formatPHP(totals.withdrawals)} icon={ArrowUpFromLine} iconColor="text-rose-500" iconBg="bg-rose-50" />
-        <StatCard title="Loan Collections" value={formatPHP(totals.loanPayments)} icon={CreditCard} iconColor="text-blue-600" iconBg="bg-blue-50" accentBorder />
-        <StatCard title="Loan Releases" value={formatPHP(totals.disbursements)} icon={Wallet} iconColor="text-indigo-600" iconBg="bg-indigo-50" />
+        <StatCard title="Loan Collections" value={formatPHP(totals.loanPayments)} icon={CreditCard} iconColor="text-gold-600" iconBg="bg-gold-500/10" accentBorder />
+        <StatCard title="Loan Releases" value={formatPHP(totals.disbursements)} icon={Wallet} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Total Volume (Turnover)" value={formatPHP(totals.totalVolume)} icon={RefreshCw} iconColor="text-amber-600" iconBg="bg-amber-50" subtitle="Aggregate ledger flux" />
       </div>
 

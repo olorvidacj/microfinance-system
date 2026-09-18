@@ -89,7 +89,7 @@ export const KycVerificationPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard title="Total KYC Queue" value={requests.length} icon={ShieldCheck} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Total KYC Queue" value={requests.length} icon={ShieldCheck} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Pending Review" value={statusCounts.pending} icon={ScanLine} iconColor="text-amber-600" iconBg="bg-amber-50" accentBorder />
         <StatCard title="Verified & Cleared" value={statusCounts.approved} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Rejected Submissions" value={statusCounts.rejected} icon={XCircle} iconColor="text-rose-500" iconBg="bg-rose-50" />

@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   markAllBtn: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFBEB',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,

@@ -117,7 +117,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
           style={styles.actionCard}
           onPress={() => onNavigate('payments')}
         >
-          <View style={[styles.actionIconBg, { backgroundColor: '#EFF6FF' }]}>
+          <View style={[styles.actionIconBg, { backgroundColor: '#FFFBEB' }]}>
             <Text style={styles.actionEmoji}>💳</Text>
           </View>
           <Text style={styles.actionTitle}>Pay / Proof</Text>

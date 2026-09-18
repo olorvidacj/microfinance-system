@@ -91,7 +91,7 @@ export const ClientManagementPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Registered Members" value={clients.length} icon={UserPlus} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Total Registered Members" value={clients.length} icon={UserPlus} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Active Borrowers & Savers" value={clients.filter((c) => c.status === 'Active').length} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Pending KYC Review" value={clients.filter((c) => c.status === 'Pending').length} icon={ShieldCheck} iconColor="text-amber-600" iconBg="bg-amber-50" accentBorder />
         <StatCard title="Inactive / Closed" value={clients.filter((c) => ['Suspended', 'Inactive'].includes(c.status)).length} icon={History} iconColor="text-rose-500" iconBg="bg-rose-50" />

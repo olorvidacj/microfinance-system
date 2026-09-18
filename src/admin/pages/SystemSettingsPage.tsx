@@ -256,8 +256,8 @@ export const SystemSettingsPage: React.FC = () => {
               </div>
               {[
                 { role: 'System Administrator', desc: 'Full sovereign read/write authority across all modules and audit log purging.', caps: 9, icon: ShieldCheck, color: 'text-amber-700 bg-amber-50 border-amber-200' },
-                { role: 'Branch General Manager', desc: 'Supervise territorial loans, approve disbursements up to PHP 500,000.', caps: 7, icon: UserCog, color: 'text-blue-700 bg-blue-50 border-blue-200' },
-                { role: 'Credit / Loan Officer', desc: 'Process client origination, loan appraisals, and solidarity cell monitoring.', caps: 5, icon: Landmark, color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+                { role: 'Branch General Manager', desc: 'Supervise territorial loans, approve disbursements up to PHP 500,000.', caps: 7, icon: UserCog, color: 'text-gold-700 bg-gold-500/10 border-gold-400/30' },
+                { role: 'Credit / Loan Officer', desc: 'Process client origination, loan appraisals, and solidarity cell monitoring.', caps: 5, icon: Landmark, color: 'text-gold-700 bg-gold-500/10 border-gold-400/30' },
                 { role: 'Cashier / Teller', desc: 'Receive cash/digital amortizations, post savings deposits, and issue receipts.', caps: 4, icon: ReceiptText, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
                 { role: 'Internal Compliance Auditor', desc: 'Read-only access across all general ledgers, transactions, and audit records.', caps: 6, icon: Database, color: 'text-slate-700 bg-slate-100 border-slate-200' },
               ].map((r) => (

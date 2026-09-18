@@ -164,14 +164,14 @@ export const AnalyticsView: React.FC = () => {
         </div>
         <div className={card}>
           <div className={`${cardLabel} flex items-center gap-1.5`}>
-            <PieChart className="w-3.5 h-3.5 text-indigo-600" /> Savings-to-Portfolio
+            <PieChart className="w-3.5 h-3.5 text-gold-600" /> Savings-to-Portfolio
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-1">{savingsRate}%</div>
           <div className="text-xs text-slate-500 mt-1">₱{stats.totalSavingsPool.toLocaleString()} pooled</div>
         </div>
         <div className={card}>
           <div className={`${cardLabel} flex items-center gap-1.5`}>
-            <Users2 className="w-3.5 h-3.5 text-blue-600" /> Average Loan Size
+            <Users2 className="w-3.5 h-3.5 text-gold-600" /> Average Loan Size
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-1">₱{avgLoanSize.toLocaleString()}</div>
           <div className="text-xs text-slate-500 mt-1">{filteredBorrowers.length} members</div>
@@ -193,10 +193,10 @@ export const AnalyticsView: React.FC = () => {
               <FileSpreadsheet className="w-4 h-4 text-teal-600" /> Institutional Performance Snapshot
             </h3>
             <div className="grid md:grid-cols-2 gap-3">
-              <MetricsRow label="Total Disbursed" value={`₱${stats.totalDisbursed.toLocaleString()}`} sub={`${filteredLoans.length} loan facilities`} color="text-blue-600" />
+              <MetricsRow label="Total Disbursed" value={`₱${stats.totalDisbursed.toLocaleString()}`} sub={`${filteredLoans.length} loan facilities`} color="text-gold-600" />
               <MetricsRow label="Total Collected" value={`₱${stats.totalCollected.toLocaleString()}`} sub={`${filteredPayments.length} payment transactions`} color="text-emerald-600" />
               <MetricsRow label="Collection Rate" value={`${stats.collectionRate}%`} sub="monthly repayment capture" color="text-teal-600" />
-              <MetricsRow label="Collection Efficiency" value={`${stats.collectionEfficiency}%`} sub="collection-to-collectible index" color="text-indigo-600" />
+              <MetricsRow label="Collection Efficiency" value={`${stats.collectionEfficiency}%`} sub="collection-to-collectible index" color="text-gold-600" />
               <MetricsRow label="Savings Pool" value={`₱${stats.totalSavingsPool.toLocaleString()}`} sub={`${savingsAccounts.length} passbook accounts`} color="text-amber-600" />
               <MetricsRow label="Vault Cash" value={`₱${stats.totalVaultCash.toLocaleString()}`} sub="combined branch vault positions" color="text-rose-600" />
             </div>
@@ -211,7 +211,7 @@ export const AnalyticsView: React.FC = () => {
               <TrendBar label="Healthy / Current" value={Math.max(0, 100 - stats.par30Ratio)} color="bg-emerald-500" />
               <TrendBar label="At Risk (PAR {'>'} 30)" value={stats.par30Ratio} color="bg-rose-500" />
               <TrendBar label="Collection Efficiency" value={stats.collectionEfficiency} color="bg-teal-500" />
-              <TrendBar label="Member Engagement (active borrowers)" value={filteredBorrowers.length ? Math.min(100, Math.round((stats.activeBorrowersCount / filteredBorrowers.length) * 100)) : 0} color="bg-indigo-500" />
+              <TrendBar label="Member Engagement (active borrowers)" value={filteredBorrowers.length ? Math.min(100, Math.round((stats.activeBorrowersCount / filteredBorrowers.length) * 100)) : 0} color="bg-gold-500" />
             </div>
           </div>
         </div>

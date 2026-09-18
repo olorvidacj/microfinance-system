@@ -339,7 +339,7 @@ export const StaffManagementView: React.FC = () => {
           </button>
           <button
             onClick={openAddModal}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-navy-900 text-white hover:bg-navy-800 transition"
           >
             <Plus className="w-4 h-4" />
             Add Staff Member
@@ -364,7 +364,7 @@ export const StaffManagementView: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider font-bold text-slate-400">
-            <Users2 className="w-3.5 h-3.5 text-blue-600" /> Total Staff
+            <Users2 className="w-3.5 h-3.5 text-gold-600" /> Total Staff
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-1">{records.length}</div>
         </div>
@@ -376,7 +376,7 @@ export const StaffManagementView: React.FC = () => {
         </div>
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider font-bold text-slate-400">
-            <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Branches Covered
+            <Building2 className="w-3.5 h-3.5 text-gold-600" /> Branches Covered
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-1">{Object.keys(branchCounts).length}</div>
         </div>
@@ -398,7 +398,7 @@ export const StaffManagementView: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search name, email, title..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500/30"
             />
           </div>
           <div className="relative">
@@ -406,7 +406,7 @@ export const StaffManagementView: React.FC = () => {
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold-500/30"
             >
               <option value="all">All Roles</option>
               {ALL_ROLES_LIST.map((r) => (
@@ -421,7 +421,7 @@ export const StaffManagementView: React.FC = () => {
             <select
               value={branchFilter}
               onChange={(e) => setBranchFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold-500/30"
             >
               <option value="all">All Branches</option>
               {branches.map((b) => (
@@ -436,7 +436,7 @@ export const StaffManagementView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold-500/30"
             >
               <option value="all">All Statuses</option>
               <option value="active">Active</option>
@@ -505,7 +505,7 @@ export const StaffManagementView: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-gold-500/10 text-gold-700 border border-gold-400/30">
                         {roleDef?.name || normalizeRole(r.role)}
                       </span>
                     </td>
@@ -546,7 +546,7 @@ export const StaffManagementView: React.FC = () => {
                             e.stopPropagation();
                             openEditModal(r);
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-gold-600 hover:bg-gold-500/10 transition"
                           title="Edit staff member"
                         >
                           <Edit2 className="w-4 h-4" />
@@ -608,7 +608,7 @@ export const StaffManagementView: React.FC = () => {
                     value={String(form[f.key])}
                     onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
                     disabled={!!editingStaff && (f.key === 'name' || f.key === 'email')}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:bg-slate-50 disabled:text-slate-400"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500/30 disabled:bg-slate-50 disabled:text-slate-400"
                     placeholder={`Enter ${f.label.toLowerCase()}`}
                   />
                 </div>
@@ -623,7 +623,7 @@ export const StaffManagementView: React.FC = () => {
                     <select
                       value={form.role}
                       onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as SystemRole }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold-500/30"
                     >
                       {ALL_ROLES_LIST.map((r) => (
                         <option key={r} value={r}>
@@ -639,7 +639,7 @@ export const StaffManagementView: React.FC = () => {
                     <select
                       value={form.assignedBranchId}
                       onChange={(e) => setForm((prev) => ({ ...prev, assignedBranchId: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold-500/30"
                     >
                       {branches.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -661,7 +661,7 @@ export const StaffManagementView: React.FC = () => {
                     <select
                       value={form.role}
                       onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as SystemRole }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold-500/30"
                     >
                       {ALL_ROLES_LIST.map((r) => (
                         <option key={r} value={r}>
@@ -677,7 +677,7 @@ export const StaffManagementView: React.FC = () => {
                     <select
                       value={form.assignedBranchId}
                       onChange={(e) => setForm((prev) => ({ ...prev, assignedBranchId: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold-500/30"
                     >
                       {branches.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -717,7 +717,7 @@ export const StaffManagementView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 transition"
+                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-navy-900 text-white hover:bg-navy-800 transition"
                 >
                   {editingStaff ? 'Save Changes' : 'Add Staff Member'}
                 </button>

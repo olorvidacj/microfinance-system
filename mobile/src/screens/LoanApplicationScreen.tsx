@@ -851,7 +851,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   docUploadAction: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFBEB',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,

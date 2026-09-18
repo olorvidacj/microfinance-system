@@ -64,9 +64,9 @@ export const BranchManagementPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Branch Offices" value={branches.length} icon={Building2} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Total Branch Offices" value={branches.length} icon={Building2} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Active Operational Units" value={branches.filter((b) => b.status === 'Active').length} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
-        <StatCard title="Total Staff Deployed" value={totalStaff} icon={Users} iconColor="text-indigo-600" iconBg="bg-indigo-50" />
+        <StatCard title="Total Staff Deployed" value={totalStaff} icon={Users} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Consolidated Client Network" value={totalClients} icon={Users} iconColor="text-amber-600" iconBg="bg-amber-50" accentBorder />
       </div>
 

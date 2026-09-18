@@ -1,46 +1,128 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Sidebar } from '../components/Sidebar';
+import {
+  ArrowLeftRight,
+  BadgeCheck,
+  BarChart3,
+  Bell,
+  Building2,
+  FileSpreadsheet,
+  Landmark,
+  LayoutDashboard,
+  LogOut,
+  PiggyBank,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  UserCheck,
+  Users,
+  Users2,
+} from 'lucide-react';
+import { AppShell, AppNavSection } from '../../ui';
 import { TopNav } from '../components/TopNav';
 import { MOCK_NOTIFICATIONS } from '../data/mockData';
 import { useAuth } from '../../context/AuthContext';
 
 export const AdminLayout: React.FC = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const unreadCount = MOCK_NOTIFICATIONS.filter((n) => !n.isRead).length;
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  return (
-    <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        unreadCount={unreadCount}
-        onLogout={handleLogout}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+  const adminName = user?.fullName || 'Elena Rostata';
+  const adminRole = 'System Administrator';
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+  const sections: AppNavSection[] = [
+    {
+      title: 'Overview',
+      items: [{ to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true }],
+    },
+    {
+      title: 'Core Banking & Members',
+      items: [
+        { to: '/admin/users', label: 'User Management', icon: Users },
+        { to: '/admin/clients', label: 'Client Management', icon: UserCheck },
+        { to: '/admin/kyc', label: 'KYC Verification', icon: ShieldCheck },
+        { to: '/admin/loans', label: 'Loan Management', icon: FileSpreadsheet },
+        { to: '/admin/savings', label: 'Savings Management', icon: PiggyBank },
+        { to: '/admin/transactions', label: 'Financial Transactions', icon: ArrowLeftRight },
+        { to: '/admin/groups', label: 'Lending Groups', icon: Users2 },
+        { to: '/admin/branches', label: 'Branch Management', icon: Building2 },
+      ],
+    },
+    {
+      title: 'Compliance & Analytics',
+      items: [
+        { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
+        { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText },
+        { to: '/admin/notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
+      ],
+    },
+    {
+      title: 'Configuration',
+      items: [{ to: '/admin/settings', label: 'System Settings', icon: Settings }],
+    },
+  ];
+
+  return (
+    <AppShell
+      sections={sections}
+      collapsible
+      brandName="HOSCOMO"
+      brandSubtitle="Tacloban, Leyte · Microfinance"
+      brandTag="COOP"
+      showStatusDot
+      onBrandClick={() => navigate('/admin')}
+      status={
+        <div className="flex items-center justify-between bg-navy-900/70 px-4 py-2 text-[10px] text-slate-400">
+          <span className="flex items-center gap-1.5 text-slate-300">
+            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-gold-400" />
+            <span>CDA Reg: 9520-08000421</span>
+          </span>
+          <span className="font-semibold text-emerald-400">ONLINE</span>
+        </div>
+      }
+      sidebarFooter={({ collapsed }) => (
+        <div className="p-3">
+          {!collapsed && (
+            <div className="mb-2 flex items-center gap-3 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-gold-500 to-gold-400 text-navy-950">
+                <Landmark className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-[11px] text-slate-400">Tacloban Main Branch</p>
+                <p className="truncate text-[11px] font-semibold text-gold-400">PHP Settlement Node</p>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            title="Sign out of Admin Console"
+            className={`flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-xs font-medium text-slate-400 transition hover:border-rose-900/50 hover:bg-rose-950/40 hover:text-rose-300 sm:text-[13px] ${
+              collapsed ? 'justify-center px-2' : ''
+            }`}
+          >
+            <LogOut className="h-[18px] w-[18px] shrink-0" />
+            {!collapsed && <span>Sign Out</span>}
+          </button>
+        </div>
+      )}
+      topbar={({ openSidebar }) => (
         <TopNav
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          adminName="Elena Rostata"
-          adminRole="System Administrator"
+          onToggleSidebar={openSidebar}
+          adminName={adminName}
+          adminRole={adminRole}
           onLogout={handleLogout}
         />
-        <main className="flex-1 overflow-y-auto bg-[#f8fafc]">
-          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <Outlet />
-          </div>
-        </main>
-      </div>
-    </div>
+      )}
+    >
+      <Outlet />
+    </AppShell>
   );
 };
+
+export default AdminLayout;

@@ -16,11 +16,15 @@ import {
   MapPin,
   Phone,
   Mail,
+  Download,
 } from 'lucide-react';
 
 interface LandingViewProps {
   onSignIn: (initialMode?: 'signin' | 'register') => void;
 }
+
+const APP_DOWNLOAD_URL = '/HOSCOMO-Mobile.apk';
+const APP_DOWNLOAD_FILENAME = 'HOSCOMO-Mobile.apk';
 
 const NAV_LINKS = [
   { label: 'Products', href: '#products' },
@@ -123,7 +127,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <a href="#top" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-md">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-gold-500 to-gold-400 flex items-center justify-center text-navy-950 shadow-md">
               <Building2 className="w-5 h-5" />
             </div>
             <div className="leading-tight">
@@ -136,22 +140,30 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               <a
                 key={link.href}
                 href={link.href}
-                className="text-sm font-medium text-slate-500 hover:text-blue-700 transition"
+                className="text-sm font-medium text-slate-500 hover:text-navy-950 transition"
               >
                 {link.label}
               </a>
             ))}
           </nav>
           <div className="flex items-center gap-2">
+            <a
+              href={APP_DOWNLOAD_URL}
+              download={APP_DOWNLOAD_FILENAME}
+              className="hidden md:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gold-400/40 text-gold-700 hover:bg-gold-500/10 text-sm font-semibold transition"
+            >
+              <Download className="w-4 h-4" />
+              Get App
+            </a>
             <button
               onClick={() => onSignIn('signin')}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 text-sm font-semibold transition"
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:border-gold-300 hover:text-navy-950 text-sm font-semibold transition"
             >
               Sign In
             </button>
             <button
               onClick={() => onSignIn('register')}
-              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-600/20 transition"
+              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gold-400 hover:bg-gold-300 text-white text-sm font-semibold shadow-md shadow-gold-500/20 transition"
             >
               Join Now
               <ArrowRight className="w-4 h-4" />
@@ -161,7 +173,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       </header>
 
       {/* Hero */}
-      <section id="top" className="relative overflow-hidden bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-900 text-white">
+      <section id="top" className="relative overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 text-white">
         <div
           className="absolute inset-0 opacity-[0.07]"
           style={{
@@ -172,24 +184,24 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
         />
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-20 pb-24 lg:pt-28 lg:pb-32">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-xs font-medium text-blue-100 mb-6">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-xs font-medium text-slate-200 mb-6">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
               SEC-registered cooperative • Serving Leyte since 2009
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight">
               Financial growth,{' '}
-              <span className="bg-gradient-to-r from-sky-300 to-emerald-300 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-gold-300 to-gold-500 bg-clip-text text-transparent">
                 built together.
               </span>
             </h1>
-            <p className="mt-5 text-base sm:text-lg text-blue-100/90 leading-relaxed max-w-xl">
+            <p className="mt-5 text-base sm:text-lg text-slate-200/90 leading-relaxed max-w-xl">
               HOSCOMO gives families and small entrepreneurs access to fair loans,
               secure savings, and a community that invests in your success.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <button
                 onClick={() => onSignIn('register')}
-                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-white text-blue-700 font-semibold text-sm shadow-lg hover:bg-blue-50 transition"
+                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-white text-navy-950 font-semibold text-sm shadow-lg hover:bg-gold-500/10 transition"
               >
                 Register as Member Online
                 <ArrowRight className="w-4 h-4" />
@@ -200,8 +212,16 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               >
                 Sign In to Portal
               </button>
+              <a
+                href={APP_DOWNLOAD_URL}
+                download={APP_DOWNLOAD_FILENAME}
+                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gold-400 hover:bg-gold-300 text-navy-950 font-semibold text-sm shadow-lg shadow-gold-500/25 transition"
+              >
+                <Download className="w-4 h-4" />
+                Download Mobile App
+              </a>
             </div>
-            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-blue-200">
+            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-300">
               <span className="inline-flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" /> No hidden fees
               </span>
@@ -221,7 +241,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             {STATS.map((s) => (
               <div key={s.label} className="text-center lg:text-left">
                 <div className="text-2xl sm:text-3xl font-extrabold tracking-tight">{s.value}</div>
-                <div className="text-[11px] uppercase tracking-widest text-blue-200 mt-1">{s.label}</div>
+                <div className="text-[11px] uppercase tracking-widest text-slate-300 mt-1">{s.label}</div>
               </div>
             ))}
           </div>
@@ -232,7 +252,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       <section id="products" className="py-20 lg:py-24 bg-slate-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto">
-            <span className="text-xs font-semibold uppercase tracking-widest text-blue-600">Loan Products</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">Loan Products</span>
             <h2 className="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
               The right loan for every goal
             </h2>
@@ -244,14 +264,14 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             {PRODUCTS.map((p) => (
               <div
                 key={p.title}
-                className="group relative bg-white rounded-3xl border border-slate-200 p-7 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-600/5 transition"
+                className="group relative bg-white rounded-3xl border border-slate-200 p-7 hover:border-gold-300 hover:shadow-xl hover:shadow-gold-500/10 transition"
               >
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center group-hover:bg-blue-600 group-hover:border-blue-600 transition">
-                  <p.icon className="w-6 h-6 text-blue-600 group-hover:text-white transition" />
+                <div className="w-12 h-12 rounded-2xl bg-gold-500/10 border border-gold-400/30 flex items-center justify-center group-hover:bg-gold-400 group-hover:border-gold-400 transition">
+                  <p.icon className="w-6 h-6 text-gold-600 group-hover:text-white transition" />
                 </div>
                 <h3 className="mt-5 text-lg font-bold text-slate-900">{p.title}</h3>
                 <p className="mt-2 text-sm text-slate-500 leading-relaxed">{p.desc}</p>
-                <div className="mt-5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-semibold text-emerald-700">
+                <div className="mt-5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gold-500/10 border border-gold-400/30 text-xs font-semibold text-gold-700">
                   <BadgePercent className="w-3.5 h-3.5" />
                   {p.tag}
                 </div>
@@ -265,7 +285,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       <section id="savings" className="py-20 lg:py-24 bg-white border-y border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-2 gap-14 items-center">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-widest text-blue-600">Savings & Services</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">Savings & Services</span>
             <h2 className="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
               Your money, safe and working for you
             </h2>
@@ -275,7 +295,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             </p>
             <button
               onClick={() => onSignIn('signin')}
-              className="mt-7 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-600/20 transition"
+              className="mt-7 inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-gold-400 hover:bg-gold-300 text-white text-sm font-semibold shadow-md shadow-gold-500/20 transition"
             >
               Access Your Account
               <ArrowRight className="w-4 h-4" />
@@ -285,10 +305,10 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             {SAVINGS_FEATURES.map((f) => (
               <div
                 key={f.title}
-                className="flex gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-blue-200 transition"
+                className="flex gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-gold-300 transition"
               >
                 <div className="shrink-0 w-11 h-11 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
-                  <f.icon className="w-5 h-5 text-blue-600" />
+                  <f.icon className="w-5 h-5 text-gold-600" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">{f.title}</h3>
@@ -304,7 +324,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       <section id="how-it-works" className="py-20 lg:py-24 bg-slate-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto">
-            <span className="text-xs font-semibold uppercase tracking-widest text-blue-600">How It Works</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">How It Works</span>
             <h2 className="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
               Three steps to your first loan
             </h2>
@@ -313,7 +333,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             {STEPS.map((s, i) => (
               <div key={s.step} className="relative bg-white rounded-3xl border border-slate-200 p-7">
                 <div className="flex items-center justify-between">
-                  <span className="text-4xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent">
+                  <span className="text-4xl font-extrabold bg-gradient-to-r from-gold-500 to-gold-400 bg-clip-text text-transparent">
                     {s.step}
                   </span>
                   {i < STEPS.length - 1 && (
@@ -332,15 +352,15 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       <section id="why-us" className="py-20 lg:py-24 bg-white border-y border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-2 gap-14">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-widest text-blue-600">Why HOSCOMO</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">Why HOSCOMO</span>
             <h2 className="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
               A cooperative you can trust
             </h2>
             <div className="mt-8 space-y-6">
               {WHY_US.map((f) => (
                 <div key={f.title} className="flex gap-4">
-                  <div className="shrink-0 w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-                    <f.icon className="w-5 h-5 text-blue-600" />
+                  <div className="shrink-0 w-11 h-11 rounded-xl bg-gold-500/10 border border-gold-400/30 flex items-center justify-center">
+                    <f.icon className="w-5 h-5 text-gold-600" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">{f.title}</h3>
@@ -351,7 +371,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             </div>
           </div>
           <div className="flex flex-col justify-center gap-6">
-            <figure className="relative bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-900 text-white rounded-3xl p-8 overflow-hidden">
+            <figure className="relative bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 text-white rounded-3xl p-8 overflow-hidden">
               <Star className="absolute -top-4 -right-4 w-28 h-28 text-white/10 rotate-12" />
               <div className="flex gap-1 text-amber-300">
                 {[...Array(5)].map((_, i) => (
@@ -363,17 +383,17 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
                 I employ six people from my barangay.”
               </blockquote>
               <figcaption className="mt-6 flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-white text-blue-700 flex items-center justify-center text-xs font-bold border-2 border-white/30 shrink-0">
+                <div className="w-11 h-11 rounded-full bg-white text-navy-950 flex items-center justify-center text-xs font-bold border-2 border-white/30 shrink-0">
                   MS
                 </div>
                 <div>
                   <div className="text-sm font-bold">Maria Santos</div>
-                  <div className="text-xs text-blue-200">Member since 2018 • Carigara Branch</div>
+                  <div className="text-xs text-slate-300">Member since 2018 • Carigara Branch</div>
                 </div>
               </figcaption>
             </figure>
             <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 flex items-start gap-4">
-              <MapPin className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <MapPin className="w-5 h-5 text-gold-600 shrink-0 mt-0.5" />
               <p className="text-xs text-slate-500 leading-relaxed">
                 Visit us at our main office in Tacloban City or any of our 8 branches across Leyte.
                 Member service desks are open Monday–Saturday, 8:00 AM – 5:00 PM.
@@ -386,7 +406,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
       {/* CTA Banner */}
       <section className="py-16 bg-slate-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-r from-blue-700 to-indigo-600 px-8 py-12 sm:px-14 text-center text-white shadow-xl shadow-blue-600/20">
+            <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-r from-navy-950 to-navy-900 px-8 py-12 sm:px-14 text-center text-white shadow-xl shadow-navy-950/30">
             <div
               className="absolute inset-0 opacity-10"
               style={{
@@ -399,13 +419,13 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
                 Ready to start your journey?
               </h2>
-              <p className="mt-3 text-sm text-blue-100 max-w-xl mx-auto leading-relaxed">
+              <p className="mt-3 text-sm text-slate-200 max-w-xl mx-auto leading-relaxed">
                 Sign in to the portal or create your client account today — membership takes less than 10 minutes.
               </p>
               <div className="mt-7 flex flex-wrap justify-center gap-3">
                 <button
                   onClick={() => onSignIn('register')}
-                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-white text-blue-700 font-semibold text-sm shadow-lg hover:bg-blue-50 transition"
+                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-white text-navy-950 font-semibold text-sm shadow-lg hover:bg-gold-500/10 transition"
                 >
                   Register as Member
                   <ArrowRight className="w-4 h-4" />
@@ -416,6 +436,14 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
                 >
                   Sign In to Portal
                 </button>
+                <a
+                  href={APP_DOWNLOAD_URL}
+                  download={APP_DOWNLOAD_FILENAME}
+                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-gold-400 hover:bg-gold-300 text-navy-950 font-semibold text-sm shadow-lg shadow-gold-500/25 transition"
+                >
+                  <Download className="w-4 h-4" />
+                  Download App
+                </a>
               </div>
             </div>
           </div>
@@ -427,7 +455,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
           <div className="lg:col-span-2">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-gold-500 to-gold-400 flex items-center justify-center text-navy-950">
                 <Building2 className="w-5 h-5" />
               </div>
               <div className="leading-tight">
@@ -441,13 +469,13 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             </p>
             <div className="mt-5 space-y-2 text-xs">
               <div className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-blue-400" /> Real St., Tacloban City, Leyte
+                <MapPin className="w-3.5 h-3.5 text-gold-400" /> Real St., Tacloban City, Leyte
               </div>
               <div className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-blue-400" /> (053) 555-0134
+                <Phone className="w-3.5 h-3.5 text-gold-400" /> (053) 555-0134
               </div>
               <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-blue-400" /> hello@hoscomo.coop
+                <Mail className="w-3.5 h-3.5 text-gold-400" /> hello@hoscomo.coop
               </div>
             </div>
           </div>
@@ -456,7 +484,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             <ul className="space-y-2.5 text-xs">
               {['Personal Loans', 'Business Capital', 'Group Lending', 'Savings Accounts', 'Time Deposits'].map((item) => (
                 <li key={item}>
-                  <a href="#products" className="hover:text-blue-400 transition">
+                  <a href="#products" className="hover:text-gold-400 transition">
                     {item}
                   </a>
                 </li>
@@ -467,19 +495,24 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
             <h4 className="text-xs font-semibold uppercase tracking-widest text-white mb-4">Access Portals</h4>
             <ul className="space-y-2.5 text-xs">
               <li>
-                <button onClick={() => onSignIn('signin')} className="hover:text-blue-400 transition">
+                <button onClick={() => onSignIn('signin')} className="hover:text-gold-400 transition">
                   Staff & Admin Sign In
                 </button>
               </li>
               <li>
-                <button onClick={() => onSignIn('register')} className="hover:text-blue-400 transition">
+                <button onClick={() => onSignIn('register')} className="hover:text-gold-400 transition">
                   Client / Member Registration
                 </button>
               </li>
               <li>
-                <span className="text-emerald-400 font-medium">
-                  Client App: React Native / Expo
-                </span>
+                <a
+                  href={APP_DOWNLOAD_URL}
+                  download={APP_DOWNLOAD_FILENAME}
+                  className="inline-flex items-center gap-1.5 hover:text-gold-400 transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Mobile App
+                </a>
               </li>
             </ul>
           </div>

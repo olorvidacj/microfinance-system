@@ -100,7 +100,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       <div className="bg-white rounded-2xl max-w-xl w-full my-8 shadow-2xl border border-gray-100 overflow-hidden animate-in zoom-in-95 duration-150">
         <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
+            <div className="w-8 h-8 rounded-lg bg-navy-900 text-white flex items-center justify-center font-bold">
               <Package className="w-4 h-4" />
             </div>
             <h2 className="text-base font-bold text-gray-900">
@@ -243,7 +243,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 type="checkbox"
                 checked={requiresCollateral}
                 onChange={(e) => setRequiresCollateral(e.target.checked)}
-                className="w-4 h-4 rounded text-blue-600"
+                className="w-4 h-4 rounded text-gold-600"
               />
               <span className="font-semibold text-gray-800">Requires Collateral Asset</span>
             </label>
@@ -253,7 +253,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 type="checkbox"
                 checked={requiresGuarantor}
                 onChange={(e) => setRequiresGuarantor(e.target.checked)}
-                className="w-4 h-4 rounded text-blue-600"
+                className="w-4 h-4 rounded text-gold-600"
               />
               <span className="font-semibold text-gray-800">Requires Credit Guarantor</span>
             </label>
@@ -269,7 +269,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
             </button>
             <button
               type="submit"
-              className="py-2 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-xs flex items-center gap-1.5"
+              className="py-2 px-5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-semibold shadow-xs flex items-center gap-1.5"
             >
               <Save className="w-4 h-4" />
               <span>{editProduct ? 'Update Product' : 'Create Product'}</span>

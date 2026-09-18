@@ -127,7 +127,7 @@ const ProfilePage: React.FC = () => {
                     status={profile.kycStatus}
                     tone={profile.kycStatus === 'VERIFIED' ? 'green' : profile.kycStatus === 'REJECTED' ? 'red' : 'amber'}
                   />
-                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/10 px-2 py-0.5 text-xs font-medium text-gold-700">
                     <CreditCard className="h-3.5 w-3.5" /> Score {profile.creditScore}
                   </span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">

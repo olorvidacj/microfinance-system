@@ -103,7 +103,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
         return 'bg-amber-100 text-amber-800 font-bold border border-amber-200';
       case 'Partially Paid':
       case 'Partial':
-        return 'bg-blue-100 text-blue-800 font-bold border border-blue-200';
+        return 'bg-gold-500/20 text-gold-800 font-bold border border-gold-400/30';
       case 'Upcoming':
       case 'Pending':
       default:
@@ -116,7 +116,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
       case 'Draft':
         return 'bg-slate-100 text-slate-700 border-slate-300';
       case 'Submitted':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-gold-500/20 text-gold-800 border-gold-400/30';
       case 'Under Review':
         return 'bg-purple-100 text-purple-800 border-purple-200';
       case 'Approved':
@@ -166,7 +166,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-slate-900">{loan.borrowerName}</h2>
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-gold-500/20 text-gold-800">
                   {loan.loanNumber}
                 </span>
                 <span
@@ -186,7 +186,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
             {loan.status === 'Draft' && (
               <button
                 onClick={() => submitLoanForApproval(loan.id, 'Submitted from loan detail')}
-                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                className="px-3.5 py-2 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
               >
                 <FileCheck className="w-4 h-4" />
                 Submit for Approval
@@ -265,7 +265,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                   <div
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] ${
                       isCurrent
-                        ? 'bg-blue-500 text-white font-bold'
+                        ? 'bg-gold-500 text-white font-bold'
                         : isPast
                         ? 'bg-emerald-500/30 text-emerald-300 font-medium'
                         : isRejected
@@ -276,7 +276,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                     }`}
                   >
                     {isPast ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : null}
-                    {isCurrent && <Clock className="w-3 h-3 text-blue-200" />}
+                    {isCurrent && <Clock className="w-3 h-3 text-slate-300" />}
                     <span>{step.label}</span>
                   </div>
                   {idx < 5 && <ArrowRight className="w-3 h-3 text-slate-600 mx-0.5" />}
@@ -298,7 +298,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
 
           <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl">
             <span className="text-xs text-slate-500 block">Remaining Balance</span>
-            <span className="text-base font-bold text-blue-700 block mt-0.5">
+            <span className="text-base font-bold text-gold-700 block mt-0.5">
               {formatCurrency(loan.remainingBalance)}
             </span>
             <span className="text-[11px] text-slate-500 mt-1 block">Total Due: {formatCurrency(loan.totalPayable)}</span>
@@ -329,7 +329,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
             onClick={() => setActiveTab('schedule')}
             className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
               activeTab === 'schedule'
-                ? 'border-blue-600 text-blue-600 font-bold'
+                ? 'border-gold-500 text-gold-600 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -340,7 +340,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
             onClick={() => setActiveTab('approval')}
             className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
               activeTab === 'approval'
-                ? 'border-blue-600 text-blue-600 font-bold'
+                ? 'border-gold-500 text-gold-600 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -352,19 +352,19 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
             onClick={() => setActiveTab('voucher')}
             className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
               activeTab === 'voucher'
-                ? 'border-blue-600 text-blue-600 font-bold'
+                ? 'border-gold-500 text-gold-600 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Receipt className="w-4 h-4" />
             Disbursement Voucher
-            {loan.disbursementVoucher && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+            {loan.disbursementVoucher && <span className="w-2 h-2 rounded-full bg-gold-500" />}
           </button>
           <button
             onClick={() => setActiveTab('collateral')}
             className={`py-3.5 border-b-2 transition flex items-center gap-2 ${
               activeTab === 'collateral'
-                ? 'border-blue-600 text-blue-600 font-bold'
+                ? 'border-gold-500 text-gold-600 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -410,7 +410,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                   type="button"
                   onClick={() => setScheduleFilter('UPCOMING')}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                    scheduleFilter === 'UPCOMING' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    scheduleFilter === 'UPCOMING' ? 'bg-white text-gold-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   Upcoming ({upcomingCount})
@@ -626,15 +626,15 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
           {activeTab === 'voucher' && (
             <div className="space-y-4">
               {loan.disbursementVoucher || loan.disbursementInfo ? (
-                <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-5 space-y-4">
-                  <div className="flex items-center justify-between border-b border-blue-200 pb-3">
+                <div className="bg-gold-500/10 border border-gold-400/30 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-gold-400/30 pb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-lg bg-navy-900 text-white flex items-center justify-center">
                         <Receipt className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="font-bold text-blue-950 text-sm">Disbursement Check Voucher</h4>
-                        <p className="text-xs text-blue-700">Voucher #: {loan.disbursementVoucher?.voucherNumber || loan.loanNumber}</p>
+                        <h4 className="font-bold text-navy-950 text-sm">Disbursement Check Voucher</h4>
+                        <p className="text-xs text-gold-700">Voucher #: {loan.disbursementVoucher?.voucherNumber || loan.loanNumber}</p>
                       </div>
                     </div>
                     <span className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-full text-xs">
@@ -642,7 +642,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs bg-white p-3.5 rounded-xl border border-blue-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs bg-white p-3.5 rounded-xl border border-gold-400/30">
                     <div>
                       <span className="text-slate-500 block">Gross Loan Amount</span>
                       <span className="font-bold text-slate-900 font-mono text-sm">{formatCurrency(loan.principalAmount)}</span>
@@ -665,7 +665,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                     </div>
                     <div>
                       <span className="text-slate-500 block">Reference / Check #</span>
-                      <span className="font-mono font-bold text-blue-800">{loan.disbursementVoucher?.checkNumberOrRef || loan.disbursementInfo?.referenceNumber || 'N/A'}</span>
+                      <span className="font-mono font-bold text-gold-800">{loan.disbursementVoucher?.checkNumberOrRef || loan.disbursementInfo?.referenceNumber || 'N/A'}</span>
                     </div>
                     <div>
                       <span className="text-slate-500 block">Disbursed Date</span>
@@ -702,7 +702,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
             <div className="space-y-4">
               <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-2">
                 <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-blue-600" />
+                  <User className="w-4 h-4 text-gold-600" />
                   Co-Makers & Guarantors
                 </h4>
                 {loan.guarantors && loan.guarantors.length > 0 ? (
@@ -740,7 +740,7 @@ export const LoanDetailModal: React.FC<LoanDetailModalProps> = ({
                         </div>
                         <div className="text-right">
                           <span className="text-slate-500 block text-[10px]">Estimated Value</span>
-                          <span className="font-bold text-blue-700 font-mono">{formatCurrency(c.estimatedValue)}</span>
+                          <span className="font-bold text-gold-700 font-mono">{formatCurrency(c.estimatedValue)}</span>
                         </div>
                       </div>
                     ))}

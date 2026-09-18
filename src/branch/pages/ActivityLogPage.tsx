@@ -93,7 +93,7 @@ const ActivityLogPage: React.FC = () => {
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                         entry.type === 'PAYMENT' ? 'bg-emerald-50 text-emerald-700' :
                         entry.type === 'LOAN' ? 'bg-emerald-50 text-emerald-700' :
-                        entry.type === 'BORROWER' ? 'bg-indigo-50 text-indigo-700' :
+                        entry.type === 'BORROWER' ? 'bg-gold-500/10 text-gold-700' :
                         'bg-slate-100 text-slate-600'
                       }`}>
                         {entry.type}

@@ -87,7 +87,7 @@ Thank you for your prompt loan payment!
         {/* Header Action Bar */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400">
+            <div className="w-8 h-8 rounded-xl bg-navy-900/30 border border-gold-500/40 flex items-center justify-center text-gold-400">
               <Building2 className="w-4 h-4" />
             </div>
             <div>
@@ -108,7 +108,7 @@ Thank you for your prompt loan payment!
             <button
               id="print-receipt-btn"
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-xs"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-navy-900 hover:bg-gold-500 text-white rounded-xl text-xs font-semibold transition shadow-xs"
               title="Print official receipt"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -129,7 +129,7 @@ Thank you for your prompt loan payment!
           {/* Header & Logo */}
           <div className="text-center border-b border-slate-200 pb-5">
             <div className="inline-flex items-center justify-center gap-2 mb-1">
-              <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
+              <div className="w-7 h-7 rounded-lg bg-navy-900 text-white flex items-center justify-center font-bold text-sm">
                 H
               </div>
               <h2 className="text-base md:text-lg font-black text-slate-900 tracking-tight uppercase">
@@ -153,7 +153,7 @@ Thank you for your prompt loan payment!
           <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-100">
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
               <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Official Receipt No.</span>
-              <span className="font-mono font-bold text-blue-700 text-sm">{payment.receiptNumber}</span>
+              <span className="font-mono font-bold text-gold-700 text-sm">{payment.receiptNumber}</span>
             </div>
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-right">
               <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Payment Date</span>
@@ -242,10 +242,10 @@ Thank you for your prompt loan payment!
 
           {/* Loan Balance & Installment Update */}
           {loan && (
-            <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50/60 border border-blue-100 rounded-2xl text-[11px]">
+            <div className="grid grid-cols-2 gap-3 p-3 bg-gold-500/10 border border-gold-400/30 rounded-2xl text-[11px]">
               <div>
                 <span className="text-slate-500 block text-[9px] uppercase font-bold">Updated Loan Remaining Balance</span>
-                <span className="font-mono font-bold text-blue-900 text-sm">{formatCurrency(loan.remainingBalance)}</span>
+                <span className="font-mono font-bold text-navy-900 text-sm">{formatCurrency(loan.remainingBalance)}</span>
               </div>
               <div className="text-right">
                 <span className="text-slate-500 block text-[9px] uppercase font-bold">Next Installment Due Date</span>

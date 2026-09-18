@@ -142,7 +142,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       <div className="w-full max-w-5xl bg-white rounded-[32px] shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 border border-slate-200">
         
         {/* Left Branding Panel */}
-        <div className="relative bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-900 p-8 sm:p-10 text-white hidden lg:flex lg:col-span-5 flex-col justify-between">
+        <div className="relative bg-gradient-to-br from-navy-950 via-navy-900 to-navy-800 p-8 sm:p-10 text-white hidden lg:flex lg:col-span-5 flex-col justify-between">
           <div>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center backdrop-blur-sm shadow-inner">
@@ -150,14 +150,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </div>
               <div>
                 <span className="font-bold text-xl tracking-tight">HOSCOMO</span>
-                <p className="text-[11px] text-blue-200 uppercase tracking-widest font-semibold">Microfinance Cooperative</p>
+                <p className="text-[11px] text-slate-300 uppercase tracking-widest font-semibold">Microfinance Cooperative</p>
               </div>
             </div>
 
             <h1 className="mt-12 text-2xl sm:text-3xl font-extrabold leading-snug">
               {mode === 'register' ? 'Join HOSCOMO Microfinance' : 'Cooperative Access Portal'}
             </h1>
-            <p className="mt-3 text-xs sm:text-sm text-blue-100/90 leading-relaxed">
+            <p className="mt-3 text-xs sm:text-sm text-slate-200/90 leading-relaxed">
               {mode === 'register'
                 ? 'Create your member account in under 2 minutes to apply for loans, manage savings passbooks, and access community solidarity programs.'
                 : 'Sign in to access the Staff Management Console or the Member Client Self-Service Portal.'}
@@ -169,7 +169,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <span>Bank-grade encrypted passwords & signed sessions</span>
               </div>
               <div className="flex items-center gap-3 bg-white/10 rounded-xl px-3.5 py-2.5 border border-white/15">
-                <Smartphone className="w-4 h-4 text-blue-200 shrink-0" />
+                <Smartphone className="w-4 h-4 text-slate-300 shrink-0" />
                 <span>Members: check balances, pay loans & request withdrawals</span>
               </div>
               <div className="flex items-center gap-3 bg-white/10 rounded-xl px-3.5 py-2.5 border border-white/15">
@@ -179,7 +179,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </div>
           </div>
 
-          <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-blue-200/70">
+          <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400/70">
             <span>© 2026 HOSCOMO Cooperative</span>
             <span>Tacloban, Leyte</span>
           </div>
@@ -191,7 +191,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
           {/* Header & Back Button */}
           <div className="flex items-center justify-between mb-5">
             <div className="lg:hidden flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-md">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-gold-500 to-gold-400 flex items-center justify-center text-navy-950 shadow-md">
                 <Building2 className="w-4 h-4" />
               </div>
               <span className="font-bold text-slate-900 text-base">HOSCOMO</span>
@@ -199,7 +199,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
             {onBack && (
               <button
                 onClick={onBack}
-                className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 transition"
+                className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-navy-950 transition"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Back to home
@@ -226,7 +226,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               onClick={() => switchMode('register')}
               className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition ${
                 mode === 'register'
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+                  ? 'bg-gold-400 text-navy-950 shadow-sm shadow-gold-500/20'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -266,7 +266,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     value={emailOrPhone}
                     onChange={(e) => setEmailOrPhone(e.target.value)}
                     placeholder="e.g. staff@hoscomo.coop or 09175554321"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-sm transition"
                   />
                 </div>
               </div>
@@ -281,7 +281,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-sm transition"
                   />
                   <button
                     type="button"
@@ -296,7 +296,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full mt-2 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-md shadow-blue-600/20 transition flex items-center justify-center gap-2 text-sm"
+                className="w-full mt-2 py-3 bg-gold-400 hover:bg-gold-300 disabled:opacity-60 disabled:cursor-not-allowed text-navy-950 font-semibold rounded-xl shadow-md shadow-gold-500/20 transition flex items-center justify-center gap-2 text-sm"
               >
                 {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 Sign In to Account
@@ -307,7 +307,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <button
                   type="button"
                   onClick={() => switchMode('register')}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-700 underline"
+                  className="text-xs font-bold text-gold-600 hover:text-navy-950 underline"
                 >
                   Register as Client Now
                 </button>
@@ -318,10 +318,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
             /* CLIENT REGISTRATION FORM */
             /* ========================================================================= */
             <form onSubmit={handleRegister} className="space-y-3.5">
-              <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-900">
-                <Smartphone className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div className="bg-gold-500/10 border border-gold-400/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-navy-900">
+                <Smartphone className="w-4 h-4 text-gold-600 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-blue-800">Direct Client Portal Access: </span>
+                  <span className="font-bold text-gold-700">Direct Client Portal Access: </span>
                   <span>Fill in your details below. Your client passbook and portal will be provisioned instantly.</span>
                 </div>
               </div>
@@ -340,7 +340,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="e.g. Maria Teresa Santos"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
                     />
                   </div>
                 </div>
@@ -358,7 +358,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="0917 123 4567"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
                     />
                   </div>
                 </div>
@@ -377,7 +377,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={regEmail}
                       onChange={(e) => setRegEmail(e.target.value)}
                       placeholder="maria.santos@gmail.com"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
                     />
                   </div>
                 </div>
@@ -392,7 +392,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     value={borrowerNumber}
                     onChange={(e) => setBorrowerNumber(e.target.value)}
                     placeholder="e.g. MBR-2024-001"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition uppercase"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition uppercase"
                   />
                 </div>
               </div>
@@ -410,7 +410,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       placeholder="e.g. Tacloban City, Leyte"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
                     />
                   </div>
                 </div>
@@ -426,7 +426,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={occupation}
                       onChange={(e) => setOccupation(e.target.value)}
                       placeholder="e.g. Sari-Sari Store Owner"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
                     />
                   </div>
                 </div>
@@ -446,7 +446,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={regPassword}
                       onChange={(e) => setRegPassword(e.target.value)}
                       placeholder="Min. 6 characters"
-                      className="w-full pl-9 pr-10 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                      className="w-full pl-9 pr-10 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
                     />
                     <button
                       type="button"
@@ -468,7 +468,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repeat password"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
                   />
                 </div>
               </div>
@@ -479,7 +479,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   type="checkbox"
                   checked={agreeTerms}
                   onChange={(e) => setAgreeTerms(e.target.checked)}
-                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                  className="mt-0.5 rounded text-gold-600 focus:ring-gold-500 border-slate-300"
                 />
                 <span className="text-[11px] text-slate-600 leading-tight">
                   I agree to the <strong>Terms of Service</strong> and consent to credit verification under the <strong>Data Privacy Act (RA 10173)</strong>.
@@ -490,7 +490,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full mt-2 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-md shadow-blue-600/20 transition flex items-center justify-center gap-2 text-sm"
+                className="w-full mt-2 py-3 bg-gold-400 hover:bg-gold-300 disabled:opacity-60 disabled:cursor-not-allowed text-navy-950 font-semibold rounded-xl shadow-md shadow-gold-500/20 transition flex items-center justify-center gap-2 text-sm"
               >
                 {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 Create Member Account & Enter Portal
@@ -501,7 +501,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <button
                   type="button"
                   onClick={() => switchMode('signin')}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-700 underline"
+                  className="text-xs font-bold text-gold-600 hover:text-navy-950 underline"
                 >
                   Sign In
                 </button>

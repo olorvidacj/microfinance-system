@@ -170,7 +170,7 @@ export const LoanApprovalModal: React.FC<LoanApprovalModalProps> = ({
           </div>
           <div>
             <span className="text-gray-500 block">Requested Principal</span>
-            <span className="font-bold text-blue-700 mt-0.5 block">{formatCurrency(loan.principalAmount)}</span>
+            <span className="font-bold text-gold-700 mt-0.5 block">{formatCurrency(loan.principalAmount)}</span>
           </div>
           <div>
             <span className="text-gray-500 block">Current Status</span>

@@ -198,7 +198,7 @@ export const LoanDisbursementModal: React.FC<LoanDisbursementModalProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Reference / Check #:</span>
-                <span className="font-mono font-bold text-blue-700">{successInfo.referenceNumber}</span>
+                <span className="font-mono font-bold text-gold-700">{successInfo.referenceNumber}</span>
               </div>
               <div className="flex justify-between border-t border-slate-200 pt-2 font-bold text-sm">
                 <span className="text-gray-900">Net Proceeds Disbursed:</span>
@@ -247,7 +247,7 @@ export const LoanDisbursementModal: React.FC<LoanDisbursementModalProps> = ({
               <div className="p-4 space-y-3 bg-white">
                 <div className="flex items-center justify-between pb-2 border-b border-gray-100 font-semibold text-gray-900">
                   <span>Gross Approved Principal</span>
-                  <span className="text-sm font-bold text-blue-700">{formatCurrency(grossAmount)}</span>
+                  <span className="text-sm font-bold text-gold-700">{formatCurrency(grossAmount)}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">

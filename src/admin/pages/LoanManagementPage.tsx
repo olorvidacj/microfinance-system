@@ -88,16 +88,16 @@ export const LoanManagementPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Loan Registry" value={totals.count} icon={FileSpreadsheet} iconColor="text-blue-600" iconBg="bg-blue-50" change={15} changeLabel="this quarter" />
+        <StatCard title="Total Loan Registry" value={totals.count} icon={FileSpreadsheet} iconColor="text-gold-600" iconBg="bg-gold-500/10" change={15} changeLabel="this quarter" />
         <StatCard title="Pending Appraisal" value={totals.pending} icon={Clock} iconColor="text-amber-600" iconBg="bg-amber-50" accentBorder />
         <StatCard title="Approved & Active" value={totals.approved + totals.active} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Rejected Facilities" value={totals.rejected} icon={XCircle} iconColor="text-rose-500" iconBg="bg-rose-50" />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Active Facilities" value={totals.active} icon={Wallet} iconColor="text-indigo-600" iconBg="bg-indigo-50" />
+        <StatCard title="Active Facilities" value={totals.active} icon={Wallet} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Matured / Paid Off" value={totals.completed} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Total Committed Amount" value={formatPHP(totals.totalAmount)} icon={Wallet} iconColor="text-amber-600" iconBg="bg-amber-50" subtitle="Total disbursed capital" />
-        <StatCard title="Outstanding Balance" value={formatPHP(totals.outstanding)} icon={Wallet} iconColor="text-blue-600" iconBg="bg-blue-50" subtitle={`${Math.round((totals.outstanding / totals.totalAmount) * 100)}% active exposure`} />
+        <StatCard title="Outstanding Balance" value={formatPHP(totals.outstanding)} icon={Wallet} iconColor="text-gold-600" iconBg="bg-gold-500/10" subtitle={`${Math.round((totals.outstanding / totals.totalAmount) * 100)}% active exposure`} />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">

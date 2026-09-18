@@ -127,7 +127,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                       : member.kycStatus === 'CORRECTION_REQUIRED'
                       ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                      : 'bg-blue-100 text-blue-800 border border-blue-200'
+                      : 'bg-gold-500/20 text-gold-800 border border-gold-400/30'
                   }`}
                 >
                   {member.kycStatus || 'VERIFIED'}
@@ -159,7 +159,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <UploadCloud className="w-4 h-4 text-blue-600" />
+                <UploadCloud className="w-4 h-4 text-gold-600" />
                 Upload New Identification Document
               </h4>
               <span className="text-[11px] text-slate-500">JPG, PNG, PDF max 10MB</span>
@@ -175,7 +175,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
                       const t = e.target.value as KycDocumentType;
                       handleSimulateFilePick(t);
                     }}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-gold-500 focus:outline-none"
                   >
                     {KYC_DOC_TYPES.map((t) => (
                       <option key={t} value={t}>
@@ -194,7 +194,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
                       placeholder="e.g. National_ID_Front.jpg"
                       value={fileName}
                       onChange={(e) => setFileName(e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-mono text-slate-800 focus:ring-2 focus:ring-gold-500 focus:outline-none"
                     />
                     <button
                       type="button"
@@ -214,7 +214,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
                   placeholder="e.g. Card No. 1234-5678-9012, Valid until 2030"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-gold-500 focus:outline-none"
                 />
               </div>
 
@@ -275,7 +275,7 @@ export const ClientKycModal: React.FC<ClientKycModalProps> = ({
                             ? 'bg-emerald-100 text-emerald-800'
                             : doc.status === 'CORRECTION_REQUIRED'
                             ? 'bg-amber-100 text-amber-800'
-                            : 'bg-blue-100 text-blue-800'
+                            : 'bg-gold-500/20 text-gold-800'
                         }`}
                       >
                         {doc.status === 'VERIFIED' ? (

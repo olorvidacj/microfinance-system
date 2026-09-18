@@ -536,7 +536,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
       {/* Top Banner & Client Header */}
       <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 uppercase tracking-wider mb-1">
+          <div className="flex items-center gap-2 text-xs font-semibold text-gold-600 uppercase tracking-wider mb-1">
             <Smartphone className="w-4 h-4" />
             <span>HOSCOMO Client Self-Service Portal {isClientSession ? '' : '(Staff Simulation View)'}</span>
           </div>
@@ -595,7 +595,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
               onClick={() => setIsMobileFrame(!isMobileFrame)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
                 isMobileFrame
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  ? 'bg-navy-900 text-white border-gold-500 shadow-sm'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
               }`}
             >
@@ -627,12 +627,12 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           {/* Member Profile Quick Card in Portal Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/10">
             <div className="flex items-center gap-3.5">
-              <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 border border-white/20 flex items-center justify-center text-white font-bold text-xl shadow-md">
+              <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-navy-900 to-gold-500 border border-white/20 flex items-center justify-center text-white font-bold text-xl shadow-md">
                 {currentMember?.fullName.charAt(0) || 'M'}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-blue-200 uppercase font-semibold tracking-wider">
+                  <span className="text-[11px] text-slate-300 uppercase font-semibold tracking-wider">
                     Cooperative Member
                   </span>
                   <span
@@ -659,7 +659,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 onClick={() => setPortalTab('profile')}
                 className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/15 transition flex items-center gap-1.5"
               >
-                <User className="w-3.5 h-3.5 text-blue-300" />
+                <User className="w-3.5 h-3.5 text-gold-300" />
                 <span>My Profile</span>
               </button>
               <button
@@ -693,7 +693,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   onClick={() => setPortalTab(tab.id as PortalTab)}
                   className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-medium transition whitespace-nowrap ${
                     isActive
-                      ? 'bg-blue-600 text-white shadow-md'
+                      ? 'bg-navy-900 text-white shadow-md'
                       : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white'
                   }`}
                 >
@@ -727,10 +727,10 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
           {portalTab === 'home' && (
             <div className="space-y-6 pt-2">
               {/* Virtual ATM / Savings Card */}
-              <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 p-6 rounded-3xl shadow-xl relative overflow-hidden text-white border border-white/10">
+              <div className="bg-gradient-to-br from-navy-900 via-navy-900 to-purple-700 p-6 rounded-3xl shadow-xl relative overflow-hidden text-white border border-white/10">
                 <div className="flex justify-between items-start">
                   <div>
-                    <span className="text-[11px] text-blue-100/90 uppercase tracking-wider font-semibold">
+                    <span className="text-[11px] text-slate-200/90 uppercase tracking-wider font-semibold">
                       HOSCOMO Regular Savings Passbook
                     </span>
                     <div className="flex items-center gap-3 mt-1.5">
@@ -739,13 +739,13 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                       </span>
                       <button
                         onClick={() => setShowBalance(!showBalance)}
-                        className="p-1 text-blue-200 hover:text-white transition"
+                        className="p-1 text-slate-300 hover:text-white transition"
                         title={showBalance ? 'Hide balance' : 'Show balance'}
                       >
                         {showBalance ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
-                    <span className="text-xs text-blue-200/80 font-mono mt-1 block">
+                    <span className="text-xs text-slate-300/80 font-mono mt-1 block">
                       Account: {memberSavingsAccount?.accountNumber || `SAV-2026-${currentMember?.borrowerNumber?.replace(/\D/g, '') || '101'}`}
                     </span>
                   </div>
@@ -756,19 +756,19 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
                 <div className="mt-6 grid grid-cols-3 gap-3 text-xs border-t border-white/15 pt-4">
                   <div>
-                    <span className="text-[10px] text-blue-200 block">Share Capital Equity</span>
+                    <span className="text-[10px] text-slate-300 block">Share Capital Equity</span>
                     <span className="font-bold text-white text-sm">
                       {formatCurrency(currentMember?.shareCapital || 15000)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-blue-200 block">Available Withdrawable</span>
+                    <span className="text-[10px] text-slate-300 block">Available Withdrawable</span>
                     <span className="font-bold text-emerald-300 text-sm">
                       {formatCurrency(Math.max(0, (currentMember?.savingsBalance || 1500) - 1000))}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-blue-200 block">Interest Yield</span>
+                    <span className="text-[10px] text-slate-300 block">Interest Yield</span>
                     <span className="font-semibold text-emerald-300">1.0% p.a. Compounded</span>
                   </div>
                 </div>
@@ -779,10 +779,10 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 <div className="bg-slate-800/90 border border-slate-700 p-5 rounded-3xl space-y-4 shadow-md">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-blue-400 font-bold text-sm">{activeLoan.loanNumber}</span>
+                      <span className="font-mono text-gold-400 font-bold text-sm">{activeLoan.loanNumber}</span>
                       <span className="text-slate-400 font-medium">• {activeLoan.productName}</span>
                     </div>
-                    <span className="bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2.5 py-0.5 rounded-full font-semibold">
+                    <span className="bg-gold-500/20 text-gold-300 border border-gold-400/30 px-2.5 py-0.5 rounded-full font-semibold">
                       {activeLoan.status}
                     </span>
                   </div>
@@ -826,7 +826,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   <div className="space-y-1.5">
                     <div className="w-full bg-slate-700/80 rounded-full h-2 overflow-hidden">
                       <div
-                        className="bg-gradient-to-r from-blue-500 to-emerald-400 h-2 rounded-full transition-all"
+                        className="bg-gradient-to-r from-gold-500 to-emerald-400 h-2 rounded-full transition-all"
                         style={{
                           width: `${Math.min(100, Math.round(((activeLoan.totalPaid || 0) / activeLoan.totalPayable) * 100))}%`,
                         }}
@@ -840,14 +840,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 </div>
               ) : (
                 <div className="bg-slate-800/50 border border-slate-700/60 p-6 rounded-3xl text-center space-y-3">
-                  <CreditCard className="w-8 h-8 text-blue-400 mx-auto" />
+                  <CreditCard className="w-8 h-8 text-gold-400 mx-auto" />
                   <h4 className="font-bold text-white text-sm">No Active Loan Accounts</h4>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
                     You currently have zero outstanding loan balance. You are eligible to apply for instant micro-credit or seasonal agriculture financing.
                   </p>
                   <button
                     onClick={() => setPortalTab('apply')}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md transition inline-flex items-center gap-1.5"
+                    className="px-5 py-2.5 bg-navy-900 hover:bg-gold-500 text-white font-bold rounded-xl text-xs shadow-md transition inline-flex items-center gap-1.5"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Apply for Member Loan</span>
@@ -872,7 +872,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   onClick={() => setPortalTab('apply')}
                   className="bg-slate-800 hover:bg-slate-750 p-4 rounded-2xl border border-slate-700 text-left transition space-y-1.5"
                 >
-                  <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center">
                     <Sparkles className="w-4 h-4" />
                   </div>
                   <span className="font-bold text-xs text-white block">Apply Micro-Loan</span>
@@ -942,7 +942,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setIsUpdateRequestOpen(true)}
-                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5"
+                    className="px-3.5 py-2 bg-navy-900 hover:bg-gold-500 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5"
                   >
                     <User className="w-3.5 h-3.5" />
                     <span>Request Update</span>
@@ -962,7 +962,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 {/* Personal Information */}
                 <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700 space-y-3">
                   <h4 className="font-bold text-white text-sm flex items-center gap-2 border-b border-slate-700 pb-2">
-                    <User className="w-4 h-4 text-blue-400" />
+                    <User className="w-4 h-4 text-gold-400" />
                     Personal & Membership Info
                   </h4>
                   <div className="grid grid-cols-2 gap-2 text-slate-300">
@@ -972,7 +972,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[11px]">Member ID Number</span>
-                      <span className="font-mono font-bold text-blue-400">{currentMember.borrowerNumber}</span>
+                      <span className="font-mono font-bold text-gold-400">{currentMember.borrowerNumber}</span>
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[11px]">Date of Birth</span>
@@ -1054,7 +1054,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[11px]">Estimated Net Surplus</span>
-                      <span className="font-bold text-blue-300">
+                      <span className="font-bold text-gold-300">
                         {formatCurrency(Math.max(0, currentMember.monthlyIncome - currentMember.monthlyExpenses))}
                       </span>
                     </div>
@@ -1119,7 +1119,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 </div>
                 <button
                   onClick={() => setPortalTab('apply')}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1"
+                  className="px-3.5 py-2 bg-navy-900 hover:bg-gold-500 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>+ New Loan Application</span>
@@ -1135,7 +1135,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                   </p>
                   <button
                     onClick={() => setPortalTab('apply')}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md"
+                    className="px-4 py-2 bg-navy-900 hover:bg-gold-500 text-white text-xs font-bold rounded-xl shadow-md"
                   >
                     Start Online Loan Application
                   </button>
@@ -1159,7 +1159,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700/80 pb-3">
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-sm text-blue-400">{loan.loanNumber}</span>
+                              <span className="font-mono font-bold text-sm text-gold-400">{loan.loanNumber}</span>
                               <span
                                 className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                   loan.status === 'Disbursed' || loan.status === 'Active'
@@ -1168,7 +1168,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                     : loan.status === 'Rejected'
                                     ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                    : 'bg-gold-500/20 text-gold-300 border border-gold-500/30'
                                 }`}
                               >
                                 {loan.status}
@@ -1228,10 +1228,10 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                           <div className="pt-2 border-t border-slate-700/60 space-y-2">
                             <div className="flex items-center justify-between text-[11px]">
                               <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-blue-400" />
+                                <Clock className="w-3.5 h-3.5 text-gold-400" />
                                 6-Step Cooperative Approval Pipeline Tracker
                               </span>
-                              <span className="text-blue-300 font-bold">
+                              <span className="text-gold-300 font-bold">
                                 Step {Math.min(6, stepIdx + 1)} of 6
                               </span>
                             </div>
@@ -1249,13 +1249,13 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                                   <div
                                     className={`h-1.5 rounded-full ${
                                       i <= stepIdx
-                                        ? 'bg-blue-500 shadow-sm'
+                                        ? 'bg-gold-500 shadow-sm'
                                         : 'bg-slate-700'
                                     }`}
                                   ></div>
                                   <span
                                     className={`block text-[9px] truncate ${
-                                      i <= stepIdx ? 'text-blue-300 font-semibold' : 'text-slate-500'
+                                      i <= stepIdx ? 'text-gold-300 font-semibold' : 'text-slate-500'
                                     }`}
                                   >
                                     {stepName}
@@ -1285,7 +1285,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             <div className="space-y-6 pt-2">
               <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700 space-y-5">
                 <div>
-                  <div className="flex items-center gap-2 text-blue-400 text-xs font-semibold mb-1">
+                  <div className="flex items-center gap-2 text-gold-400 text-xs font-semibold mb-1">
                     <Sparkles className="w-4 h-4" />
                     <span>HOSCOMO Automated Loan Origination</span>
                   </div>
@@ -1302,7 +1302,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     <select
                       value={applyProductId}
                       onChange={(e) => setApplyProductId(e.target.value)}
-                      className="w-full p-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      className="w-full p-3 rounded-xl bg-slate-900 border border-slate-700 text-white font-medium focus:ring-2 focus:ring-gold-500 focus:outline-none"
                     >
                       {loanProducts.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -1394,13 +1394,13 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
                   {/* Live Amortization Calculator Summary Box */}
                   {liveApplicationEstimate && (
-                    <div className="p-4 bg-slate-900/90 rounded-2xl border border-blue-500/40 space-y-3">
+                    <div className="p-4 bg-slate-900/90 rounded-2xl border border-gold-500/40 space-y-3">
                       <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
                         <span className="font-bold text-white flex items-center gap-1.5">
-                          <Percent className="w-4 h-4 text-blue-400" />
+                          <Percent className="w-4 h-4 text-gold-400" />
                           Live Amortization & Proceeds Estimate
                         </span>
-                        <span className="text-blue-300 font-mono">
+                        <span className="text-gold-300 font-mono">
                           {liveApplicationEstimate.installmentsCount} Installments
                         </span>
                       </div>
@@ -1426,7 +1426,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         </div>
                         <div>
                           <span className="text-slate-400 block text-[11px]">Est. Net Proceeds</span>
-                          <span className="font-bold text-blue-300 text-sm">
+                          <span className="font-bold text-gold-300 text-sm">
                             {formatCurrency(liveApplicationEstimate.netProceeds)}
                           </span>
                         </div>
@@ -1436,7 +1436,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg transition text-sm flex items-center justify-center gap-2"
+                    className="w-full py-3.5 bg-navy-900 hover:bg-gold-500 text-white font-bold rounded-xl shadow-lg transition text-sm flex items-center justify-center gap-2"
                   >
                     <Send className="w-4 h-4" />
                     <span>Submit Loan Application for Officer Review</span>
@@ -1483,7 +1483,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         onClick={() => setScheduleFilter(f)}
                         className={`px-3 py-1.5 rounded-xl font-semibold transition ${
                           scheduleFilter === f
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-navy-900 text-white'
                             : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                         }`}
                       >
@@ -1570,7 +1570,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     <h3 className="text-lg font-bold text-white">Digital Loan Repayment Portal</h3>
                     <p className="text-xs text-slate-400">GCash, Maya, and Online Bank transfer with instant official receipts</p>
                   </div>
-                  <QrCode className="w-8 h-8 text-blue-400" />
+                  <QrCode className="w-8 h-8 text-gold-400" />
                 </div>
 
                 <form onSubmit={handlePay} className="space-y-4 text-xs">
@@ -1604,7 +1604,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setPayAmount(activeLoan.remainingBalance)}
-                          className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold"
+                          className="text-[11px] text-gold-400 hover:text-gold-300 font-semibold"
                         >
                           Pay Full Balance ({formatCurrency(activeLoan.remainingBalance)})
                         </button>
@@ -1630,7 +1630,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                           onClick={() => setPayMethod(m)}
                           className={`p-3 rounded-xl border font-bold text-xs transition text-center ${
                             payMethod === m
-                              ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                              ? 'bg-navy-900 text-white border-gold-500 shadow-md'
                               : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-850'
                           }`}
                         >
@@ -1716,7 +1716,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
                         <button
                           onClick={() => setActivePaymentReceipt(p)}
-                          className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold transition flex items-center gap-1 shrink-0"
+                          className="px-3.5 py-2 bg-navy-900 hover:bg-gold-500 text-white rounded-xl font-semibold transition flex items-center gap-1 shrink-0"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>View / Print Receipt</span>
@@ -1759,7 +1759,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px]">Share Capital Equity</span>
-                  <span className="text-xl font-bold text-blue-300">
+                  <span className="text-xl font-bold text-gold-300">
                     {formatCurrency(currentMember?.shareCapital || 15000)}
                   </span>
                 </div>

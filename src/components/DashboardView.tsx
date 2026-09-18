@@ -322,11 +322,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       case 'Loan Repayment':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       case 'Savings Deposit':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-gold-500/20 text-gold-800 border-gold-400/30';
       case 'Savings Withdrawal':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'Fee':
-        return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+        return 'bg-gold-500/20 text-gold-800 border-gold-400/30';
       case 'Penalty':
         return 'bg-rose-100 text-rose-800 border-rose-200';
       case 'Adjustment':
@@ -377,7 +377,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 sm:p-7 rounded-3xl text-white shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-gold-500/20 text-gold-300 border border-gold-500/30 flex items-center gap-1">
               <Building2 className="w-3 h-3" />
               {activeBranch ? activeBranch.name : 'Consolidated Cooperative View'}
             </span>
@@ -404,7 +404,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </button>
           <button
             onClick={onOpenNewLoan}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-xs"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition shadow-xs"
           >
             <Zap className="w-4 h-4" />
             <span>Originate Loan</span>
@@ -413,7 +413,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             onClick={() => onNavigateTab('membership')}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs sm:text-sm font-semibold transition border border-slate-700"
           >
-            <UserPlus className="w-4 h-4 text-blue-400" />
+            <UserPlus className="w-4 h-4 text-gold-400" />
             <span>New Client / KYC</span>
           </button>
         </div>
@@ -423,7 +423,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div>
         <div className="flex items-center justify-between mb-3 px-1">
           <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-            <Layers className="w-4 h-4 text-blue-600" />
+            <Layers className="w-4 h-4 text-gold-600" />
             <span>Core Institutional Indicators (12 Key Metrics)</span>
           </h2>
           <span className="text-xs text-gray-500 font-medium">
@@ -442,7 +442,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                 1. Total Registered Clients
               </span>
-              <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition">
+              <div className="w-9 h-9 rounded-2xl bg-gold-500/10 text-gold-600 flex items-center justify-center group-hover:scale-110 transition">
                 <Users className="w-4 h-4" />
               </div>
             </div>
@@ -451,7 +451,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
             <div className="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
               <span>Member Masterfile</span>
-              <span className="text-blue-600 font-semibold group-hover:underline flex items-center gap-0.5">
+              <span className="text-gold-600 font-semibold group-hover:underline flex items-center gap-0.5">
                 View All <ChevronRight className="w-3 h-3" />
               </span>
             </div>
@@ -551,16 +551,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                 5. Approved Loans
               </span>
-              <div className="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition">
+              <div className="w-9 h-9 rounded-2xl bg-gold-500/10 text-gold-600 flex items-center justify-center group-hover:scale-110 transition">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-indigo-700 mt-2 font-mono">
+            <div className="text-2xl sm:text-3xl font-extrabold text-gold-700 mt-2 font-mono">
               {approvedLoansCount}
             </div>
             <div className="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
               <span className="font-mono">{formatCurrency(approvedLoansVolume)}</span>
-              <span className="text-indigo-600 font-semibold">Ready for Voucher</span>
+              <span className="text-gold-600 font-semibold">Ready for Voucher</span>
             </div>
           </div>
 
@@ -592,11 +592,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
                 7. Total Loan Portfolio
               </span>
-              <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-2xl bg-gold-500/10 text-gold-600 flex items-center justify-center">
                 <TrendingUp className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 font-mono">
+            <div className="text-xl sm:text-2xl font-extrabold text-gold-700 mt-2 font-mono">
               {formatCurrency(totalLoanPortfolio)}
             </div>
             <div className="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
@@ -679,14 +679,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             className="bg-white p-5 rounded-3xl border border-gray-200 shadow-2xs hover:shadow-md transition cursor-pointer group"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">
+              <span className="text-xs font-bold text-gold-800 uppercase tracking-wider">
                 11. Total Savings & Capital
               </span>
-              <div className="w-9 h-9 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:scale-110 transition">
+              <div className="w-9 h-9 rounded-2xl bg-gold-500/20 text-gold-700 flex items-center justify-center group-hover:scale-110 transition">
                 <PiggyBank className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-xl sm:text-2xl font-extrabold text-blue-700 mt-2 font-mono">
+            <div className="text-xl sm:text-2xl font-extrabold text-gold-700 mt-2 font-mono">
               {formatCurrency(grandTotalSavings)}
             </div>
             <div className="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
@@ -762,7 +762,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="flex flex-wrap items-center justify-center gap-6 pt-2 text-xs font-medium text-gray-600 border-t border-gray-100">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <div className="w-3 h-3 rounded-full bg-gold-500" />
               <span>Loan Disbursements (Outflow)</span>
             </div>
             <div className="flex items-center gap-2">
@@ -894,11 +894,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               onClick={() => setActiveTabSection('oversight')}
               className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold transition ${
                 activeTabSection === 'oversight'
-                  ? 'bg-indigo-700 text-white shadow-xs'
+                  ? 'bg-navy-800 text-white shadow-xs'
                   : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
               }`}
             >
-              <ShieldCheck className="w-4 h-4 text-indigo-300" />
+              <ShieldCheck className="w-4 h-4 text-gold-300" />
               <span>KALASAG Oversight</span>
               {oversightAuditFindings.filter((f) => f.status === 'open').length > 0 && (
                 <span className="px-2 py-0.5 rounded-full text-[11px] bg-rose-100 text-rose-800 font-mono">
@@ -935,7 +935,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
               <button
                 onClick={() => onNavigateTab('payments')}
-                className="text-xs font-bold text-blue-600 hover:underline px-2 py-1"
+                className="text-xs font-bold text-gold-600 hover:underline px-2 py-1"
               >
                 Full Ledger &rarr;
               </button>
@@ -955,7 +955,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   placeholder="Search reference #, borrower, account ID, notes..."
                   value={txSearchTerm}
                   onChange={(e) => setTxSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-gold-500/20"
                 />
               </div>
 
@@ -1023,7 +1023,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       return (
                         <tr key={tx.id} className="hover:bg-gray-50/80 transition">
                           <td className="py-3 px-4">
-                            <div className="font-mono font-bold text-blue-600">{tx.referenceNumber}</div>
+                            <div className="font-mono font-bold text-gold-600">{tx.referenceNumber}</div>
                             <div className="text-[10px] text-gray-400 font-mono">{tx.id}</div>
                           </td>
 
@@ -1121,7 +1121,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <div className="text-[11px] text-gray-500">Borrower ID: {loan.borrowerId}</div>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="font-mono font-bold text-blue-600">{loan.loanNumber}</span>
+                          <span className="font-mono font-bold text-gold-600">{loan.loanNumber}</span>
                           <div className="text-[11px] text-gray-500">{loan.productName}</div>
                         </td>
                         <td className="py-3 px-4">
@@ -1173,7 +1173,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <button
                 onClick={() => onNavigateTab('membership')}
-                className="text-xs font-bold text-blue-600 hover:underline"
+                className="text-xs font-bold text-gold-600 hover:underline"
               >
                 Go to Membership Desk &rarr;
               </button>
@@ -1243,7 +1243,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <button
                 onClick={() => onNavigateTab('loans')}
-                className="text-xs font-bold text-blue-600 hover:underline"
+                className="text-xs font-bold text-gold-600 hover:underline"
               >
                 Go to Loan Desk &rarr;
               </button>
@@ -1309,31 +1309,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {activeTabSection === 'oversight' && (
           <div className="p-4 sm:p-6 space-y-6">
             {/* Oversight Header Overview */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-indigo-900/90 text-white p-5 rounded-2xl border border-indigo-700 shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-navy-950/90 text-white p-5 rounded-2xl border border-gold-600 shadow-md">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-gold-500/30 text-slate-300 border border-gold-400/30">
                     KALASAG Institutional Oversight
                   </span>
-                  <span className="text-xs text-indigo-300">
+                  <span className="text-xs text-gold-300">
                     Active Snapshots • {oversightSnapshots.length} Recorded
                   </span>
                 </div>
                 <h3 className="text-xl font-bold">Comprehensive Risk Matrix & Portfolio Health</h3>
-                <p className="text-xs text-indigo-200">
+                <p className="text-xs text-slate-300">
                   Continuous oversight tracking portfolio at risk, collection variances, control exceptions, and corrective action plans (CAP).
                 </p>
               </div>
 
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <span className="text-xs text-indigo-300 block">Overall PAR &gt; 30 Rate</span>
+                  <span className="text-xs text-gold-300 block">Overall PAR &gt; 30 Rate</span>
                   <span className="text-2xl font-black text-amber-300 font-mono">
                     {stats.par30.toFixed(2)}%
                   </span>
                 </div>
-                <div className="text-right pl-3 border-l border-indigo-700">
-                  <span className="text-xs text-indigo-300 block">Open Audit Findings</span>
+                <div className="text-right pl-3 border-l border-gold-600">
+                  <span className="text-xs text-gold-300 block">Open Audit Findings</span>
                   <span className="text-2xl font-black text-rose-300 font-mono">
                     {oversightAuditFindings.filter((f) => f.status === 'open').length}
                   </span>
@@ -1363,10 +1363,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
                 <span className="text-xs font-semibold text-gray-500 block">Corrective Action Plans (CAP)</span>
-                <span className="text-xl font-bold text-blue-700 mt-1 block">
+                <span className="text-xl font-bold text-gold-700 mt-1 block">
                   {oversightCorrectiveActions.length} Actions
                 </span>
-                <span className="text-[11px] text-blue-600 font-medium">
+                <span className="text-[11px] text-gold-600 font-medium">
                   {oversightCorrectiveActions.filter((c) => c.status === 'in_progress').length} in progress
                 </span>
               </div>
@@ -1468,7 +1468,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                     'Verified and resolved during executive oversight session.'
                                   )
                                 }
-                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition"
+                                className="px-2.5 py-1 bg-navy-900 hover:bg-navy-800 text-white rounded-lg text-xs font-semibold transition"
                               >
                                 {finding.status === 'open' ? 'Start Remediation' : 'Close Finding'}
                               </button>
@@ -1619,7 +1619,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-blue-600" />
+                  <Receipt className="w-4 h-4 text-gold-600" />
                   <span>Accounts Payable & Supplier Invoices</span>
                 </h4>
                 <div className="flex items-center gap-2">
@@ -1703,7 +1703,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {/* Chart of Accounts Master */}
             <div className="space-y-3">
               <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <Scale className="w-4 h-4 text-indigo-600" />
+                <Scale className="w-4 h-4 text-gold-600" />
                 <span>Standard Cooperative Chart of Accounts</span>
               </h4>
 
@@ -1753,7 +1753,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-blue-600" />
+                <ShieldCheck className="w-5 h-5 text-gold-600" />
                 <h3 className="text-base font-bold text-gray-900">Financial Audit Certificate</h3>
               </div>
               <button
@@ -1772,7 +1772,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 <div>
                   <span className="text-gray-500 block">Reference #:</span>
-                  <span className="font-mono font-bold text-blue-600">{inspectingTx.referenceNumber}</span>
+                  <span className="font-mono font-bold text-gold-600">{inspectingTx.referenceNumber}</span>
                 </div>
                 <div>
                   <span className="text-gray-500 block">Transaction Type:</span>

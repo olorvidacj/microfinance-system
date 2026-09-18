@@ -119,9 +119,9 @@ export const LoansView: React.FC<LoansViewProps> = ({
   const getCoopStepBadge = (step?: CoopLoanStep) => {
     switch (step) {
       case 'SUBMITTED':
-        return { label: 'Step 1: Submitted', color: 'bg-blue-50 text-blue-700 border-blue-200' };
+        return { label: 'Step 1: Submitted', color: 'bg-gold-500/10 text-gold-700 border-gold-400/30' };
       case 'PROCESSOR_VERIFIED':
-        return { label: 'Step 2: Processor Verified', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+        return { label: 'Step 2: Processor Verified', color: 'bg-gold-500/10 text-gold-700 border-gold-400/30' };
       case 'BOOKKEEPER_VERIFIED':
         return { label: 'Step 3: Bookkeeper Checked', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
       case 'CREDIT_COMM_INTERVIEW':
@@ -181,11 +181,11 @@ export const LoansView: React.FC<LoansViewProps> = ({
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-150">
       {/* Top Banner: Cooperative 6-Step Loan Pipeline */}
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
+      <div className="bg-gradient-to-r from-slate-900 to-navy-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 text-xs font-semibold uppercase tracking-wider">
-              <FileSpreadsheet className="w-3.5 h-3.5 text-blue-300" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-500/20 text-slate-300 border border-gold-400/30 text-xs font-semibold uppercase tracking-wider">
+              <FileSpreadsheet className="w-3.5 h-3.5 text-gold-300" />
               3. Loans Services Module
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">6-Step Cooperative Loan Pipeline & Vouchers</h1>
@@ -197,7 +197,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={onOpenNewLoan}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold transition shadow-md"
+              className="flex items-center gap-2 px-4 py-2.5 bg-navy-900 hover:bg-gold-500 text-white rounded-xl text-sm font-semibold transition shadow-md"
             >
               <PlusCircle className="w-4 h-4" />
               <span>Apply for Member Loan</span>
@@ -208,16 +208,16 @@ export const LoansView: React.FC<LoansViewProps> = ({
         {/* 6-Step Visual Diagram */}
         <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-6 border-t border-white/10 text-xs">
           <div className="bg-white/5 backdrop-blur-xs p-3 rounded-2xl border border-white/10">
-            <div className="flex items-center gap-1.5 font-bold text-blue-300">
-              <span className="w-4 h-4 rounded-full bg-blue-500/30 flex items-center justify-center text-[10px] text-white">1</span>
+            <div className="flex items-center gap-1.5 font-bold text-gold-300">
+              <span className="w-4 h-4 rounded-full bg-gold-500/30 flex items-center justify-center text-[10px] text-white">1</span>
               Application
             </div>
             <p className="text-slate-300 mt-1 text-[11px]">Member submission</p>
           </div>
 
           <div className="bg-white/5 backdrop-blur-xs p-3 rounded-2xl border border-white/10">
-            <div className="flex items-center gap-1.5 font-bold text-indigo-300">
-              <span className="w-4 h-4 rounded-full bg-indigo-500/30 flex items-center justify-center text-[10px] text-white">2</span>
+            <div className="flex items-center gap-1.5 font-bold text-gold-300">
+              <span className="w-4 h-4 rounded-full bg-gold-500/30 flex items-center justify-center text-[10px] text-white">2</span>
               Processor
             </div>
             <p className="text-slate-300 mt-1 text-[11px]">Check capacity & docs</p>
@@ -290,7 +290,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
             <select
               value={stepFilter}
               onChange={(e) => setStepFilter(e.target.value)}
-              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200/80 rounded-xl text-slate-800 focus:outline-none font-semibold text-blue-900"
+              className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200/80 rounded-xl text-slate-800 focus:outline-none font-semibold text-navy-900"
             >
               <option value="ALL">All Cooperative Steps</option>
               <option value="SUBMITTED">1. Submitted (Pending Processor)</option>
@@ -324,7 +324,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
               onClick={() => setStatusFilter(tab.id)}
               className={`px-3.5 py-1.5 rounded-full font-medium transition whitespace-nowrap ${
                 statusFilter === tab.id
-                  ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                  ? 'bg-navy-900 text-white font-semibold shadow-xs'
                   : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -343,7 +343,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
           return (
             <div
               key={loan.id}
-              className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs hover:border-blue-200 transition space-y-4"
+              className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs hover:border-gold-400/30 transition space-y-4"
             >
               {/* Top Row: Borrower & Step Info */}
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -359,7 +359,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
                       <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono">
                         {loan.loanNumber}
                       </span>
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-gold-500/10 text-gold-700 font-medium">
                         {loan.productName}
                       </span>
                     </div>
@@ -395,7 +395,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-400">Remaining Balance:</span>
-                  <p className="text-base font-bold text-blue-700 mt-0.5">{formatCurrency(loan.remainingBalance)}</p>
+                  <p className="text-base font-bold text-gold-700 mt-0.5">{formatCurrency(loan.remainingBalance)}</p>
                 </div>
                 <div>
                   <span className="text-slate-400">Total Repaid ({percentPaid}%):</span>
@@ -449,7 +449,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
                   {loan.status === 'Draft' && (
                     <button
                       onClick={() => onSelectLoan(loan)}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+                      className="px-3.5 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
                     >
                       <FileCheck className="w-3.5 h-3.5" />
                       Submit Application
@@ -752,7 +752,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
                       </div>
                       <div className="bg-slate-50 p-2.5 rounded-xl">
                         <span className="text-slate-400 block text-[10px]">Total Active Debt</span>
-                        <span className="font-bold text-blue-700">{formatCurrency(evalResult.activeLoanBalance)}</span>
+                        <span className="font-bold text-gold-700">{formatCurrency(evalResult.activeLoanBalance)}</span>
                       </div>
                     </div>
 

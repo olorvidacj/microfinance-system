@@ -55,6 +55,14 @@ export interface StaffBranchAssignmentResponse {
     city?: string;
     phone?: string;
   };
+  adminContact?: {
+    name: string;
+    email: string;
+    title?: string;
+    phone?: string;
+    location?: string;
+  };
+  token?: string;
   message?: string;
 }
 

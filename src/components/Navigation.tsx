@@ -57,7 +57,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
       label: 'Client Registration & KYC',
       icon: Users2,
       badge: pendingAppsCount > 0 ? pendingAppsCount : undefined,
-      badgeColor: 'bg-blue-100 text-blue-700 font-semibold',
+      badgeColor: 'bg-gold-500/20 text-gold-700 font-semibold',
     },
     {
       id: 'loans' as NavTab,
@@ -85,7 +85,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
       label: 'Group Lending & Solidarity',
       icon: Users,
       badge: 'Grameen',
-      badgeColor: 'bg-indigo-100 text-indigo-700 font-semibold',
+      badgeColor: 'bg-gold-500/20 text-gold-700 font-semibold',
     },
     {
       id: 'roles' as NavTab,
@@ -129,11 +129,11 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
                 onClick={() => onTabChange(item.id)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition whitespace-nowrap ${
                   isActive
-                    ? 'bg-blue-600/10 text-blue-600 font-semibold'
+                    ? 'bg-navy-900/10 text-gold-600 font-semibold'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+                <Icon className={`w-4 h-4 ${isActive ? 'text-gold-600' : 'text-slate-400'}`} />
                 <span>{item.label}</span>
                 {item.badge !== undefined && (
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-mono ${item.badgeColor || 'bg-slate-100 text-slate-600'}`}>

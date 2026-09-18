@@ -69,14 +69,14 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Landmark className="w-3.5 h-3.5 text-blue-600" /> Total Portfolio
+          <Landmark className="w-3.5 h-3.5 text-gold-600" /> Total Portfolio
         </div>
         <div className={statValue}>₱{stats.totalPortfolio.toLocaleString()}</div>
         <div className="text-xs text-emerald-600 mt-1">{stats.activeLoansCount} active loans</div>
       </div>
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Wallet className="w-3.5 h-3.5 text-indigo-600" /> Outstanding
+          <Wallet className="w-3.5 h-3.5 text-gold-600" /> Outstanding
         </div>
         <div className={statValue}>₱{stats.totalOutstanding.toLocaleString()}</div>
         <div className="text-xs text-slate-500 mt-1">PAR {'>'} 30: {stats.par30Ratio}%</div>
@@ -102,14 +102,14 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Users2 className="w-3.5 h-3.5 text-blue-600" /> Total Members
+          <Users2 className="w-3.5 h-3.5 text-gold-600" /> Total Members
         </div>
         <div className={statValue}>{filteredBorrowers.length}</div>
         <div className="text-xs text-slate-500 mt-1">Active: {stats.activeBorrowersCount}</div>
       </div>
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <BookOpen className="w-3.5 h-3.5 text-indigo-600" /> Pending Membership
+          <BookOpen className="w-3.5 h-3.5 text-gold-600" /> Pending Membership
         </div>
         <div className={statValue}>{pendingMembership}</div>
         <div className="text-xs text-slate-500 mt-1">awaiting KYC / committee</div>
@@ -137,7 +137,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Applications
+          <FileSpreadsheet className="w-3.5 h-3.5 text-gold-600" /> Applications
         </div>
         <div className={statValue}>{filteredLoans.length}</div>
         <div className="text-xs text-slate-500 mt-1">total loan applications</div>
@@ -170,7 +170,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Receipt className="w-3.5 h-3.5 text-blue-600" /> Payments Collected
+          <Receipt className="w-3.5 h-3.5 text-gold-600" /> Payments Collected
         </div>
         <div className={statValue}>₱{stats.totalCollected.toLocaleString()}</div>
         <div className="text-xs text-slate-500 mt-1">{filteredPayments.length} transactions</div>
@@ -191,7 +191,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
       </div>
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" /> Collection Efficiency
+          <CheckCircle2 className="w-3.5 h-3.5 text-gold-600" /> Collection Efficiency
         </div>
         <div className={statValue}>{stats.collectionEfficiency}%</div>
         <div className="text-xs text-slate-500 mt-1">current month</div>
@@ -203,7 +203,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Building2 className="w-3.5 h-3.5 text-indigo-600" /> Branch Portfolio
+          <Building2 className="w-3.5 h-3.5 text-gold-600" /> Branch Portfolio
         </div>
         <div className={statValue}>₱{stats.totalPortfolio.toLocaleString()}</div>
         <div className="text-xs text-slate-500 mt-1">total outstanding portfolio</div>
@@ -238,7 +238,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Total Disbursed
+          <FileSpreadsheet className="w-3.5 h-3.5 text-gold-600" /> Total Disbursed
         </div>
         <div className={statValue}>₱{stats.totalDisbursed.toLocaleString()}</div>
         <div className="text-xs text-slate-500 mt-1">cumulative loan disbursements</div>
@@ -259,7 +259,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
       </div>
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Wallet className="w-3.5 h-3.5 text-indigo-600" /> Net Position
+          <Wallet className="w-3.5 h-3.5 text-gold-600" /> Net Position
         </div>
         <div className={statValue}>
           ₱{(stats.totalDisbursed - stats.totalCollected).toLocaleString()}
@@ -339,7 +339,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Landmark className="w-3.5 h-3.5 text-blue-600" /> Cooperative Portfolio
+          <Landmark className="w-3.5 h-3.5 text-gold-600" /> Cooperative Portfolio
         </div>
         <div className={statValue}>₱{stats.totalPortfolio.toLocaleString()}</div>
         <div className="text-xs text-slate-500 mt-1">all branches combined</div>
@@ -353,7 +353,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
       </div>
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Vote className="w-3.5 h-3.5 text-indigo-600" /> BOD Membership
+          <Vote className="w-3.5 h-3.5 text-gold-600" /> BOD Membership
         </div>
         <div className={statValue}>{pendingMembership}</div>
         <div className="text-xs text-slate-500 mt-1">applications for BOD approval</div>
@@ -372,14 +372,14 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Vote className="w-3.5 h-3.5 text-indigo-600" /> Committee Reviews
+          <Vote className="w-3.5 h-3.5 text-gold-600" /> Committee Reviews
         </div>
         <div className={statValue}>{filteredLoans.filter((l) => l.status === 'Submitted' || l.status === 'Under Review').length}</div>
         <div className="text-xs text-slate-500 mt-1">awaiting committee evaluation</div>
       </div>
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" /> Loan Portfolio
+          <FileSpreadsheet className="w-3.5 h-3.5 text-gold-600" /> Loan Portfolio
         </div>
         <div className={statValue}>₱{stats.totalOutstanding.toLocaleString()}</div>
         <div className="text-xs text-slate-500 mt-1">outstanding exposure</div>
@@ -405,7 +405,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
     <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
       <div className={cardBase}>
         <div className={`${statLabel} flex items-center gap-1.5`}>
-          <Search className="w-3.5 h-3.5 text-blue-600" /> Transactions Reviewed
+          <Search className="w-3.5 h-3.5 text-gold-600" /> Transactions Reviewed
         </div>
         <div className={statValue}>{filteredPayments.length}</div>
         <div className="text-xs text-slate-500 mt-1">collection transactions</div>
@@ -484,10 +484,10 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
             Welcome back, {currentUser.name.split(' ')[0]} 👋
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            <span className="font-semibold text-blue-700">{roleDef.name}</span> · {roleDef.description}
+            <span className="font-semibold text-gold-700">{roleDef.name}</span> · {roleDef.description}
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-100 text-xs font-semibold text-blue-700">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gold-500/10 border border-gold-400/30 text-xs font-semibold text-gold-700">
           <ShieldCheck className="w-4 h-4" />
           {normalizedRole} Dashboard
         </span>
@@ -519,14 +519,14 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
               </div>
             )}
             {pendingMembership > 0 && (
-              <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                <div className="text-sm text-blue-700 font-medium">
+              <div className="flex items-center justify-between bg-gold-500/10 border border-gold-400/30 rounded-xl px-4 py-3">
+                <div className="text-sm text-gold-700 font-medium">
                   <span className="font-bold">{pendingMembership}</span> membership applications awaiting processing.
                 </div>
                 {onNavigateTab && (
                   <button
                     onClick={() => onNavigateTab('membership')}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-gold-700 hover:underline"
                   >
                     Review <ArrowRight className="w-3.5 h-3.5" />
                   </button>
@@ -542,7 +542,7 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
         {quickActions.length > 0 && (
           <div className={cardBase}>
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 mb-3">
-              <Briefcase className="w-4 h-4 text-blue-600" /> Quick Actions
+              <Briefcase className="w-4 h-4 text-gold-600" /> Quick Actions
             </h3>
             <div className="space-y-2">
               {quickActions.map((a) => {
@@ -551,9 +551,9 @@ export const RoleDashboard: React.FC<RoleDashboardProps> = ({
                   <button
                     key={a.label}
                     onClick={a.onClick}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-700 font-medium hover:bg-blue-50 hover:border-blue-200 transition"
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-700 font-medium hover:bg-gold-500/10 hover:border-gold-400/30 transition"
                   >
-                    <Icon className="w-4 h-4 text-blue-600" />
+                    <Icon className="w-4 h-4 text-gold-600" />
                     {a.label}
                     <ArrowRight className="w-3.5 h-3.5 ml-auto text-slate-300" />
                   </button>

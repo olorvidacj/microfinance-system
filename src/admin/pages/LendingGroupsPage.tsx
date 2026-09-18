@@ -78,10 +78,10 @@ export const LendingGroupsPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Solidarity Lending Groups" value={groups.length} icon={Users2} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Solidarity Lending Groups" value={groups.length} icon={Users2} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Active Centers in Good Standing" value={groups.filter((g) => g.status === 'Active').length} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Pending Originations" value={groups.filter((g) => g.status === 'Pending').length} icon={Clock} iconColor="text-amber-600" iconBg="bg-amber-50" />
-        <StatCard title="Cumulative Group Portfolio" value={formatPHP(totalLoans)} icon={RefreshCw} iconColor="text-indigo-600" iconBg="bg-indigo-50" subtitle={`Average repayment ${avgRepayment}%`} accentBorder />
+        <StatCard title="Cumulative Group Portfolio" value={formatPHP(totalLoans)} icon={RefreshCw} iconColor="text-gold-600" iconBg="bg-gold-500/10" subtitle={`Average repayment ${avgRepayment}%`} accentBorder />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">
@@ -118,7 +118,7 @@ export const LendingGroupsPage: React.FC = () => {
               key: 'memberCount',
               header: 'Membership',
               render: (g) => (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gold-500/10 text-gold-700 border border-gold-400/30">
                   {g.memberCount} members
                 </span>
               ),

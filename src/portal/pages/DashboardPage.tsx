@@ -332,13 +332,13 @@ const KycAlertCard: React.FC<{ kyc: KycStatusData | null; status: KYCStatus }> =
       desc: 'Complete your Know-Your-Customer verification to apply for a loan.',
     },
     PENDING: {
-      cls: 'border-blue-200 bg-blue-50',
+      cls: 'border-gold-400/30 bg-gold-500/10',
       icon: Clock,
       title: 'KYC under review',
       desc: 'Your KYC submission is being reviewed. You can apply for a loan once verified.',
     },
     UNDER_REVIEW: {
-      cls: 'border-blue-200 bg-blue-50',
+      cls: 'border-gold-400/30 bg-gold-500/10',
       icon: Eye,
       title: 'KYC under review',
       desc: 'Your information is being reviewed by our staff.',

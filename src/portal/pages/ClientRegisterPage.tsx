@@ -247,24 +247,24 @@ const ClientRegisterPage: React.FC = () => {
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
                     s.id < step
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-gold-400 text-navy-950'
                       : s.id === step
-                        ? 'bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500'
+                        ? 'bg-gold-500/10 text-gold-700 ring-2 ring-gold-400'
                         : 'bg-slate-100 text-slate-400'
                   }`}
                 >
                   {s.id < step ? <Check className="h-4 w-4" /> : <s.icon className="h-4 w-4" />}
                 </div>
-                <span className={`text-[10px] font-medium ${s.id <= step ? 'text-emerald-700' : 'text-slate-400'}`}>
+                <span className={`text-[10px] font-medium ${s.id <= step ? 'text-gold-700' : 'text-slate-400'}`}>
                   {s.label}
                 </span>
               </div>
-              {s.id < STEPS.length && <div className={`mx-1 mb-4 h-0.5 flex-1 rounded ${s.id < step ? 'bg-emerald-500' : 'bg-slate-200'}`} />}
+              {s.id < STEPS.length && <div className={`mx-1 mb-4 h-0.5 flex-1 rounded ${s.id < step ? 'bg-gold-400' : 'bg-slate-200'}`} />}
             </div>
           ))}
         </div>
         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 sm:hidden">
-          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(step / STEPS.length) * 100}%` }} />
+          <div className="h-full bg-gold-400 transition-all" style={{ width: `${(step / STEPS.length) * 100}%` }} />
         </div>
         <h3 className="mt-5 text-lg font-semibold text-slate-800">{STEPS[step - 1].label} details</h3>
       </div>
@@ -344,7 +344,7 @@ const ClientRegisterPage: React.FC = () => {
 
         {step === 3 && (
           <>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <div className="rounded-xl border border-gold-400/40 bg-gold-500/10 p-4 text-sm text-navy-900">
               <div className="flex items-center gap-2 font-semibold">
                 <Phone className="h-4 w-4" /> Verify your mobile number
               </div>
@@ -371,7 +371,7 @@ const ClientRegisterPage: React.FC = () => {
                   />
                 </Field>
                 {otpVerified ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-gold-700">
                     <BadgeCheck className="h-4 w-4" /> Verified
                   </div>
                 ) : (
@@ -471,10 +471,10 @@ const ClientRegisterPage: React.FC = () => {
                 type="checkbox"
                 checked={form.consentTerms}
                 onChange={(e) => set('consentTerms', e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
               />
               <span>
-                I agree to the HOSCOMO <span className="font-medium text-emerald-700">Terms of Service</span> and confirm
+                I agree to the HOSCOMO <span className="font-medium text-gold-700">Terms of Service</span> and confirm
                 that the information I provided is true and complete.
               </span>
             </label>
@@ -483,11 +483,11 @@ const ClientRegisterPage: React.FC = () => {
                 type="checkbox"
                 checked={form.consentPrivacy}
                 onChange={(e) => set('consentPrivacy', e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
               />
               <span>
                 I consent to the processing of my personal data for member services, in accordance with the{' '}
-                <span className="font-medium text-emerald-700">Data Privacy Policy</span> of HOSCOMO.
+                <span className="font-medium text-gold-700">Data Privacy Policy</span> of HOSCOMO.
               </span>
             </label>
           </>
@@ -511,7 +511,7 @@ const ClientRegisterPage: React.FC = () => {
 
       <p className="mt-6 text-center text-xs text-slate-400">
         Already have an account?{' '}
-        <Link to="/portal/login" className="font-medium text-emerald-700 hover:underline">
+        <Link to="/portal/login" className="font-medium text-gold-700 hover:underline">
           Sign in
         </Link>
       </p>

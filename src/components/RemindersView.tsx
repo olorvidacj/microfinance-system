@@ -154,7 +154,7 @@ export const RemindersView: React.FC = () => {
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-2xs overflow-hidden">
           <div className="p-4 sm:p-5 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-gold-500/10 text-gold-600 flex items-center justify-center">
                 <BellRing className="w-4 h-4" />
               </div>
               <div>
@@ -164,7 +164,7 @@ export const RemindersView: React.FC = () => {
                 <p className="text-xs text-gray-500">Accounts requiring payment engagement</p>
               </div>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gold-500/20 text-gold-700">
               {actionableInstallments.length} Due Accounts
             </span>
           </div>
@@ -217,7 +217,7 @@ export const RemindersView: React.FC = () => {
 
                     <button
                       onClick={() => handleOpenAiModal(item)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-navy-900 to-navy-900 hover:from-navy-800 hover:to-navy-800 text-white rounded-xl text-xs font-semibold transition shadow-xs"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>Draft AI Notice</span>
@@ -277,7 +277,7 @@ export const RemindersView: React.FC = () => {
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gold-500/20 text-gold-600 flex items-center justify-center">
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
@@ -340,7 +340,7 @@ export const RemindersView: React.FC = () => {
                   <button
                     onClick={() => generateAiNotice(selectedItem, urgency, channel)}
                     disabled={loadingAi}
-                    className="text-blue-600 hover:text-blue-700 flex items-center gap-1 font-normal"
+                    className="text-gold-600 hover:text-gold-700 flex items-center gap-1 font-normal"
                   >
                     <RefreshCw className={`w-3 h-3 ${loadingAi ? 'animate-spin' : ''}`} />
                     <span>Regenerate</span>
@@ -357,7 +357,7 @@ export const RemindersView: React.FC = () => {
 
               {loadingAi ? (
                 <div className="p-8 bg-gray-50 rounded-xl border border-gray-200 text-center text-gray-500 text-xs">
-                  <Sparkles className="w-6 h-6 mx-auto text-blue-600 animate-pulse mb-2" />
+                  <Sparkles className="w-6 h-6 mx-auto text-gold-600 animate-pulse mb-2" />
                   Drafting customized repayment notice using Gemini AI...
                 </div>
               ) : (
@@ -365,7 +365,7 @@ export const RemindersView: React.FC = () => {
                   rows={5}
                   value={generatedMessage}
                   onChange={(e) => setGeneratedMessage(e.target.value)}
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-sans text-gray-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-sans text-gray-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-gold-500/20"
                 />
               )}
             </div>
@@ -385,7 +385,7 @@ export const RemindersView: React.FC = () => {
                 className={`py-2 px-5 rounded-xl text-sm font-semibold text-white flex items-center gap-2 transition shadow-sm ${
                   sentSuccess
                     ? 'bg-emerald-600'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+                    : 'bg-gradient-to-r from-navy-900 to-navy-900 hover:from-navy-800 hover:to-navy-800'
                 }`}
               >
                 {sentSuccess ? (

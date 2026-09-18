@@ -100,7 +100,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               onClick={() => setActiveSubTab('repayments')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${
                 activeSubTab === 'repayments'
-                  ? 'bg-blue-600 text-white shadow-xs'
+                  ? 'bg-navy-900 text-white shadow-xs'
                   : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
               }`}
             >
@@ -108,7 +108,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               <span>Loan Installment Receipts</span>
               <span
                 className={`text-xs px-2 py-0.5 rounded-full ${
-                  activeSubTab === 'repayments' ? 'bg-blue-700 text-white' : 'bg-gray-200 text-gray-700'
+                  activeSubTab === 'repayments' ? 'bg-navy-800 text-white' : 'bg-gray-200 text-gray-700'
                 }`}
               >
                 {filteredPayments.length}
@@ -197,7 +197,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               <div className="text-2xl font-bold text-gray-900 font-mono mt-1">
                 {formatCurrency(stats.totalVaultCash)}
               </div>
-              <div className="text-xs text-blue-600 font-medium mt-1">Ready for re-disbursement</div>
+              <div className="text-xs text-gold-600 font-medium mt-1">Ready for re-disbursement</div>
             </div>
           </div>
 
@@ -210,7 +210,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 placeholder="Search by receipt #, loan #, borrower, or reference..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500"
               />
             </div>
 
@@ -259,7 +259,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       return (
                         <tr key={pay.id} className="hover:bg-gray-50/80 transition">
                           <td className="py-3.5 px-4 sm:px-6">
-                            <span className="font-mono font-bold text-blue-600 text-xs">
+                            <span className="font-mono font-bold text-gold-600 text-xs">
                               {pay.receiptNumber}
                             </span>
                           </td>

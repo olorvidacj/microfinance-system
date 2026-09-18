@@ -101,7 +101,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
       case 'Active':
         return 'bg-emerald-100 text-emerald-800 border-emerald-300';
       case 'Pending':
-        return 'bg-blue-100 text-blue-800 border-blue-300';
+        return 'bg-gold-500/20 text-gold-800 border-gold-400/50';
       case 'Inactive':
         return 'bg-slate-100 text-slate-700 border-slate-300';
       case 'Suspended':
@@ -188,7 +188,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
     <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-4xl w-full my-6 shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150">
         {/* Header Strip */}
-        <div className="p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
+        <div className="p-6 bg-gradient-to-r from-slate-900 via-navy-950 to-navy-950 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4">
             <img
               src={client.avatar}
@@ -198,7 +198,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold tracking-tight text-white">{client.fullName}</h2>
-                <span className="text-xs font-mono px-2.5 py-0.5 rounded-md bg-white/10 text-indigo-200 border border-white/10 font-bold">
+                <span className="text-xs font-mono px-2.5 py-0.5 rounded-md bg-white/10 text-slate-300 border border-white/10 font-bold">
                   {client.borrowerNumber || client.clientId}
                 </span>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusBadge(client.clientStatus || client.memberStatus)}`}>
@@ -210,15 +210,15 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               </p>
               <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-300">
                 <span className="flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-indigo-300" />
+                  <Phone className="w-3.5 h-3.5 text-gold-300" />
                   {client.phone}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Mail className="w-3.5 h-3.5 text-indigo-300" />
+                  <Mail className="w-3.5 h-3.5 text-gold-300" />
                   {client.email}
                 </span>
                 <span className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-300" />
+                  <MapPin className="w-3.5 h-3.5 text-gold-300" />
                   {client.barangay ? `${client.barangay}, ` : ''}{client.city || client.address}
                 </span>
               </div>
@@ -261,7 +261,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                 onClick={() => setActiveTab(t.id as any)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 whitespace-nowrap ${
                   activeTab === t.id
-                    ? 'bg-blue-600 text-white shadow-xs'
+                    ? 'bg-navy-900 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
                 }`}
               >
@@ -280,7 +280,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
             {canReviewKyc && (
               <button
                 onClick={() => setShowKycDecisionModal(true)}
-                className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-gold-500/10 text-gold-700 border border-gold-400/50 hover:bg-gold-500/20 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 Review KYC
@@ -332,7 +332,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Credit Rating</span>
                   <p className="font-bold text-slate-800 text-sm mt-0.5">
-                    {client.creditScore} Score <span className="text-xs text-blue-600">({client.creditTier})</span>
+                    {client.creditScore} Score <span className="text-xs text-gold-600">({client.creditTier})</span>
                   </p>
                 </div>
 
@@ -355,7 +355,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                    <User className="w-4 h-4 text-blue-600" />
+                    <User className="w-4 h-4 text-gold-600" />
                     Personal & Demographic Identification
                   </h3>
                   <span className="text-[11px] text-slate-400">Client ID: {client.borrowerNumber || client.clientId}</span>
@@ -393,7 +393,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-blue-600" />
+                    <MapPin className="w-4 h-4 text-gold-600" />
                     Contact Information & Residential Address
                   </h3>
                   <span className="text-[11px] text-slate-400">{client.homeOwnership || 'Owned'} Home</span>
@@ -447,7 +447,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                    <Briefcase className="w-4 h-4 text-blue-600" />
+                    <Briefcase className="w-4 h-4 text-gold-600" />
                     Employment & Financial Profile
                   </h3>
                   <span className="text-[11px] font-semibold text-emerald-600">
@@ -491,7 +491,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-blue-600" />
+                    <ShieldCheck className="w-4 h-4 text-gold-600" />
                     KYC Compliance Verification Desk
                   </h3>
                   <p className="text-[11px] text-slate-400">
@@ -501,7 +501,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                 {canUploadDocs && (
                   <button
                     onClick={() => setShowUploadDocModal(true)}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-1.5 transition text-xs shadow-xs"
+                    className="px-3 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-lg font-semibold flex items-center gap-1.5 transition text-xs shadow-xs"
                   >
                     <Upload className="w-3.5 h-3.5" />
                     Upload Document
@@ -564,11 +564,11 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                     {(client.kycDocuments || []).map((doc) => (
                       <div
                         key={doc.id}
-                        className="p-3.5 bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:shadow-xs transition flex flex-col justify-between space-y-2"
+                        className="p-3.5 bg-white border border-slate-200 rounded-xl hover:border-gold-400/50 hover:shadow-xs transition flex flex-col justify-between space-y-2"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-start gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center font-bold shrink-0 mt-0.5">
+                            <div className="w-8 h-8 rounded-lg bg-gold-500/10 border border-gold-400/30 text-gold-700 flex items-center justify-center font-bold shrink-0 mt-0.5">
                               <FileText className="w-4 h-4" />
                             </div>
                             <div>
@@ -607,7 +607,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                             <button
                               type="button"
                               onClick={() => alert(`Simulated document preview for: ${doc.fileName}`)}
-                              className="px-2 py-1 text-[11px] text-blue-600 hover:bg-blue-50 rounded-md font-semibold transition"
+                              className="px-2 py-1 text-[11px] text-gold-600 hover:bg-gold-500/10 rounded-md font-semibold transition"
                             >
                               View File
                             </button>
@@ -655,7 +655,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <History className="w-4 h-4 text-blue-600" />
+                    <History className="w-4 h-4 text-gold-600" />
                     Client Status Lifecycle & Audit Trail
                   </h3>
                   <p className="text-[11px] text-slate-400">
@@ -668,7 +668,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                       setNewStatus(client.clientStatus || client.memberStatus || 'Active');
                       setShowStatusModal(true);
                     }}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center gap-1.5 transition text-xs shadow-xs"
+                    className="px-3 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-lg font-semibold flex items-center gap-1.5 transition text-xs shadow-xs"
                   >
                     <History className="w-3.5 h-3.5" />
                     Record Status Change
@@ -688,7 +688,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                       key={log.id}
                       className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3"
                     >
-                      <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0 mt-0.5">
+                      <div className="w-7 h-7 rounded-full bg-gold-500/20 text-gold-700 flex items-center justify-center font-bold shrink-0 mt-0.5">
                         <CheckCircle2 className="w-4 h-4" />
                       </div>
                       <div className="flex-1">
@@ -717,7 +717,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-blue-600" />
+                    <CreditCard className="w-4 h-4 text-gold-600" />
                     Loan Portfolio & Savings Accounts
                   </h3>
                   <p className="text-[11px] text-slate-400">Credit exposure and repayment performance records.</p>
@@ -747,13 +747,13 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                     <div
                       key={loan.id}
                       onClick={() => onSelectLoan && onSelectLoan(loan)}
-                      className="p-3.5 bg-white border border-slate-200 hover:border-blue-400 rounded-xl flex items-center justify-between transition cursor-pointer shadow-xs"
+                      className="p-3.5 bg-white border border-slate-200 hover:border-gold-400 rounded-xl flex items-center justify-between transition cursor-pointer shadow-xs"
                     >
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-blue-900">{loan.loanNumber}</span>
+                          <span className="font-mono font-bold text-navy-900">{loan.loanNumber}</span>
                           <span className="text-slate-600 font-semibold">• {loan.productName}</span>
-                          <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-gold-500/10 text-gold-700 border border-gold-400/30">
                             {loan.status}
                           </span>
                         </div>
@@ -776,7 +776,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 text-slate-500 text-[11px]">
-            <Lock className="w-3.5 h-3.5 text-blue-600" />
+            <Lock className="w-3.5 h-3.5 text-gold-600" />
             <span>Sensitive records protected under Role-Based Access Control</span>
           </div>
           <button
@@ -794,7 +794,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150 text-xs">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <History className="w-4 h-4 text-blue-600" />
+                <History className="w-4 h-4 text-gold-600" />
                 Update Client Account Status
               </h3>
               <button onClick={() => setShowStatusModal(false)} className="text-slate-400 hover:text-slate-600">
@@ -842,7 +842,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xs"
+                  className="px-4 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-bold shadow-xs"
                 >
                   Confirm Status Change
                 </button>
@@ -858,7 +858,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150 text-xs">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-blue-600" />
+                <ShieldCheck className="w-4 h-4 text-gold-600" />
                 KYC Verification Decision Desk
               </h3>
               <button onClick={() => setShowKycDecisionModal(false)} className="text-slate-400 hover:text-slate-600">
@@ -880,7 +880,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                       type="button"
                       onClick={() => setKycDecision(d.id as any)}
                       className={`p-2 rounded-xl border text-center font-bold transition ${
-                        kycDecision === d.id ? `${d.color} ring-2 ring-blue-500/20` : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        kycDecision === d.id ? `${d.color} ring-2 ring-gold-500/20` : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                     >
                       {d.label}
@@ -905,7 +905,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                     className="flex items-center gap-2 text-left w-full text-slate-700 hover:text-slate-900"
                   >
                     {checkedChecklist.includes(item) ? (
-                      <CheckSquare className="w-4 h-4 text-blue-600 shrink-0" />
+                      <CheckSquare className="w-4 h-4 text-gold-600 shrink-0" />
                     ) : (
                       <Square className="w-4 h-4 text-slate-400 shrink-0" />
                     )}
@@ -964,7 +964,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150 text-xs">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Upload className="w-4 h-4 text-blue-600" />
+                <Upload className="w-4 h-4 text-gold-600" />
                 Upload New KYC Document
               </h3>
               <button onClick={() => setShowUploadDocModal(false)} className="text-slate-400 hover:text-slate-600">
@@ -1027,7 +1027,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xs"
+                  className="px-4 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-bold shadow-xs"
                 >
                   Attach & Upload
                 </button>

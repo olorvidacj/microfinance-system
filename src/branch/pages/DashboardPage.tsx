@@ -127,7 +127,7 @@ export const DashboardPage: React.FC = () => {
       <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-[#091527] p-6 text-white shadow-xl">
         {/* Subtle background glow & texture */}
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute -left-10 -bottom-10 h-48 w-48 rounded-full bg-blue-500/10 blur-2xl pointer-events-none" />
+        <div className="absolute -left-10 -bottom-10 h-48 w-48 rounded-full bg-gold-500/10 blur-2xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
           <div>
@@ -528,7 +528,7 @@ export const DashboardPage: React.FC = () => {
         <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center justify-between p-5 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500/10 text-gold-600 border border-gold-400/30">
                 <Users className="h-5 w-5" />
               </div>
               <div>
@@ -538,7 +538,7 @@ export const DashboardPage: React.FC = () => {
             </div>
             <Link
               to="/staff/app/clients"
-              className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              className="text-xs font-bold text-gold-600 hover:text-gold-700 flex items-center gap-1"
             >
               Directory <ChevronRight className="h-3.5 w-3.5" />
             </Link>
@@ -575,7 +575,7 @@ export const DashboardPage: React.FC = () => {
         <div className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center justify-between p-5 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold-500/10 text-gold-600 border border-gold-400/30">
                 <ScrollText className="h-5 w-5" />
               </div>
               <div>
@@ -585,7 +585,7 @@ export const DashboardPage: React.FC = () => {
             </div>
             <Link
               to="/staff/app/transactions"
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+              className="text-xs font-bold text-gold-600 hover:text-gold-700 flex items-center gap-1"
             >
               Full Ledger <ChevronRight className="h-3.5 w-3.5" />
             </Link>
@@ -729,11 +729,11 @@ const SummaryCard: React.FC<{
   onClick?: () => void;
 }> = ({ title, value, subtitle, icon: Icon, tone, badge, trend, onClick }) => {
   const toneClasses: Record<string, { bg: string; text: string; border: string }> = {
-    blue: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'hover:border-blue-300' },
+    blue: { bg: 'bg-gold-500/10', text: 'text-gold-600', border: 'hover:border-gold-400/50' },
     amber: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'hover:border-amber-400' },
     emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'hover:border-emerald-300' },
     violet: { bg: 'bg-violet-50', text: 'text-violet-600', border: 'hover:border-violet-300' },
-    indigo: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'hover:border-indigo-300' },
+    indigo: { bg: 'bg-gold-500/10', text: 'text-gold-600', border: 'hover:border-gold-400/50' },
     rose: { bg: 'bg-rose-50', text: 'text-rose-600', border: 'hover:border-rose-300' },
     teal: { bg: 'bg-teal-50', text: 'text-teal-600', border: 'hover:border-teal-300' },
   };

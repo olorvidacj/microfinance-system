@@ -27,7 +27,7 @@ export const StatCard: React.FC<{
 }> = ({ label, value, sub, icon: Icon, tone = 'emerald', onClick }) => {
   const tones: Record<string, string> = {
     emerald: 'bg-emerald-50 text-emerald-600',
-    blue: 'bg-blue-50 text-blue-600',
+    blue: 'bg-gold-500/10 text-gold-600',
     amber: 'bg-amber-50 text-amber-600',
     rose: 'bg-rose-50 text-rose-600',
     violet: 'bg-violet-50 text-violet-600',
@@ -95,9 +95,9 @@ export const transactionIcon = (type: TransactionType, className = 'h-4 w-4') =>
     case 'REPAYMENT':
       return <Repeat className={`${className} text-emerald-600`} />;
     case 'LOAN_DISBURSEMENT':
-      return <ArrowUpRight className={`${className} text-blue-600`} />;
+      return <ArrowUpRight className={`${className} text-gold-600`} />;
     case 'LOAN_APPROVAL':
-      return <CheckCircle2 className={`${className} text-blue-600`} />;
+      return <CheckCircle2 className={`${className} text-gold-600`} />;
     case 'SAVINGS_DEPOSIT':
       return <TrendingUp className={`${className} text-emerald-600`} />;
     case 'SAVINGS_WITHDRAWAL':
@@ -138,10 +138,10 @@ export const typeLabel = (type: string): string =>
 export const typeColor: Record<string, string> = {
   REPAYMENT: 'text-emerald-600',
   SAVINGS_DEPOSIT: 'text-emerald-600',
-  LOAN_DISBURSEMENT: 'text-blue-600',
+  LOAN_DISBURSEMENT: 'text-gold-600',
   SAVINGS_WITHDRAWAL: 'text-rose-500',
   FEE: 'text-amber-500',
-  LOAN_APPROVAL: 'text-blue-600',
+  LOAN_APPROVAL: 'text-gold-600',
   ADJUSTMENT: 'text-slate-400',
 };
 

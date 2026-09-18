@@ -62,7 +62,7 @@ export const AuditLogsPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total System Events" value={logs.length} icon={ScrollText} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Total System Events" value={logs.length} icon={ScrollText} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Failed Security Events" value={failed} icon={ShieldAlert} iconColor="text-rose-600" iconBg="bg-rose-50" />
         <StatCard title="Administrative Warnings" value={logs.filter((l) => l.status === 'Warning').length} icon={AlertTriangle} iconColor="text-amber-600" iconBg="bg-amber-50" />
         <StatCard title="Access & Auth Events" value={logs.filter((l) => l.module === 'Security').length} icon={ShieldCheck} iconColor="text-emerald-600" iconBg="bg-emerald-50" accentBorder />

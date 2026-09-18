@@ -122,7 +122,7 @@ export const UserManagementPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Staff Accounts" value={users.length} icon={Users} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Total Staff Accounts" value={users.length} icon={Users} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Active Accounts" value={countBy((u) => u.status === 'Active')} icon={UserCheck} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Suspended / Inactive" value={countBy((u) => u.status === 'Inactive' || u.status === 'Suspended')} icon={UserX} iconColor="text-rose-500" iconBg="bg-rose-50" />
         <StatCard title="Pending Approval" value={countBy((u) => u.status === 'Pending')} icon={Clock} iconColor="text-amber-600" iconBg="bg-amber-50" accentBorder />
@@ -205,7 +205,7 @@ export const UserManagementPage: React.FC = () => {
                   <button onClick={() => toggleStatus(u)} title={u.status === 'Active' ? 'Deactivate' : 'Activate'} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 transition">
                     <Power className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setResetTarget(u)} title="Reset Password" className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 transition">
+                  <button onClick={() => setResetTarget(u)} title="Reset Password" className="p-1.5 rounded-lg hover:bg-gold-500/10 text-gold-600 transition">
                     <KeyRound className="w-4 h-4" />
                   </button>
                   <button onClick={() => setDeactivateTarget(u)} title="Suspend User" className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 transition">

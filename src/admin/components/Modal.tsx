@@ -121,7 +121,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <AlertTriangle className="w-5 h-5" />
       </div>
     ) : (
-      <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+      <div className="w-10 h-10 rounded-full bg-gold-500/10 border border-gold-400/30 flex items-center justify-center text-gold-600 shrink-0">
         <Info className="w-5 h-5" />
       </div>
     );

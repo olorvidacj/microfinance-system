@@ -271,7 +271,7 @@ CDA Registration No. 9520-10023812 • Bangko Sentral Regulated
               <span className="text-[10px] font-bold uppercase text-slate-400 block tracking-wider">
                 Savings Account ID
               </span>
-              <div className="font-bold text-blue-700 font-mono text-sm mt-0.5">
+              <div className="font-bold text-gold-700 font-mono text-sm mt-0.5">
                 {transaction.accountNumber ||
                   currentAccount?.accountNumber ||
                   transaction.savingsAccountId}
@@ -335,7 +335,7 @@ CDA Registration No. 9520-10023812 • Bangko Sentral Regulated
                 <span className="text-slate-900 text-sm">
                   Updated Savings Balance:
                 </span>
-                <span className="text-blue-700 text-base font-mono">
+                <span className="text-gold-700 text-base font-mono">
                   {formatCurrency(transaction.balanceAfter)}
                 </span>
               </div>

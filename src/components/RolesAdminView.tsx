@@ -342,7 +342,7 @@ export const RolesAdminView: React.FC = () => {
       {activeTab === 'matrix' && (
         <div className="space-y-6">
           {/* Quick Core Role Selector Banner */}
-          <div className="bg-gradient-to-r from-purple-900 to-indigo-900 text-white rounded-xl p-6 shadow-md">
+          <div className="bg-gradient-to-r from-purple-900 to-navy-950 text-white rounded-xl p-6 shadow-md">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
               <div>
                 <span className="text-xs uppercase tracking-wider text-purple-200 font-semibold">
@@ -550,7 +550,7 @@ export const RolesAdminView: React.FC = () => {
                               {/* Client Services Staff */}
                               <td className="py-2.5 px-3 text-center">
                                 {csHas ? (
-                                  <span className="inline-flex p-1 rounded-full bg-blue-100 text-blue-700">
+                                  <span className="inline-flex p-1 rounded-full bg-gold-500/20 text-gold-700">
                                     <CheckCircle2 className="w-4 h-4" />
                                   </span>
                                 ) : (

@@ -36,7 +36,7 @@ const ACTIONS: Action[] = [
     description: 'Review client identification & proofs',
     icon: FileCheck2,
     permissions: ['manage_kyc'],
-    accentColor: 'from-blue-500/10 to-blue-500/5 text-blue-700 border-blue-200/80 group-hover:border-blue-400',
+    accentColor: 'from-gold-500/10 to-gold-500/5 text-gold-700 border-gold-400/30 group-hover:border-gold-400',
   },
   {
     to: '/staff/app/applications?new=1',
@@ -52,7 +52,7 @@ const ACTIONS: Action[] = [
     description: 'Post loan collection or receipt',
     icon: Wallet,
     permissions: ['process_loan_repayments'],
-    accentColor: 'from-indigo-500/10 to-indigo-500/5 text-indigo-700 border-indigo-200/80 group-hover:border-indigo-400',
+    accentColor: 'from-gold-500/10 to-gold-500/5 text-gold-700 border-gold-400/30 group-hover:border-gold-400',
   },
   {
     to: '/staff/app/savings',

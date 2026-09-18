@@ -4,7 +4,7 @@ import { LoanProvider } from './context/LoanContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useLoan } from './context/LoanContext';
 import { Header } from './components/Header';
-import { Navigation, NavTab } from './components/Navigation';
+import { NavTab } from './components/Navigation';
 import { DashboardView } from './components/DashboardView';
 import { LoansView } from './components/LoansView';
 import { BorrowersView } from './components/BorrowersView';
@@ -23,7 +23,22 @@ import { RolesAdminView } from './components/RolesAdminView';
 import { LoginView } from './components/LoginView';
 import { LandingView } from './components/LandingView';
 import { Building2, Loader2 } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users2,
+  FileSpreadsheet,
+  Receipt,
+  PiggyBank,
+  Users,
+  ShieldCheck,
+  Smartphone,
+  BookOpen,
+  Calculator,
+  Package,
+  FileText,
+} from 'lucide-react';
 import { useAccess } from './hooks/useAccess';
+import { AppShell, AppNavSection } from './ui';
 
 // Client Portal (routed app)
 import { PortalLayout } from './portal/components/layout/PortalLayout';
@@ -63,7 +78,7 @@ interface NewLoanParams {
 
 const MainApp: React.FC = () => {
   const { user } = useAuth();
-  const { staffList, setCurrentUser } = useLoan();
+  const { staffList, setCurrentUser, filteredLoans, filteredMembershipApps, withdrawalRequests } = useLoan();
   const { canAccessTab, roleKey } = useAccess();
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const personaAppliedRef = React.useRef(false);
@@ -144,23 +159,91 @@ const MainApp: React.FC = () => {
     handleOpenNewLoan(null, params);
   };
 
+  const pendingAppsCount = filteredMembershipApps.filter(
+    (a) => a.currentStep !== 'BOD_APPROVED' && a.currentStep !== 'REJECTED'
+  ).length;
+  const overdueCount = filteredLoans.filter(
+    (l) => l.status === 'In Arrears' || (l.daysInArrears && l.daysInArrears > 0)
+  ).length;
+  const pendingWithdrawalsCount = withdrawalRequests.filter((w) => w.status === 'Pending Approval').length;
+
+  const navItem = (
+    tab: NavTab,
+    label: string,
+    icon: React.ComponentType<{ className?: string }>,
+    badge?: number
+  ) => ({
+    tab,
+    label,
+    icon,
+    badge,
+    active: activeTab === tab,
+    onSelect: () => setActiveTab(tab),
+  });
+
+  const sections: AppNavSection[] = [
+    { title: 'Overview', items: [navItem('dashboard', 'Dashboard', LayoutDashboard)] },
+    {
+      title: 'Core Banking',
+      items: [
+        navItem('membership', 'Client Registration & KYC', Users2, pendingAppsCount || undefined),
+        navItem('loans', 'Loan Applications & Repayments', FileSpreadsheet, filteredLoans.length),
+        navItem('payments', 'Cashier & Transactions', Receipt, overdueCount || undefined),
+        navItem('savings', 'Savings & Deposits', PiggyBank, pendingWithdrawalsCount || undefined),
+        navItem('groupLending', 'Group Lending & Solidarity', Users),
+      ],
+    },
+    { title: 'Self-Service', items: [navItem('clientPortal', 'Client Portal (Mobile)', Smartphone)] },
+    {
+      title: 'Administration',
+      items: [
+        navItem('roles', 'Roles & Permissions', ShieldCheck),
+        navItem('branches', 'Branches', Building2),
+        navItem('products', 'Products', Package),
+      ],
+    },
+    {
+      title: 'Analytics & Policy',
+      items: [
+        navItem('reports', 'Audit & Reports', FileText),
+        navItem('brochure', 'HOSCOMO Policies', BookOpen),
+        navItem('calculator', 'Calculator', Calculator),
+      ],
+    },
+  ].map((section) => ({
+    ...section,
+    items: section.items
+      .filter((item) => canAccessTab(item.tab))
+      .map((item) => ({
+        label: item.label,
+        icon: item.icon,
+        badge: item.badge,
+        active: item.active,
+        onSelect: item.onSelect,
+      })),
+  }));
+
   return (
-    <div className="min-h-screen bg-slate-50 text-gray-900 font-sans antialiased flex flex-col">
-      {/* Header with Branch Selector and Staff Persona Switcher */}
-      <Header
-        onOpenNewLoan={() => handleOpenNewLoan()}
-        onOpenRecordPayment={() => handleOpenRecordPayment()}
-        onOpenAddBorrower={() => {
-          setEditBorrower(null);
-          setIsAddBorrowerOpen(true);
-        }}
-      />
-
-      {/* Main Tab Navigation Bar */}
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+    <>
+      <AppShell
+        sections={sections}
+        brandName="HOSCOMO"
+        brandSubtitle="Client Services"
+        brandTag="Microfinance"
+        brandMeta="Tacloban · Main Branch"
+        collapsible
+        topbar={({ openSidebar }) => (
+          <Header
+            openSidebar={openSidebar}
+            onOpenNewLoan={() => handleOpenNewLoan()}
+            onOpenRecordPayment={() => handleOpenRecordPayment()}
+            onOpenAddBorrower={() => {
+              setEditBorrower(null);
+              setIsAddBorrowerOpen(true);
+            }}
+          />
+        )}
+      >
         {activeTab === 'dashboard' && (
           <DashboardView
             onSelectLoan={(loan) => setSelectedLoan(loan)}
@@ -236,7 +319,7 @@ const MainApp: React.FC = () => {
         )}
 
         {activeTab === 'reports' && <ReportsView />}
-      </main>
+      </AppShell>
 
       {/* Global Modals */}
       <NewLoanModal
@@ -323,13 +406,13 @@ const MainApp: React.FC = () => {
         onClose={() => setIsProductModalOpen(false)}
         editProduct={editProduct}
       />
-    </div>
+    </>
   );
 };
 
 const ShieldInfoIcon: React.FC = () => (
-  <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center mx-auto">
-    <Building2 className="w-7 h-7 text-blue-600" />
+  <div className="w-14 h-14 rounded-2xl bg-gold-500/10 border border-gold-400/30 flex items-center justify-center mx-auto">
+    <Building2 className="w-7 h-7 text-gold-600" />
   </div>
 );
 
@@ -342,7 +425,7 @@ const AuthGate: React.FC = () => {
   if (isRestoring) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 font-sans">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-lg animate-pulse">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-navy-800 to-navy-900 flex items-center justify-center text-white shadow-lg animate-pulse">
           <Building2 className="w-7 h-7" />
         </div>
         <div className="flex items-center gap-2 text-sm text-slate-500">

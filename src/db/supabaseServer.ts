@@ -11,6 +11,27 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
  */
 
 let serverSupabaseClient: SupabaseClient | null = null;
+let supabaseMarkedFailed = false;
+const SUPABASE_TIMEOUT_MS = 5000;
+
+export function markServerSupabaseFailed(): void {
+  supabaseMarkedFailed = true;
+  if (serverSupabaseClient) {
+    serverSupabaseClient = null;
+  }
+}
+
+export function isServerSupabaseFailed(): boolean {
+  return supabaseMarkedFailed;
+}
+
+function timeoutFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const hasSignal = init?.signal instanceof AbortSignal;
+  const merged: RequestInit = hasSignal || typeof AbortSignal.timeout !== 'function'
+    ? { ...(init || {}) }
+    : { ...(init || {}), signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS) };
+  return fetch(input, merged);
+}
 
 export function isPlaceholderSupabaseUrl(url?: string | null): boolean {
   if (!url) return true;
@@ -30,6 +51,7 @@ export function getServerSupabase(): SupabaseClient | null {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
 
+  if (supabaseMarkedFailed) return null;
   if (!supabaseUrl || !serviceKey || isPlaceholderSupabaseUrl(supabaseUrl)) {
     return null;
   }
@@ -40,6 +62,9 @@ export function getServerSupabase(): SupabaseClient | null {
         auth: {
           persistSession: false,
           autoRefreshToken: false,
+        },
+        global: {
+          fetch: timeoutFetch,
         },
       });
     } catch (err) {

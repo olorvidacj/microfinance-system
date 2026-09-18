@@ -112,7 +112,7 @@ export const SavingsManagementPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Savings Accounts" value={accounts.length} icon={PiggyBank} iconColor="text-blue-600" iconBg="bg-blue-50" />
+        <StatCard title="Total Savings Accounts" value={accounts.length} icon={PiggyBank} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
         <StatCard title="Aggregated Savings Balance" value={formatPHP(totalBalance)} icon={Wallet} iconColor="text-amber-600" iconBg="bg-amber-50" change={4.8} changeLabel="vs last month" accentBorder />
         <StatCard title="Active Member Portfolios" value={activeAccounts} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
         <StatCard title="Suspended / Inactive" value={pendingCount} icon={Clock} iconColor="text-rose-500" iconBg="bg-rose-50" subtitle="Action needed" />

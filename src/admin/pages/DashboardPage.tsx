@@ -21,10 +21,10 @@ export const DashboardPage: React.FC = () => {
   const [quickLoading, setQuickLoading] = useState(false);
 
   const quickActions = [
-    { label: 'Register User', icon: PlusCircle, path: '/admin/users', color: 'text-blue-600 bg-blue-50/80 border-blue-100' },
+    { label: 'Register User', icon: PlusCircle, path: '/admin/users', color: 'text-gold-600 bg-gold-500/10 border-gold-400/30' },
     { label: 'Verify KYC Queue', icon: ShieldCheck, path: '/admin/kyc', color: 'text-amber-600 bg-amber-50/80 border-amber-100' },
     { label: 'Review Loans', icon: FileSpreadsheet, path: '/admin/loans', color: 'text-emerald-600 bg-emerald-50/80 border-emerald-100' },
-    { label: 'Financial Reports', icon: Download, path: '/admin/reports', color: 'text-indigo-600 bg-indigo-50/80 border-indigo-100' },
+    { label: 'Financial Reports', icon: Download, path: '/admin/reports', color: 'text-gold-600 bg-gold-500/10 border-gold-400/30' },
   ];
 
   const recentLoans = MOCK_LOANS.slice(0, 5);
@@ -113,8 +113,8 @@ export const DashboardPage: React.FC = () => {
           title="Total Registered Users"
           value="48"
           icon={Users}
-          iconColor="text-blue-600"
-          iconBg="bg-blue-50"
+          iconColor="text-gold-600"
+          iconBg="bg-gold-500/10"
           change={8}
           changeLabel="vs last month"
         />
@@ -141,8 +141,8 @@ export const DashboardPage: React.FC = () => {
           title="Total Loan Applications"
           value="112"
           icon={FileSpreadsheet}
-          iconColor="text-indigo-600"
-          iconBg="bg-indigo-50"
+          iconColor="text-gold-600"
+          iconBg="bg-gold-500/10"
           change={18}
           changeLabel="vs last month"
         />
@@ -452,7 +452,7 @@ export const DashboardPage: React.FC = () => {
                       : n.type === 'Loan'
                       ? 'bg-emerald-500'
                       : n.type === 'Transaction'
-                      ? 'bg-blue-500'
+                      ? 'bg-gold-500'
                       : 'bg-slate-400'
                   }`}
                 />

@@ -41,8 +41,24 @@ export async function withMockFallback<T>(
   fallback: () => T | Promise<T>
 ): Promise<T> {
   try {
-    return await call();
+    return await withTimeout(call(), 8000);
   } catch {
     return fallback();
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Request timed out')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
 }

@@ -86,7 +86,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
         {/* Header */}
         <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
+            <div className="w-10 h-10 rounded-2xl bg-gold-500/20 border border-gold-400/30 flex items-center justify-center text-gold-300">
               <UserCheck className="w-5 h-5" />
             </div>
             <div>
@@ -111,7 +111,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
             </div>
           ) : (
             <>
-              <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl text-blue-900 text-[11px] leading-relaxed">
+              <div className="p-3 bg-gold-500/10 border border-gold-400/30 rounded-xl text-navy-900 text-[11px] leading-relaxed">
                 Cooperative regulations require records officer verification for changes in contact, residential address, or civil status.
               </div>
 
@@ -123,7 +123,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
                     setFieldToUpdate(e.target.value as MemberUpdateRequest['fieldToUpdate']);
                     setNewValue('');
                   }}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-gold-500 focus:outline-none"
                 >
                   <option value="Contact Number">Contact Phone Number</option>
                   <option value="Address">Residential Address</option>
@@ -150,7 +150,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
                   placeholder={`Enter updated ${fieldToUpdate.toLowerCase()}`}
                   value={newValue}
                   onChange={(e) => setNewValue(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 font-medium focus:ring-2 focus:ring-gold-500 focus:outline-none"
                 />
               </div>
 
@@ -162,7 +162,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
                   placeholder="e.g. Relocated to new house / Changed primary SIM card"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-gold-500 focus:outline-none"
                 />
               </div>
 
@@ -172,7 +172,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
                   <select
                     value={supportingDocType}
                     onChange={(e) => setSupportingDocType(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-gold-500 focus:outline-none"
                   >
                     <option value="Valid ID">Valid Government ID</option>
                     <option value="Barangay Certificate">Barangay Certificate</option>
@@ -189,7 +189,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
                     placeholder="e.g. Barangay_Cert_2026.pdf"
                     value={supportingDocFileName}
                     onChange={(e) => setSupportingDocFileName(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-gold-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -205,7 +205,7 @@ export const ClientUpdateRequestModal: React.FC<ClientUpdateRequestModalProps> =
                 <button
                   type="submit"
                   disabled={isSubmitting || !newValue.trim() || !reason.trim()}
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 bg-navy-900 hover:bg-navy-800 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Submit Update Request</span>

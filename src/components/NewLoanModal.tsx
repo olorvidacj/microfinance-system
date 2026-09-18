@@ -222,7 +222,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         {/* Modal Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600/30 border border-blue-400/40 text-blue-400 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-navy-900/30 border border-gold-400/40 text-gold-400 flex items-center justify-center font-bold">
               <Calculator className="w-5 h-5" />
             </div>
             <div>
@@ -250,7 +250,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               onClick={() => step > s.num && setStep(s.num)}
               className={`pb-1 border-b-2 transition text-center truncate cursor-pointer ${
                 step === s.num
-                  ? 'border-blue-500 text-blue-400 font-bold'
+                  ? 'border-gold-500 text-gold-400 font-bold'
                   : step > s.num
                   ? 'border-emerald-500 text-emerald-400'
                   : 'border-slate-700 text-slate-500'
@@ -269,7 +269,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </div>
             <h3 className="text-xl font-bold text-gray-900">Loan Application Created!</h3>
             <p className="text-xs text-gray-600 max-w-md mx-auto">
-              Generated unique Loan ID: <strong className="font-mono text-blue-700">{createdLoanNumber}</strong>. The application has been saved to the loan register.
+              Generated unique Loan ID: <strong className="font-mono text-gold-700">{createdLoanNumber}</strong>. The application has been saved to the loan register.
             </p>
           </div>
         ) : (
@@ -281,7 +281,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-gray-900 font-bold text-xs flex items-center gap-1.5">
-                      <User className="w-4 h-4 text-blue-600" />
+                      <User className="w-4 h-4 text-gold-600" />
                       Select Registered Client / Borrower *
                     </label>
                     <span className="text-gray-500 text-[11px]">
@@ -297,7 +297,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       placeholder="Search member by full name, Client ID (CLI-XXXX), or phone..."
                       value={searchBorrower}
                       onChange={(e) => setSearchBorrower(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-gold-500 focus:border-gold-500"
                     />
                   </div>
 
@@ -313,7 +313,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                           onClick={() => setSelectedBorrowerId(b.id)}
                           className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
                             isSelected
-                              ? 'border-blue-600 bg-blue-50/70 shadow-xs'
+                              ? 'border-gold-500 bg-gold-500/10 shadow-xs'
                               : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                           }`}
                         >
@@ -326,7 +326,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                             <div>
                               <p className="font-bold text-gray-900 flex items-center gap-1.5">
                                 {b.fullName}
-                                {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                                {isSelected && <Check className="w-3.5 h-3.5 text-gold-600" />}
                               </p>
                               <p className="text-[11px] text-gray-500 font-mono">{b.borrowerNumber || b.clientId}</p>
                               <div className="flex items-center gap-2 mt-1">
@@ -381,16 +381,16 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                           onClick={() => handleProductChange(p.id)}
                           className={`p-3.5 rounded-2xl border transition cursor-pointer space-y-2 ${
                             isSelected
-                              ? 'border-blue-600 bg-blue-50/70 shadow-sm'
+                              ? 'border-gold-500 bg-gold-500/10 shadow-sm'
                               : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                           }`}
                         >
                           <div className="flex items-center justify-between">
                             <h4 className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
                               {p.name}
-                              {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                              {isSelected && <Check className="w-3.5 h-3.5 text-gold-600" />}
                             </h4>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gold-500/20 text-gold-800">
                               {p.interestRate}% p.a.
                             </span>
                           </div>
@@ -426,14 +426,14 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             {/* STEP 2: FINANCING TERMS & REPAYMENT FREQUENCY */}
             {step === 2 && (
               <div className="space-y-5">
-                <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl flex items-center justify-between">
+                <div className="p-3.5 bg-gold-500/10 border border-gold-400/30 rounded-2xl flex items-center justify-between">
                   <div>
                     <span className="text-gray-500 block text-[11px]">Product Selected:</span>
-                    <strong className="text-blue-950 font-bold text-xs">{selectedProduct.name}</strong>
+                    <strong className="text-navy-950 font-bold text-xs">{selectedProduct.name}</strong>
                   </div>
                   <div className="text-right">
                     <span className="text-gray-500 block text-[11px]">Allowed Limits:</span>
-                    <span className="font-semibold text-blue-900 text-xs">
+                    <span className="font-semibold text-navy-900 text-xs">
                       {formatCurrency(selectedProduct.minAmount)} — {formatCurrency(selectedProduct.maxAmount)}
                     </span>
                   </div>
@@ -443,7 +443,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-gray-900 font-bold">Loan Amount (₱) *</label>
-                    <span className="text-blue-700 font-mono font-bold text-sm">
+                    <span className="text-gold-700 font-mono font-bold text-sm">
                       {formatCurrency(principalAmount)}
                     </span>
                   </div>
@@ -454,7 +454,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                     step={1000}
                     value={principalAmount}
                     onChange={(e) => setPrincipalAmount(Number(e.target.value))}
-                    className="w-full accent-blue-600"
+                    className="w-full accent-gold-600"
                   />
                   <div className="flex gap-2 mt-2">
                     <input
@@ -587,7 +587,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
 
                   <div>
                     <span className="text-gray-500 block text-[11px]">Total Repayable</span>
-                    <span className="text-sm font-bold text-blue-800 font-mono mt-0.5 block">
+                    <span className="text-sm font-bold text-gold-800 font-mono mt-0.5 block">
                       {formatCurrency(scheduleCalc.totalPayable)}
                     </span>
                     <span className="text-[10px] text-gray-500">Principal + Interest</span>
@@ -615,7 +615,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px]">Principal</span>
-                    <span className="font-bold text-blue-400 text-xs mt-0.5 block">{formatCurrency(principalAmount)}</span>
+                    <span className="font-bold text-gold-400 text-xs mt-0.5 block">{formatCurrency(principalAmount)}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[11px]">Installment Amount</span>
@@ -633,13 +633,13 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <div className="border border-gray-200 rounded-2xl overflow-hidden shadow-xs">
                   <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                      <FileSpreadsheet className="w-4 h-4 text-gold-600" />
                       <h4 className="font-bold text-gray-800 text-xs">Amortization Schedule Breakdown ({scheduleCalc.schedule.length} Periods)</h4>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowFullSchedule(!showFullSchedule)}
-                      className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                      className="text-gold-600 hover:text-gold-800 text-xs font-semibold"
                     >
                       {showFullSchedule ? 'Show First 5 Periods' : 'View All Periods'}
                     </button>
@@ -681,7 +681,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       <button
                         type="button"
                         onClick={handleAddGuarantor}
-                        className="text-blue-600 hover:text-blue-800 font-bold text-xs flex items-center gap-1"
+                        className="text-gold-600 hover:text-gold-800 font-bold text-xs flex items-center gap-1"
                       >
                         <Plus className="w-3.5 h-3.5" /> Add
                       </button>
@@ -706,7 +706,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       <button
                         type="button"
                         onClick={handleAddCollateral}
-                        className="text-blue-600 hover:text-blue-800 font-bold text-xs flex items-center gap-1"
+                        className="text-gold-600 hover:text-gold-800 font-bold text-xs flex items-center gap-1"
                       >
                         <Plus className="w-3.5 h-3.5" /> Add
                       </button>
@@ -718,7 +718,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                         {collaterals.map((c, idx) => (
                           <div key={c.id} className="flex justify-between items-center bg-white p-2 rounded-lg border border-gray-200 text-[11px]">
                             <span>{c.type}: {c.description}</span>
-                            <span className="font-mono text-blue-700 font-bold">{formatCurrency(c.estimatedValue)}</span>
+                            <span className="font-mono text-gold-700 font-bold">{formatCurrency(c.estimatedValue)}</span>
                           </div>
                         ))}
                       </div>
@@ -757,7 +757,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setStep(step + 1)}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center gap-2 text-xs shadow-md shadow-blue-600/20"
+                  className="px-5 py-2.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-bold transition flex items-center gap-2 text-xs shadow-md shadow-gold-500/20"
                 >
                   Proceed to Step {step + 1}
                   <ArrowRight className="w-4 h-4" />
@@ -776,7 +776,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleCreateApplication('Submitted')}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center gap-1.5 text-xs shadow-md shadow-blue-600/20"
+                    className="px-5 py-2.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-bold transition flex items-center gap-1.5 text-xs shadow-md shadow-gold-500/20"
                   >
                     <Send className="w-4 h-4" />
                     Submit for Approval

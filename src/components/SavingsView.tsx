@@ -906,7 +906,7 @@ export const SavingsView: React.FC = () => {
                             : tx.type === 'Withdrawal'
                             ? 'bg-rose-50 text-rose-700 border border-rose-200'
                             : tx.type === 'Account Opening'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            ? 'bg-gold-500/10 text-gold-700 border border-gold-400/30'
                             : 'bg-amber-50 text-amber-800 border border-amber-200'
                         }`}
                       >
@@ -921,7 +921,7 @@ export const SavingsView: React.FC = () => {
                       {tx.type === 'Withdrawal' ? '-' : '+'}
                       {formatCurrency(tx.amount)}
                     </td>
-                    <td className="py-2.5 px-3 font-bold text-blue-700">{formatCurrency(tx.balanceAfter)}</td>
+                    <td className="py-2.5 px-3 font-bold text-gold-700">{formatCurrency(tx.balanceAfter)}</td>
                     <td className="py-2.5 px-3 text-slate-600">{tx.paymentMethod || 'Cash'}</td>
                     <td className="py-2.5 px-3 text-slate-600 truncate max-w-xs">{tx.processedBy}</td>
                     <td className="py-2.5 px-3 text-right">
@@ -1746,7 +1746,7 @@ export const SavingsView: React.FC = () => {
                             {tx.type === 'Withdrawal' ? '-' : '+'}
                             {formatCurrency(tx.amount)}
                           </td>
-                          <td className="py-2 px-3 font-bold text-blue-700">{formatCurrency(tx.balanceAfter)}</td>
+                          <td className="py-2 px-3 font-bold text-gold-700">{formatCurrency(tx.balanceAfter)}</td>
                           <td className="py-2 px-3 text-right">
                             <button
                               onClick={() => {

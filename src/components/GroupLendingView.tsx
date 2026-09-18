@@ -459,7 +459,7 @@ export const GroupLendingView: React.FC = () => {
             toastMessage.type === 'error'
               ? 'bg-rose-50 border border-rose-200 text-rose-900'
               : toastMessage.type === 'info'
-              ? 'bg-blue-50 border border-blue-200 text-blue-900'
+              ? 'bg-gold-500/10 border border-gold-400/30 text-navy-900'
               : 'bg-emerald-50 border border-emerald-200 text-emerald-900'
           }`}
         >
@@ -478,17 +478,17 @@ export const GroupLendingView: React.FC = () => {
       )}
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-navy-950 via-navy-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2 text-blue-300 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div className="flex items-center gap-2 text-gold-300 text-xs font-semibold uppercase tracking-wider mb-2">
               <ShieldCheck className="w-4 h-4" />
               <span>HOSCOMO Microfinance Group Lending & Solidarity System</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
               Group Lending & Solidarity Mechanism
             </h1>
-            <p className="text-blue-100/80 text-sm mt-2 max-w-2xl">
+            <p className="text-slate-200/80 text-sm mt-2 max-w-2xl">
               Center-based solidarity lending with Grameen peer liability, automated center meetings, joint guarantee reserves, and collective delinquency monitoring.
             </p>
           </div>
@@ -496,7 +496,7 @@ export const GroupLendingView: React.FC = () => {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => setActiveTab('createGroup')}
-              className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold shadow-lg shadow-blue-500/30 transition"
+              className="flex items-center gap-2 bg-gold-500 hover:bg-navy-900 text-white px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold shadow-lg shadow-gold-500/30 transition"
             >
               <Plus className="w-4 h-4" />
               <span>Create Lending Group</span>
@@ -516,26 +516,26 @@ export const GroupLendingView: React.FC = () => {
         {/* Top Metric Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6 border-t border-white/10 text-xs">
           <div>
-            <span className="text-blue-200 block">Active Lending Groups</span>
+            <span className="text-slate-300 block">Active Lending Groups</span>
             <span className="text-xl font-bold text-white mt-1 block">
               {filteredSolidarityGroups.length} Circles ({totalGroupMembersCount} Members)
             </span>
           </div>
           <div>
-            <span className="text-blue-200 block">Total Group Outstanding</span>
+            <span className="text-slate-300 block">Total Group Outstanding</span>
             <span className="text-xl font-bold text-white mt-1 block">
               {formatCurrency(totalGroupPortfolio)}
             </span>
           </div>
           <div>
-            <span className="text-blue-200 block">Solidarity Reserve Fund</span>
+            <span className="text-slate-300 block">Solidarity Reserve Fund</span>
             <span className="text-xl font-bold text-emerald-400 mt-1 block">
               {formatCurrency(totalSolidarityReserve)}
             </span>
           </div>
           <div>
-            <span className="text-blue-200 block">Peer Health Score</span>
-            <span className="text-xl font-bold text-blue-300 mt-1 block">
+            <span className="text-slate-300 block">Peer Health Score</span>
+            <span className="text-xl font-bold text-gold-300 mt-1 block">
               {healthyGroupsCount} / {filteredSolidarityGroups.length} Healthy (98.6% On-Time)
             </span>
           </div>
@@ -548,7 +548,7 @@ export const GroupLendingView: React.FC = () => {
           onClick={() => setActiveTab('overview')}
           className={`flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-medium rounded-xl transition flex items-center justify-center gap-2 ${
             activeTab === 'overview'
-              ? 'bg-blue-50 text-blue-700 font-semibold'
+              ? 'bg-gold-500/10 text-gold-700 font-semibold'
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
@@ -559,7 +559,7 @@ export const GroupLendingView: React.FC = () => {
           onClick={() => setActiveTab('groupLoans')}
           className={`flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-medium rounded-xl transition flex items-center justify-center gap-2 ${
             activeTab === 'groupLoans'
-              ? 'bg-blue-50 text-blue-700 font-semibold'
+              ? 'bg-gold-500/10 text-gold-700 font-semibold'
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
@@ -572,7 +572,7 @@ export const GroupLendingView: React.FC = () => {
           }}
           className={`flex-1 min-w-[160px] py-2.5 px-3 text-xs sm:text-sm font-medium rounded-xl transition flex items-center justify-center gap-2 ${
             activeTab === 'meetingSheet'
-              ? 'bg-blue-50 text-blue-700 font-semibold'
+              ? 'bg-gold-500/10 text-gold-700 font-semibold'
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
@@ -583,7 +583,7 @@ export const GroupLendingView: React.FC = () => {
           onClick={() => setActiveTab('meetingsHistory')}
           className={`flex-1 min-w-[140px] py-2.5 px-3 text-xs sm:text-sm font-medium rounded-xl transition flex items-center justify-center gap-2 ${
             activeTab === 'meetingsHistory'
-              ? 'bg-blue-50 text-blue-700 font-semibold'
+              ? 'bg-gold-500/10 text-gold-700 font-semibold'
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
@@ -594,7 +594,7 @@ export const GroupLendingView: React.FC = () => {
           onClick={() => setActiveTab('solidarityFund')}
           className={`flex-1 min-w-[170px] py-2.5 px-3 text-xs sm:text-sm font-medium rounded-xl transition flex items-center justify-center gap-2 ${
             activeTab === 'solidarityFund'
-              ? 'bg-blue-50 text-blue-700 font-semibold'
+              ? 'bg-gold-500/10 text-gold-700 font-semibold'
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
@@ -616,7 +616,7 @@ export const GroupLendingView: React.FC = () => {
                   placeholder="Search group, center, or code..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-gold-500"
                 />
               </div>
 
@@ -648,12 +648,12 @@ export const GroupLendingView: React.FC = () => {
                         onClick={() => setSelectedGroupId(grp.id)}
                         className={`p-3.5 rounded-xl border transition cursor-pointer ${
                           isSelected
-                            ? 'border-blue-500 bg-blue-50/50 shadow-sm'
+                            ? 'border-gold-500 bg-gold-500/10 shadow-sm'
                             : 'border-slate-200 hover:border-slate-300 bg-white'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                          <span className="text-xs font-mono font-bold text-gold-600 bg-gold-500/10 px-2 py-0.5 rounded-md">
                             {grp.groupCode}
                           </span>
                           <span
@@ -661,7 +661,7 @@ export const GroupLendingView: React.FC = () => {
                               grp.delinquencyStatus === 'Healthy'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : grp.delinquencyStatus === 'Solidarity Covered'
-                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                ? 'bg-gold-500/10 text-gold-700 border border-gold-400/30'
                                 : 'bg-rose-50 text-rose-700 border border-rose-200'
                             }`}
                           >
@@ -696,7 +696,7 @@ export const GroupLendingView: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-100">
+                      <span className="text-xs font-mono font-bold text-gold-600 bg-gold-500/10 px-2.5 py-0.5 rounded-lg border border-gold-400/30">
                         {selectedGroup.groupCode}
                       </span>
                       <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200">
@@ -726,7 +726,7 @@ export const GroupLendingView: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleOpenCreateGroupLoan(selectedGroup)}
-                      className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-sm transition"
+                      className="flex items-center gap-1.5 bg-navy-900 hover:bg-navy-800 text-white px-3.5 py-2 rounded-xl text-xs font-semibold shadow-sm transition"
                     >
                       <Plus className="w-4 h-4" />
                       <span>New Loan</span>
@@ -764,7 +764,7 @@ export const GroupLendingView: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-slate-500 block">Repayment Health</span>
-                    <span className="font-bold text-blue-600 text-sm mt-0.5 block">
+                    <span className="font-bold text-gold-600 text-sm mt-0.5 block">
                       {selectedGroup.repaymentRate.toFixed(1)}% On-Time
                     </span>
                   </div>
@@ -774,7 +774,7 @@ export const GroupLendingView: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <Users className="w-4 h-4 text-blue-600" />
+                      <Users className="w-4 h-4 text-gold-600" />
                       <span>Group Members & Individual Obligations ({selectedGroup.members.length})</span>
                     </h3>
                     <span className="text-xs text-slate-500 font-medium">
@@ -806,7 +806,7 @@ export const GroupLendingView: React.FC = () => {
                                     m.role === 'Leader'
                                       ? 'bg-amber-100 text-amber-800'
                                       : m.role === 'Treasurer'
-                                      ? 'bg-blue-100 text-blue-800'
+                                      ? 'bg-gold-500/20 text-gold-800'
                                       : m.role === 'Secretary'
                                       ? 'bg-purple-100 text-purple-800'
                                       : 'bg-slate-100 text-slate-700'
@@ -826,7 +826,7 @@ export const GroupLendingView: React.FC = () => {
                             <td className="py-3.5 px-3 font-semibold text-emerald-600">
                               {formatCurrency(m.savingsBalance)}
                             </td>
-                            <td className="py-3.5 px-3 font-semibold text-blue-600">
+                            <td className="py-3.5 px-3 font-semibold text-gold-600">
                               {formatCurrency(m.weeklyDues)}/wk
                             </td>
                             <td className="py-3.5 px-3">
@@ -835,7 +835,7 @@ export const GroupLendingView: React.FC = () => {
                                   m.status === 'Good Standing'
                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                     : m.status === 'Solidarity Covered'
-                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                    ? 'bg-gold-500/10 text-gold-700 border border-gold-400/30'
                                     : 'bg-rose-50 text-rose-700 border border-rose-200'
                                 }`}
                               >
@@ -857,7 +857,7 @@ export const GroupLendingView: React.FC = () => {
                                       });
                                       setRepayAmount(m.weeklyDues || 1200);
                                     }}
-                                    className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-[11px] font-semibold transition"
+                                    className="px-2.5 py-1 bg-gold-500/10 text-gold-700 hover:bg-gold-500/20 rounded-lg text-[11px] font-semibold transition"
                                   >
                                     Pay Dues
                                   </button>
@@ -928,7 +928,7 @@ export const GroupLendingView: React.FC = () => {
             {selectedGroup && (
               <button
                 onClick={() => handleOpenCreateGroupLoan(selectedGroup)}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition"
+                className="flex items-center gap-2 bg-navy-900 hover:bg-navy-800 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition"
               >
                 <Plus className="w-4 h-4" />
                 <span>Originate New Group Loan</span>
@@ -947,7 +947,7 @@ export const GroupLendingView: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-100">
+                        <span className="text-xs font-mono font-bold text-gold-600 bg-gold-500/10 px-2.5 py-0.5 rounded-lg border border-gold-400/30">
                           {gl.groupLoanNumber}
                         </span>
                         <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
@@ -1010,7 +1010,7 @@ export const GroupLendingView: React.FC = () => {
                                 o.status === 'Current' || o.status === 'Settled'
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : o.status === 'Solidarity Covered'
-                                  ? 'bg-indigo-100 text-indigo-800'
+                                  ? 'bg-gold-500/20 text-gold-800'
                                   : 'bg-rose-100 text-rose-800'
                               }`}
                             >
@@ -1055,7 +1055,7 @@ export const GroupLendingView: React.FC = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleCompleteMeeting}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-xs font-semibold shadow-md shadow-blue-600/20 transition flex items-center gap-2"
+                className="bg-navy-900 hover:bg-navy-800 text-white px-5 py-2.5 rounded-xl text-xs font-semibold shadow-md shadow-gold-500/20 transition flex items-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Save & Finalize Center Meeting</span>
@@ -1094,7 +1094,7 @@ export const GroupLendingView: React.FC = () => {
                                 [m.borrowerId]: e.target.checked,
                               })
                             }
-                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                            className="w-4 h-4 rounded text-gold-600 focus:ring-gold-500"
                           />
                           <span className={isPresent ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
                             {isPresent ? 'Present' : 'Absent'}
@@ -1118,7 +1118,7 @@ export const GroupLendingView: React.FC = () => {
                               [m.borrowerId]: parseFloat(e.target.value) || 0,
                             })
                           }
-                          className="w-28 p-1.5 rounded-lg border border-slate-200 font-semibold text-slate-900 text-xs focus:ring-2 focus:ring-blue-500"
+                          className="w-28 p-1.5 rounded-lg border border-slate-200 font-semibold text-slate-900 text-xs focus:ring-2 focus:ring-gold-500"
                         />
                       </td>
                       <td className="py-3.5 px-3">
@@ -1135,7 +1135,7 @@ export const GroupLendingView: React.FC = () => {
                         />
                       </td>
                       <td className="py-3.5 px-3 text-right">
-                        <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-blue-200">
+                        <span className="bg-gold-500/10 text-gold-700 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-gold-400/30">
                           Co-Guaranteed by Center
                         </span>
                       </td>
@@ -1153,7 +1153,7 @@ export const GroupLendingView: React.FC = () => {
               onChange={(e) => setMeetingNotes(e.target.value)}
               rows={3}
               placeholder="Record any member absences, mutual support agreements, or micro-enterprise updates..."
-              className="w-full p-3 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+              className="w-full p-3 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
             />
           </div>
         </div>
@@ -1185,7 +1185,7 @@ export const GroupLendingView: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {groupMeetingLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50">
-                    <td className="py-3.5 px-3 font-mono font-bold text-blue-600">{log.meetingNumber}</td>
+                    <td className="py-3.5 px-3 font-mono font-bold text-gold-600">{log.meetingNumber}</td>
                     <td className="py-3.5 px-3">
                       <div className="font-semibold text-slate-900">{log.groupName}</div>
                       <span className="text-[11px] text-slate-500">{log.centerName}</span>
@@ -1254,7 +1254,7 @@ export const GroupLendingView: React.FC = () => {
 
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-blue-600" />
+              <TrendingUp className="w-5 h-5 text-gold-600" />
               <span>Solidarity Performance Indicators</span>
             </h3>
 
@@ -1273,7 +1273,7 @@ export const GroupLendingView: React.FC = () => {
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between text-xs">
                 <span className="text-slate-600 font-medium">Group Loan Portfolio in Arrears (PAR &gt; 30)</span>
-                <span className="font-bold text-blue-600 text-base">0.45% (Exceptional)</span>
+                <span className="font-bold text-gold-600 text-base">0.45% (Exceptional)</span>
               </div>
             </div>
           </div>
@@ -1300,7 +1300,7 @@ export const GroupLendingView: React.FC = () => {
                   placeholder="e.g. Sambayanang Masigasig Circle"
                   value={newGroupName}
                   onChange={(e) => setNewGroupName(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 />
               </div>
 
@@ -1312,7 +1312,7 @@ export const GroupLendingView: React.FC = () => {
                   placeholder="e.g. Center #4, Holy Spirit Station"
                   value={newCenterName}
                   onChange={(e) => setNewCenterName(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 />
               </div>
             </div>
@@ -1323,7 +1323,7 @@ export const GroupLendingView: React.FC = () => {
                 <select
                   value={newMeetingDay}
                   onChange={(e) => setNewMeetingDay(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 >
                   <option value="Monday">Monday</option>
                   <option value="Tuesday">Tuesday</option>
@@ -1341,7 +1341,7 @@ export const GroupLendingView: React.FC = () => {
                   placeholder="09:00 AM"
                   value={newMeetingTime}
                   onChange={(e) => setNewMeetingTime(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 />
               </div>
 
@@ -1352,7 +1352,7 @@ export const GroupLendingView: React.FC = () => {
                   placeholder="e.g. Barangay Hall Pavilion"
                   value={newLocation}
                   onChange={(e) => setNewLocation(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 />
               </div>
             </div>
@@ -1363,7 +1363,7 @@ export const GroupLendingView: React.FC = () => {
                 <label className="font-semibold text-slate-700">
                   Select Members for Solidarity Circle (Minimum 3 required)
                 </label>
-                <span className="text-blue-600 font-bold">{newSelectedBorrowers.length} selected</span>
+                <span className="text-gold-600 font-bold">{newSelectedBorrowers.length} selected</span>
               </div>
               <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-xl p-2 space-y-1.5">
                 {borrowers.map((b) => {
@@ -1372,7 +1372,7 @@ export const GroupLendingView: React.FC = () => {
                     <label
                       key={b.id}
                       className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
-                        isChecked ? 'bg-blue-50 border border-blue-200' : 'hover:bg-slate-50'
+                        isChecked ? 'bg-gold-500/10 border border-gold-400/30' : 'hover:bg-slate-50'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1388,7 +1388,7 @@ export const GroupLendingView: React.FC = () => {
                               if (newLeaderId === b.id) setNewLeaderId('');
                             }
                           }}
-                          className="w-4 h-4 rounded text-blue-600"
+                          className="w-4 h-4 rounded text-gold-600"
                         />
                         <span className="font-semibold text-slate-900">{b.fullName}</span>
                         <span className="text-slate-400">({b.borrowerNumber})</span>
@@ -1406,7 +1406,7 @@ export const GroupLendingView: React.FC = () => {
                 <select
                   value={newLeaderId}
                   onChange={(e) => setNewLeaderId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 font-medium"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500 font-medium"
                 >
                   {newSelectedBorrowers.map((id) => {
                     const b = borrowers.find((item) => item.id === id);
@@ -1430,7 +1430,7 @@ export const GroupLendingView: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md shadow-blue-600/20"
+                className="px-6 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-semibold shadow-md shadow-gold-500/20"
               >
                 Confirm & Form Group Circle
               </button>
@@ -1464,7 +1464,7 @@ export const GroupLendingView: React.FC = () => {
                       setMemberAllocations(newAllocs);
                     }
                   }}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold text-slate-900 focus:ring-2 focus:ring-gold-500"
                 >
                   {filteredSolidarityGroups.map((g) => (
                     <option key={g.id} value={g.id}>
@@ -1479,7 +1479,7 @@ export const GroupLendingView: React.FC = () => {
                 <select
                   value={loanProductId}
                   onChange={(e) => setLoanProductId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 font-semibold text-slate-900 focus:ring-2 focus:ring-gold-500"
                 >
                   {loanProducts.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -1496,7 +1496,7 @@ export const GroupLendingView: React.FC = () => {
                 <select
                   value={loanTermMonths}
                   onChange={(e) => setLoanTermMonths(parseInt(e.target.value))}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 >
                   <option value={3}>3 Months (12 Weeks)</option>
                   <option value={6}>6 Months (24 Weeks)</option>
@@ -1511,7 +1511,7 @@ export const GroupLendingView: React.FC = () => {
                   step="0.1"
                   value={loanInterestRate}
                   onChange={(e) => setLoanInterestRate(parseFloat(e.target.value) || 0)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 />
               </div>
 
@@ -1520,7 +1520,7 @@ export const GroupLendingView: React.FC = () => {
                 <select
                   value={loanFrequency}
                   onChange={(e) => setLoanFrequency(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
                 >
                   <option value="Weekly">Weekly Center Dues</option>
                   <option value="Bi-Weekly">Bi-Weekly</option>
@@ -1556,7 +1556,7 @@ export const GroupLendingView: React.FC = () => {
                                 [m.borrowerId]: parseFloat(e.target.value) || 0,
                               })
                             }
-                            className="w-32 p-1.5 rounded-lg border border-slate-200 font-bold text-slate-900 text-xs focus:ring-2 focus:ring-blue-500"
+                            className="w-32 p-1.5 rounded-lg border border-slate-200 font-bold text-slate-900 text-xs focus:ring-2 focus:ring-gold-500"
                           />
                         </div>
                       </div>
@@ -1581,7 +1581,7 @@ export const GroupLendingView: React.FC = () => {
                 value={loanPurpose}
                 onChange={(e) => setLoanPurpose(e.target.value)}
                 rows={2}
-                className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
               />
             </div>
 
@@ -1618,9 +1618,9 @@ export const GroupLendingView: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-3 bg-blue-50/70 rounded-xl text-blue-900 space-y-1">
+            <div className="p-3 bg-gold-500/10 rounded-xl text-navy-900 space-y-1">
               <div className="font-bold">{showRepayModal.borrowerName}</div>
-              <div className="text-[11px] text-blue-700">
+              <div className="text-[11px] text-gold-700">
                 Scheduled Dues: {formatCurrency(showRepayModal.weeklyDue)} | Balance: {formatCurrency(showRepayModal.remainingBalance)}
               </div>
             </div>
@@ -1631,7 +1631,7 @@ export const GroupLendingView: React.FC = () => {
                 type="number"
                 value={repayAmount}
                 onChange={(e) => setRepayAmount(parseFloat(e.target.value) || 0)}
-                className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-blue-500"
+                className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-gold-500"
               />
             </div>
 
@@ -1657,7 +1657,7 @@ export const GroupLendingView: React.FC = () => {
               </button>
               <button
                 onClick={handleConfirmRepayment}
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm"
+                className="px-5 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-semibold shadow-sm"
               >
                 Confirm Payment
               </button>
@@ -1672,7 +1672,7 @@ export const GroupLendingView: React.FC = () => {
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-scale-up text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                <ShieldCheck className="w-5 h-5 text-gold-600" />
                 <h3 className="font-bold text-slate-900 text-sm">Activate Solidarity Reserve Fund Bridge</h3>
               </div>
               <button
@@ -1683,9 +1683,9 @@ export const GroupLendingView: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-3.5 bg-indigo-50/70 rounded-2xl text-indigo-950 space-y-1.5 border border-indigo-100">
+            <div className="p-3.5 bg-gold-500/10 rounded-2xl text-navy-950 space-y-1.5 border border-gold-400/30">
               <div className="font-bold text-sm">{showBridgeModal.member.fullName}</div>
-              <p className="text-[11px] text-indigo-800 leading-relaxed">
+              <p className="text-[11px] text-gold-800 leading-relaxed">
                 Utilize the group's pooled <strong>Solidarity Reserve Fund</strong> (Available: {formatCurrency(showBridgeModal.group.solidarityFundBalance)}) to bridge delinquent dues. This maintains the group’s 100% on-time credit rating without triggering penalty interest.
               </p>
             </div>
@@ -1696,7 +1696,7 @@ export const GroupLendingView: React.FC = () => {
                 type="number"
                 value={bridgeShortfallAmount}
                 onChange={(e) => setBridgeShortfallAmount(parseFloat(e.target.value) || 0)}
-                className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-2.5 rounded-xl border border-slate-200 font-bold text-slate-900 text-sm focus:ring-2 focus:ring-gold-500"
               />
             </div>
 
@@ -1707,7 +1707,7 @@ export const GroupLendingView: React.FC = () => {
                 value={bridgeReason}
                 onChange={(e) => setBridgeReason(e.target.value)}
                 placeholder="e.g. Medical emergency / temporary inventory delay"
-                className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-gold-500"
               />
             </div>
 
@@ -1720,7 +1720,7 @@ export const GroupLendingView: React.FC = () => {
               </button>
               <button
                 onClick={handleConfirmBridge}
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md shadow-indigo-600/20"
+                className="px-5 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-semibold shadow-md shadow-gold-500/20"
               >
                 Authorize Solidarity Bridge
               </button>
@@ -1781,7 +1781,7 @@ export const GroupLendingView: React.FC = () => {
               <button
                 onClick={handleAddMemberToGroup}
                 disabled={!selectedNewBorrowerId}
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-semibold disabled:opacity-50"
               >
                 Add to Circle
               </button>

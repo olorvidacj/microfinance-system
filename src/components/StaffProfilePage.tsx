@@ -84,7 +84,7 @@ export const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ staff, onBac
 
       {/* Identity Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="h-20 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600" />
+        <div className="h-20 bg-gradient-to-r from-navy-900 via-navy-900 to-violet-600" />
         <div className="px-6 pb-6 -mt-10">
           <div className="flex flex-col sm:flex-row sm:items-end gap-4">
             <img
@@ -98,7 +98,7 @@ export const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ staff, onBac
             <div className="flex-1 pt-2">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-slate-900">{staff.name}</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gold-500/20 text-gold-700">
                   {roleDef.name}
                 </span>
               </div>
@@ -158,7 +158,7 @@ export const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ staff, onBac
       {/* Role Summary */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-          <UserCog className="w-4 h-4 text-blue-600" /> Role Summary
+          <UserCog className="w-4 h-4 text-gold-600" /> Role Summary
         </h3>
         <p className="text-sm text-slate-600 mt-2">{roleDef.description}</p>
         <div className="grid md:grid-cols-2 gap-x-6 gap-y-2 mt-4">
@@ -174,7 +174,7 @@ export const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ staff, onBac
       {/* Permissions Matrix */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 mb-4">
-          <ShieldCheck className="w-4 h-4 text-blue-600" /> Permissions Profile
+          <ShieldCheck className="w-4 h-4 text-gold-600" /> Permissions Profile
         </h3>
         {groupedPermissions.length === 0 ? (
           <p className="text-sm text-slate-500">No permissions assigned to this role.</p>
@@ -182,16 +182,16 @@ export const StaffProfilePage: React.FC<StaffProfilePageProps> = ({ staff, onBac
           <div className="space-y-5">
             {groupedPermissions.map((cat) => (
               <div key={cat.category}>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700 mb-2">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gold-700 mb-2">
                   {cat.category}
                 </div>
                 <div className="grid md:grid-cols-2 gap-2">
                   {cat.matched.map((p) => (
                     <div
                       key={p.key}
-                      className="flex items-start gap-2 bg-blue-50/60 border border-blue-100 rounded-lg px-3 py-2"
+                      className="flex items-start gap-2 bg-gold-500/10 border border-gold-400/30 rounded-lg px-3 py-2"
                     >
-                      <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                      <CheckCircle2 className="w-4 h-4 text-gold-600 mt-0.5 shrink-0" />
                       <div>
                         <div className="text-sm font-semibold text-slate-800">{p.label}</div>
                         <div className="text-xs text-slate-500">{p.description}</div>

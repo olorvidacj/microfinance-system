@@ -1,18 +1,18 @@
 export const colors = {
-  // Primary — deep blue
-  primary: '#1E3A8A',
-  primaryDark: '#172E7A',
-  primaryDeep: '#0F2E63',
-  primaryBright: '#2563EB',
-  primaryLight: '#3B82F6',
-  primarySoft: '#EFF6FF',
-  primaryBorder: '#BFDBFE',
+  // Primary — deep navy (HOSCOMO brand)
+  primary: '#091527',
+  primaryDark: '#0D1C33',
+  primaryDeep: '#06101C',
+  primaryBright: '#F59E0B',
+  primaryLight: '#FBBF24',
+  primarySoft: '#FFFBEB',
+  primaryBorder: '#FDE68A',
 
-  // Secondary — teal & green
-  teal: '#0D9488',
-  tealDark: '#0F766E',
-  tealSoft: '#F0FDFA',
-  tealBorder: '#99F6E4',
+  // Accent — gold (replaces legacy teal)
+  teal: '#D97706',
+  tealDark: '#B45309',
+  tealSoft: '#FFFBEB',
+  tealBorder: '#FDE68A',
   green: '#10B981',
   greenDark: '#059669',
   greenSoft: '#ECFDF5',
@@ -41,7 +41,14 @@ export const colors = {
   border: '#E2E8F0',
   borderLight: '#F1F5F9',
   ink: '#0F172A',
-  navy: '#0B1E45',
+  navy: '#091527',
+
+  // Gold scale
+  gold: '#F59E0B',
+  goldLight: '#FBBF24',
+  goldSoft: '#FFFBEB',
+  goldBorder: '#FDE68A',
+  goldDeep: '#B45309',
 } as const;
 
 export const spacing = {

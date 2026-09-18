@@ -12,7 +12,9 @@ export type SystemRole =
   | 'AUDITOR'
   | 'CREDIT_COMMITTEE'
   | 'EDUCATION_COMMITTEE'
-  | 'BOARD_OF_DIRECTORS';
+  | 'BOARD_OF_DIRECTORS'
+  | 'ADVISER'
+  | 'LEGAL_OFFICER';
 
 export type SystemPermission =
   // Administrator Permissions
@@ -141,7 +143,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'assist_clients',
       'view_transaction_records',
     ],
-    badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
+    badgeColor: 'bg-gold-500/20 text-gold-800 border-gold-400/30',
     iconName: 'Users2',
     allowedNavTabs: [
       'dashboard',
@@ -329,7 +331,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'view_transaction_records',
       'add_advisory_notes',
     ],
-    badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    badgeColor: 'bg-gold-500/20 text-gold-800 border-gold-400/30',
     iconName: 'Building2',
     allowedNavTabs: [
       'dashboard',
@@ -490,7 +492,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'manage_loan_applications',
       'view_client_info',
     ],
-    badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    badgeColor: 'bg-gold-500/20 text-gold-800 border-gold-400/30',
     iconName: 'Vote',
     allowedNavTabs: [
       'dashboard',
@@ -552,6 +554,63 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'reports',
       'branches',
       'products',
+    ],
+  },
+
+  ADVISER: {
+    id: 'ADVISER',
+    name: 'Cooperative Adviser',
+    category: 'Governance',
+    description: 'Advisory officer providing guidance on policy, operations, and member welfare without transactional authority.',
+    responsibilities: [
+      'Provide non-binding advisory guidance on cooperative operations',
+      'Review institutional reports and recommend improvements',
+      'Support governance and member development initiatives',
+    ],
+    permissions: [
+      'view_all_records',
+      'view_client_info',
+      'review_client_loan_info',
+      'view_transaction_records',
+      'add_advisory_notes',
+    ],
+    badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+    iconName: 'Lightbulb',
+    allowedNavTabs: [
+      'dashboard',
+      'membership',
+      'loans',
+      'reports',
+      'brochure',
+    ],
+  },
+
+  LEGAL_OFFICER: {
+    id: 'LEGAL_OFFICER',
+    name: 'Legal Officer',
+    category: 'Governance',
+    description: 'Legal counsel reviewing contracts, compliance, and legal records of the cooperative.',
+    responsibilities: [
+      'Review loan contracts, collateral documents, and legal instruments',
+      'Ensure regulatory and bylaw compliance across operations',
+      'Maintain the cooperative legal records registry',
+    ],
+    permissions: [
+      'view_all_records',
+      'view_client_info',
+      'review_client_loan_info',
+      'view_transaction_records',
+      'manage_legal_records',
+      'add_advisory_notes',
+    ],
+    badgeColor: 'bg-navy-100 text-navy-800 border-navy-200',
+    iconName: 'Scale',
+    allowedNavTabs: [
+      'dashboard',
+      'membership',
+      'loans',
+      'documents',
+      'reports',
     ],
   },
 };

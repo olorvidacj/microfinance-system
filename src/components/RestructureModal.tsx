@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Sparkles,
@@ -130,15 +130,15 @@ export const RestructureModal: React.FC<RestructureModalProps> = ({
     <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-2xl w-full my-8 shadow-2xl border border-gray-100 overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between">
+        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 to-navy-950 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-purple-500 text-white flex items-center justify-center font-bold">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-base font-bold">AI Loan Restructuring & Work-Out</h2>
-              <p className="text-xs text-indigo-200">
-                {loan.borrowerName} â€¢ {loan.loanNumber} ({loan.daysInArrears}d Overdue)
+              <p className="text-xs text-slate-300">
+                {loan.borrowerName} • {loan.loanNumber} ({loan.daysInArrears}d Overdue)
               </p>
             </div>
           </div>

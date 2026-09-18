@@ -230,19 +230,19 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
     <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
       <div className="bg-white rounded-2xl max-w-4xl w-full my-6 shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 text-white flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 bg-gradient-to-r from-navy-800 via-navy-800 to-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white font-bold shadow-inner">
-              <UserPlus className="w-5 h-5 text-blue-200" />
+              <UserPlus className="w-5 h-5 text-slate-300" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white tracking-tight">Client Registration & KYC Enrollment</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/30 text-blue-200 border border-blue-400/30">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-500/30 text-slate-300 border border-gold-400/30">
                   Step {step} of 4
                 </span>
               </div>
-              <p className="text-xs text-blue-100/80 mt-0.5">
+              <p className="text-xs text-slate-200/80 mt-0.5">
                 Authorized staff portal for biometric, demographic, and identity compliance onboarding.
               </p>
             </div>
@@ -270,18 +270,18 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                 onClick={() => setStep(s.num as any)}
                 className={`text-left p-2.5 rounded-xl transition border text-xs flex items-center gap-2.5 ${
                   step === s.num
-                    ? 'bg-white border-blue-600 shadow-xs ring-2 ring-blue-600/10 text-blue-900 font-semibold'
+                    ? 'bg-white border-gold-500 shadow-xs ring-2 ring-gold-500/10 text-navy-900 font-semibold'
                     : step > s.num
-                    ? 'bg-blue-50/60 border-blue-200 text-blue-700'
+                    ? 'bg-gold-500/10 border-gold-400/30 text-gold-700'
                     : 'bg-transparent border-transparent text-slate-400 hover:bg-slate-100/80'
                 }`}
               >
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                     step === s.num
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-navy-900 text-white'
                       : step > s.num
-                      ? 'bg-blue-100 text-blue-700'
+                      ? 'bg-gold-500/20 text-gold-700'
                       : 'bg-slate-200 text-slate-500'
                   }`}
                 >
@@ -312,22 +312,22 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-blue-600" />
+                  <User className="w-4 h-4 text-gold-600" />
                   <h3 className="text-sm font-bold text-slate-900">Personal Information & Legal Identification</h3>
                 </div>
                 <span className="text-[11px] text-slate-400">All information is encrypted under Data Privacy Act</span>
               </div>
 
               {/* Unique Client ID Banner */}
-              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between">
+              <div className="p-3.5 bg-gold-500/10 border border-gold-400/30 rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-blue-600">Generated Unique Client ID</span>
-                  <p className="text-sm font-mono font-bold text-blue-950">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-gold-600">Generated Unique Client ID</span>
+                  <p className="text-sm font-mono font-bold text-navy-950">
                     CLI-{currentYear}-{String(Math.floor(Math.random() * 800) + 200).padStart(4, '0')}
                   </p>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-xs">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <div className="flex items-center gap-1.5 text-xs text-gold-700 bg-white px-2.5 py-1 rounded-lg border border-gold-400/30 shadow-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-gold-600" />
                   <span>Auto-allocated by System</span>
                 </div>
               </div>
@@ -343,7 +343,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Maria Clara De Los Santos"
                     value={formData.fullName}
                     onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 focus:border-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -352,7 +352,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.idType}
                     onChange={(e) => setFormData({ ...formData, idType: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   >
                     <option value="Philippine National ID (PhilSys)">Philippine National ID (PhilSys)</option>
                     <option value="SSS / UMID Card">SSS / UMID Card</option>
@@ -374,7 +374,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. 9924-1823-9012 or SSS 03-8941294-1"
                     value={formData.idNumber}
                     onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -385,7 +385,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     required
                     value={formData.dateOfBirth}
                     onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -396,7 +396,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. San Jose del Monte, Bulacan"
                     value={formData.placeOfBirth}
                     onChange={(e) => setFormData({ ...formData, placeOfBirth: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -405,7 +405,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.gender}
                     onChange={(e) => setFormData({ ...formData, gender: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   >
                     <option value="Female">Female</option>
                     <option value="Male">Male</option>
@@ -418,7 +418,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.civilStatus}
                     onChange={(e) => setFormData({ ...formData, civilStatus: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   >
                     <option value="Single">Single</option>
                     <option value="Married">Married</option>
@@ -434,7 +434,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     type="text"
                     value={formData.nationality}
                     onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -443,7 +443,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.branchId}
                     onChange={(e) => setFormData({ ...formData, branchId: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   >
                     {branches.map((b) => (
                       <option key={b.id} value={b.id}>
@@ -461,7 +461,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-blue-600" />
+                  <MapPin className="w-4 h-4 text-gold-600" />
                   <h3 className="text-sm font-bold text-slate-900">Contact Information & Residential Address</h3>
                 </div>
                 <span className="text-[11px] text-slate-400">Used for field background investigation & notifications</span>
@@ -478,7 +478,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="0917-000-0000"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -489,7 +489,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. (044) 791-0000"
                     value={formData.secondaryPhone}
                     onChange={(e) => setFormData({ ...formData, secondaryPhone: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -500,7 +500,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="client@email.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -511,7 +511,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="facebook.com/username"
                     value={formData.facebookAccount}
                     onChange={(e) => setFormData({ ...formData, facebookAccount: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -525,7 +525,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Block 12 Lot 4, St. Jude Village"
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -537,7 +537,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Poblacion / Kaypian"
                     value={formData.barangay}
                     onChange={(e) => setFormData({ ...formData, barangay: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -549,7 +549,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. San Jose del Monte"
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -560,7 +560,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Bulacan"
                     value={formData.province}
                     onChange={(e) => setFormData({ ...formData, province: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -571,7 +571,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. 3023"
                     value={formData.postalCode}
                     onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -580,7 +580,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.homeOwnership}
                     onChange={(e) => setFormData({ ...formData, homeOwnership: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   >
                     <option value="Owned">Owned (Freehold)</option>
                     <option value="Rented">Rented / Leased</option>
@@ -596,7 +596,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     min="0"
                     value={formData.yearsAtAddress}
                     onChange={(e) => setFormData({ ...formData, yearsAtAddress: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -649,7 +649,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-blue-600" />
+                  <Briefcase className="w-4 h-4 text-gold-600" />
                   <h3 className="text-sm font-bold text-slate-900">Employment, Business & Financial Capacity</h3>
                 </div>
                 <span className="text-[11px] text-slate-400">Used for debt-to-income and microloan limit calculations</span>
@@ -661,7 +661,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.employmentStatus}
                     onChange={(e) => setFormData({ ...formData, employmentStatus: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   >
                     <option value="Business Owner">Micro/Small Business Owner</option>
                     <option value="Self-Employed">Self-Employed / Freelancer</option>
@@ -681,7 +681,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Santos General Merchandise & Bakery"
                     value={formData.employerOrBusiness}
                     onChange={(e) => setFormData({ ...formData, employerOrBusiness: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -692,7 +692,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Food Processing & Retail Bakery"
                     value={formData.businessNature}
                     onChange={(e) => setFormData({ ...formData, businessNature: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -704,7 +704,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Bakery Proprietor / Head Baker"
                     value={formData.occupation}
                     onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -715,7 +715,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     min="0"
                     value={formData.yearsInBusinessOrJob}
                     onChange={(e) => setFormData({ ...formData, yearsInBusinessOrJob: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -726,7 +726,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     placeholder="e.g. Stall #14, San Jose Public Market"
                     value={formData.workAddress}
                     onChange={(e) => setFormData({ ...formData, workAddress: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 text-slate-900"
                   />
                 </div>
 
@@ -790,7 +790,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  <ShieldCheck className="w-4 h-4 text-gold-600" />
                   <h3 className="text-sm font-bold text-slate-900">KYC Verification Documents & Initial Account Status</h3>
                 </div>
                 <span className="text-[11px] text-slate-400">Upload compliance verification proof</span>
@@ -811,7 +811,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                         className="p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-xl flex items-center justify-between transition"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                          <div className="w-8 h-8 rounded-lg bg-gold-500/20 text-gold-700 flex items-center justify-center font-bold">
                             <FileText className="w-4 h-4" />
                           </div>
                           <div>
@@ -839,9 +839,9 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                 )}
 
                 {/* Add Document Controls */}
-                <div className="p-3.5 bg-blue-50/50 border border-blue-200/80 rounded-xl space-y-3">
-                  <span className="font-bold text-blue-900 text-xs flex items-center gap-1.5">
-                    <Upload className="w-3.5 h-3.5 text-blue-600" />
+                <div className="p-3.5 bg-gold-500/10 border border-gold-400/30 rounded-xl space-y-3">
+                  <span className="font-bold text-navy-900 text-xs flex items-center gap-1.5">
+                    <Upload className="w-3.5 h-3.5 text-gold-600" />
                     Attach Additional Document File
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -872,7 +872,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                     <button
                       type="button"
                       onClick={handleAddDoc}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition flex items-center justify-center gap-1.5 text-xs shadow-xs"
+                      className="px-3 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-lg font-semibold transition flex items-center justify-center gap-1.5 text-xs shadow-xs"
                     >
                       <Upload className="w-3.5 h-3.5" />
                       Add to Client Files
@@ -888,7 +888,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.clientStatus}
                     onChange={(e) => setFormData({ ...formData, clientStatus: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 font-semibold text-slate-900"
                   >
                     <option value="Pending">Pending (Awaiting Document Verification)</option>
                     <option value="Active">Active (Fully Onboarded & Verified)</option>
@@ -903,7 +903,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   <select
                     value={formData.kycStatus}
                     onChange={(e) => setFormData({ ...formData, kycStatus: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-gold-500 font-semibold text-slate-900"
                   >
                     <option value="PENDING">Pending Review</option>
                     <option value="VERIFIED">Verified & Approved</option>
@@ -979,7 +979,7 @@ export const ClientRegistrationModal: React.FC<ClientRegistrationModalProps> = (
                   }
                   setStep((prev) => (prev + 1) as any);
                 }}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center gap-1.5 text-xs shadow-md shadow-blue-600/20"
+                className="px-5 py-2 bg-navy-900 hover:bg-navy-800 text-white rounded-xl font-bold transition flex items-center gap-1.5 text-xs shadow-md shadow-gold-500/20"
               >
                 Next Step
                 <ArrowRight className="w-4 h-4" />

@@ -5,16 +5,16 @@ type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'succe
 type Size = 'sm' | 'md' | 'lg';
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500 disabled:bg-emerald-300',
-  secondary: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:ring-emerald-400',
+  primary: 'bg-gold-400 text-navy-950 font-semibold hover:bg-gold-300 focus-visible:ring-gold-500 disabled:bg-gold-200',
+  secondary: 'bg-navy-950/5 text-navy-900 hover:bg-navy-950/10 focus-visible:ring-navy-400',
   outline: 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus-visible:ring-slate-400',
   ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-800',
   danger: 'bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500',
   success: 'bg-emerald-600 text-white hover:bg-emerald-700',
-  brand: 'bg-[#091527] text-white hover:bg-slate-800 focus-visible:ring-slate-700 disabled:bg-slate-400',
-  brandOutline: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus-visible:ring-slate-400',
-  navy: 'bg-[#091527] text-white hover:bg-slate-800 focus-visible:ring-slate-800 disabled:bg-slate-500',
-  gold: 'bg-amber-400 text-slate-950 hover:bg-amber-300 font-bold focus-visible:ring-amber-400 disabled:bg-amber-200',
+  brand: 'bg-navy-950 text-white hover:bg-navy-900 focus-visible:ring-navy-700 disabled:bg-slate-400',
+  brandOutline: 'border border-slate-300 bg-white text-navy-900 hover:bg-slate-50 focus-visible:ring-slate-400',
+  navy: 'bg-navy-950 text-white hover:bg-navy-900 focus-visible:ring-navy-800 disabled:bg-slate-500',
+  gold: 'bg-gold-400 text-navy-950 hover:bg-gold-300 font-bold focus-visible:ring-gold-400 disabled:bg-gold-200',
 };
 
 const sizes: Record<Size, string> = {

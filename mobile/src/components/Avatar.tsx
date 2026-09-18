@@ -11,7 +11,7 @@ export interface AvatarProps {
   fg?: string;
 }
 
-const AVATAR_COLORS = ['#1E3A8A', '#0D9488', '#10B981', '#2563EB', '#0F766E', '#312E81'];
+const AVATAR_COLORS = ['#091527', '#D97706', '#F59E0B', '#B45309', '#0F766E', '#312E81'];
 
 export const Avatar: React.FC<AvatarProps> = ({ name, uri, size = 44, bg, fg }) => {
   const fallbackBg = bg ?? AVATAR_COLORS[Math.abs((name || '').length) % AVATAR_COLORS.length];

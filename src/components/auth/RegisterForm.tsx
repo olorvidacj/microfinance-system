@@ -165,7 +165,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
         <button
           type="button"
           onClick={onSuccess}
-          className="mt-6 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-md shadow-blue-600/20 transition flex items-center justify-center gap-2 text-sm"
+          className="mt-6 w-full py-3 bg-gold-400 hover:bg-gold-300 text-navy-950 font-semibold rounded-xl shadow-md shadow-gold-500/20 transition flex items-center justify-center gap-2 text-sm"
         >
           Enter Client Portal
           <ArrowRight className="w-4 h-4" />
@@ -181,7 +181,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
           key={s}
           className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition ${
             i === currentIndex
-              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+              ? 'bg-gold-400 text-navy-950 shadow-sm shadow-gold-500/20'
               : i < currentIndex
                 ? 'bg-white text-slate-900 shadow-sm border border-slate-200/60'
                 : 'text-slate-500'
@@ -202,7 +202,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
           <button
             type="button"
             onClick={onBack}
-            className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 transition"
+            className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-navy-950 transition"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to home
@@ -221,10 +221,10 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
 
       {step === 'account' && (
         <div className="space-y-3.5">
-          <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-900">
-            <Smartphone className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="bg-gold-500/10 border border-gold-400/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-navy-900">
+            <Smartphone className="w-4 h-4 text-gold-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-blue-800">Step 1 of 3 — Your Account. </span>
+              <span className="font-bold text-gold-700">Step 1 of 3 — Your Account. </span>
               <span>Complete your registration to access your HOSCOMO client portal.</span>
             </div>
           </div>
@@ -241,7 +241,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.account.fullName}
                 onChange={(e) => setField('account', 'fullName', e.target.value)}
                 placeholder="e.g. Maria Teresa Santos"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -258,7 +258,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.account.phone}
                 onChange={(e) => setField('account', 'phone', e.target.value)}
                 placeholder="0917 123 4567"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -274,7 +274,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.account.email}
                 onChange={(e) => setField('account', 'email', e.target.value)}
                 placeholder="maria.santos@gmail.com"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -288,7 +288,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
               value={steps.account.borrowerNumber}
               onChange={(e) => setField('account', 'borrowerNumber', e.target.value)}
               placeholder="e.g. MBR-2026-001"
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition uppercase"
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition uppercase"
             />
           </div>
         </div>
@@ -296,10 +296,10 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
 
       {step === 'client' && (
         <div className="space-y-3.5">
-          <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-900">
-            <Briefcase className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="bg-gold-500/10 border border-gold-400/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-navy-900">
+            <Briefcase className="w-4 h-4 text-gold-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-blue-800">Step 2 of 3 — Your Client Information. </span>
+              <span className="font-bold text-gold-700">Step 2 of 3 — Your Client Information. </span>
               <span>Help us get to know you so we can tailor our financial services.</span>
             </div>
           </div>
@@ -316,7 +316,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.client.address}
                 onChange={(e) => setField('client', 'address', e.target.value)}
                 placeholder="e.g. Tacloban City, Leyte"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -333,7 +333,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.client.occupation}
                 onChange={(e) => setField('client', 'occupation', e.target.value)}
                 placeholder="e.g. Sari-Sari Store Owner"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -349,7 +349,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.client.employerOrBusiness}
                 onChange={(e) => setField('client', 'employerOrBusiness', e.target.value)}
                 placeholder="e.g. Santos General Store"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -366,7 +366,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.client.monthlyIncome}
                 onChange={(e) => setField('client', 'monthlyIncome', e.target.value)}
                 placeholder="e.g. 35000"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -375,10 +375,10 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
 
       {step === 'security' && (
         <div className="space-y-3.5">
-          <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 flex items-start gap-2.5 text-xs text-blue-900">
-            <Lock className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="bg-gold-500/10 border border-gold-400/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-navy-900">
+            <Lock className="w-4 h-4 text-gold-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-blue-800">Step 3 of 3 — Secure Your Account. </span>
+              <span className="font-bold text-gold-700">Step 3 of 3 — Secure Your Account. </span>
               <span>Choose a strong password to protect your member account.</span>
             </div>
           </div>
@@ -393,7 +393,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.security.password}
                 onChange={(e) => setField('security', 'password', e.target.value)}
                 placeholder="Min. 8 characters, with a letter and number"
-                className="w-full pl-9 pr-10 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-10 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
               <button
                 type="button"
@@ -415,7 +415,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
                 value={steps.security.confirmPassword}
                 onChange={(e) => setField('security', 'confirmPassword', e.target.value)}
                 placeholder="Repeat password"
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-xs sm:text-sm transition"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
               />
             </div>
           </div>
@@ -440,7 +440,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
               type="checkbox"
               checked={steps.security.agreeTerms}
               onChange={(e) => setField('security', 'agreeTerms', e.target.checked)}
-              className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+              className="mt-0.5 rounded text-gold-600 focus:ring-gold-500 border-slate-300"
             />
             <span className="text-[11px] text-slate-600 leading-tight">
               I agree to the <strong>Terms of Service</strong> and consent to credit verification under the <strong>Data Privacy Act (RA 10173)</strong>.
@@ -463,7 +463,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
           <button
             type="button"
             onClick={handleNext}
-            className="flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-md shadow-blue-600/20 transition flex items-center justify-center gap-2 text-sm"
+            className="flex-[2] py-3 bg-gold-400 hover:bg-gold-300 text-navy-950 font-semibold rounded-xl shadow-md shadow-gold-500/20 transition flex items-center justify-center gap-2 text-sm"
           >
             Continue
             <ArrowRight className="w-4 h-4" />
@@ -487,7 +487,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchToLogin,
           <button
             type="button"
             onClick={onSwitchToLogin}
-            className="text-xs font-bold text-blue-600 hover:text-blue-700 underline"
+            className="text-xs font-bold text-gold-600 hover:text-gold-700 underline"
           >
             Sign In
           </button>

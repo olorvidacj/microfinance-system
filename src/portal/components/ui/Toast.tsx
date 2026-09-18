@@ -50,7 +50,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 ? 'border-emerald-200 bg-emerald-50/95 text-emerald-800'
                 : t.kind === 'error'
                   ? 'border-rose-200 bg-rose-50/95 text-rose-800'
-                  : 'border-blue-200 bg-blue-50/95 text-blue-800'
+                  : 'border-gold-400/30 bg-gold-500/10 text-gold-800'
             }`}
           >
             {t.kind === 'success' && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}

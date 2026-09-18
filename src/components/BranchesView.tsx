@@ -68,12 +68,12 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
             onClick={() => setTransferModal({ fromId: branches[0]?.id || '', toId: branches[1]?.id || '', amount: 10000 })}
             className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-sm font-medium transition shadow-2xs"
           >
-            <ArrowRightLeft className="w-4 h-4 text-blue-600" />
+            <ArrowRightLeft className="w-4 h-4 text-gold-600" />
             <span>Transfer Vault Liquidity</span>
           </button>
           <button
             onClick={onOpenAddBranch}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-xs"
+            className="flex items-center gap-2 px-4 py-2.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-sm font-semibold transition shadow-xs"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Open New Branch</span>
@@ -96,7 +96,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
             <div
               key={branch.id}
               className={`bg-white p-6 rounded-2xl border transition shadow-2xs flex flex-col justify-between ${
-                isSelected ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-gray-300'
+                isSelected ? 'border-gold-500 ring-2 ring-gold-500/20' : 'border-gray-200 hover:border-gray-300'
               }`}
             >
               <div>
@@ -135,7 +135,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
                 {/* Manager Card */}
                 <div className="mt-5 p-3.5 bg-gray-50 rounded-xl flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                    <div className="w-7 h-7 rounded-full bg-gold-500/20 text-gold-700 flex items-center justify-center font-bold">
                       {branch.managerName.charAt(0)}
                     </div>
                     <div>
@@ -150,8 +150,8 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
 
                 {/* Financial Metrics */}
                 <div className="mt-5 grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3.5 rounded-xl border border-gray-100 bg-blue-50/40">
-                    <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-wider block">
+                  <div className="p-3.5 rounded-xl border border-gray-100 bg-gold-500/10">
+                    <span className="text-[11px] font-semibold text-gold-700 uppercase tracking-wider block">
                       Active Portfolio
                     </span>
                     <span className="text-lg font-bold text-gray-900 font-mono mt-1 block">
@@ -185,7 +185,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
                   onClick={() => setActiveBranchId(branch.id)}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
                     isSelected
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-navy-900 text-white'
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                   }`}
                 >
@@ -203,7 +203,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-gold-500/10 text-gold-600 flex items-center justify-center">
                   <ArrowRightLeft className="w-4 h-4" />
                 </div>
                 <h3 className="font-bold text-gray-900 text-base">Inter-Branch Vault Transfer</h3>
@@ -271,7 +271,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
                 onClick={handleExecuteTransfer}
                 disabled={transferSuccess}
                 className={`py-2 px-5 rounded-xl text-sm font-semibold text-white transition ${
-                  transferSuccess ? 'bg-emerald-600' : 'bg-blue-600 hover:bg-blue-700'
+                  transferSuccess ? 'bg-emerald-600' : 'bg-navy-900 hover:bg-navy-800'
                 }`}
               >
                 {transferSuccess ? 'Transferred Successfully!' : 'Execute Cash Transfer'}

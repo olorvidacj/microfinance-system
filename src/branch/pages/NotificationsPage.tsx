@@ -14,7 +14,7 @@ const ICONS: Record<string, string> = {
   LOAN_APPLICATION: 'bg-emerald-50 text-emerald-600',
   PAYMENT: 'bg-emerald-50 text-emerald-600',
   SAVINGS: 'bg-teal-50 text-teal-600',
-  GROUP: 'bg-indigo-50 text-indigo-600',
+  GROUP: 'bg-gold-500/10 text-gold-600',
   SYSTEM: 'bg-slate-100 text-slate-500',
 };
 

@@ -202,7 +202,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">Current Balance</span>
-                <span className="font-mono font-bold text-blue-700 text-sm">{formatCurrency(selectedLoan.remainingBalance)}</span>
+                <span className="font-mono font-bold text-gold-700 text-sm">{formatCurrency(selectedLoan.remainingBalance)}</span>
                 <span className="text-[10px] text-slate-500">of {formatCurrency(selectedLoan.totalPayable)}</span>
               </div>
               <div>
@@ -264,7 +264,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                   onClick={() => { setAmount(selectedLoan.remainingBalance); setIsAdvancePayment(true); }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
                     amount === selectedLoan.remainingBalance && isAdvancePayment
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      ? 'bg-navy-900 text-white border-gold-500 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
@@ -323,7 +323,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
                 type="checkbox"
                 checked={isAdvancePayment}
                 onChange={(e) => setIsAdvancePayment(e.target.checked)}
-                className="rounded text-blue-600 w-4 h-4 cursor-pointer"
+                className="rounded text-gold-600 w-4 h-4 cursor-pointer"
               />
             </label>
             {isAdvancePayment && advanceRebatePreview > 0 && (
@@ -369,7 +369,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               </div>
               <div className="bg-white/80 p-2 rounded-xl border border-emerald-100">
                 <span className="text-slate-500 block">New Remaining Bal:</span>
-                <span className="font-mono font-bold text-blue-700 text-xs">{formatCurrency(allocationPreview.newBalance)}</span>
+                <span className="font-mono font-bold text-gold-700 text-xs">{formatCurrency(allocationPreview.newBalance)}</span>
               </div>
             </div>
           </div>

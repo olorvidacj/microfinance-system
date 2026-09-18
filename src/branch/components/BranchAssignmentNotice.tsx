@@ -62,6 +62,22 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
     city: 'Tacloban City',
     phone: '+63 (053) 832-4190',
   };
+  // Administrator contact delivered by the branch-assignment endpoint (derived from
+  // the cooperative's seed data). Fallbacks reuse the same seeded records.
+  const adminContact = assignmentData?.adminContact || {
+    name: 'Elena Rostata',
+    email: 'admin@hoscomo.coop',
+    title: 'System Administrator & Operations Head',
+    phone: '+63 (053) 832-4190',
+    location: 'Tacloban Main Branch, HOSCOMO Bldg, Real Street',
+  };
+  const adminInitials =
+    adminContact.name
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'SA';
 
   const handleRefreshClick = async () => {
     setIsRefreshing(true);
@@ -114,7 +130,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
     try {
       const res = await branchService.requestAssignment();
       setRequestSentMessage(
-        res?.message || 'Official assignment alert has been dispatched to Elena Rostata (System Administrator).'
+        res?.message || `Official assignment alert has been dispatched to ${adminContact.name} (System Administrator).`
       );
     } catch (err: any) {
       setRequestSentMessage(
@@ -190,7 +206,7 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
           {/* Ambient Glows */}
           <div className="relative">
             <div className="absolute -top-12 -left-12 h-64 w-64 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-12 -right-12 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-12 -right-12 h-64 w-64 rounded-full bg-gold-500/10 blur-3xl pointer-events-none" />
 
             {/* Alert Card */}
             <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-[#0e1c31] shadow-2xl shadow-slate-950/60">
@@ -321,8 +337,8 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
 
                 {/* Messages: Refresh Feedback or Error */}
                 {refreshMessage && (
-                  <div className="mt-4 rounded-xl border border-blue-500/40 bg-blue-500/10 p-3.5 text-xs text-blue-200 flex items-start gap-2.5">
-                    <Clock className="h-4 w-4 text-blue-400 mt-0.5 shrink-0" />
+                  <div className="mt-4 rounded-xl border border-gold-500/40 bg-gold-500/10 p-3.5 text-xs text-slate-300 flex items-start gap-2.5">
+                    <Clock className="h-4 w-4 text-gold-400 mt-0.5 shrink-0" />
                     <span>{refreshMessage}</span>
                   </div>
                 )}
@@ -424,11 +440,11 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
 
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-400 to-amber-600 text-slate-950 font-extrabold text-sm">
-                    ER
+                    {adminInitials}
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">Elena Rostata</h4>
-                    <p className="text-xs text-amber-400 font-medium">System Administrator & Operations Head</p>
+                    <h4 className="text-sm font-bold text-white">{adminContact.name}</h4>
+                    <p className="text-xs text-amber-400 font-medium">{adminContact.title}</p>
                     <p className="text-[11px] text-slate-400">HOSCOMO Cooperative IT & Operations Directorate</p>
                   </div>
                 </div>
@@ -436,17 +452,17 @@ export const BranchAssignmentNotice: React.FC<BranchAssignmentNoticeProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-800/80 text-xs">
                   <div className="flex items-center gap-2 text-slate-300">
                     <Mail className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    <a href="mailto:admin@hoscomo.coop" className="hover:underline font-mono text-[11px]">
-                      admin@hoscomo.coop
+                    <a href={`mailto:${adminContact.email}`} className="hover:underline font-mono text-[11px]">
+                      {adminContact.email}
                     </a>
                   </div>
                   <div className="flex items-center gap-2 text-slate-300">
                     <Phone className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    <span className="font-mono text-[11px]">+63 (053) 832-4190</span>
+                    <span className="font-mono text-[11px]">{adminContact.phone}</span>
                   </div>
                   <div className="flex items-center gap-2 text-slate-300 sm:col-span-2">
                     <MapPin className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    <span className="text-[11px]">Tacloban Main Branch, HOSCOMO Bldg, Real Street</span>
+                    <span className="text-[11px]">{adminContact.location}</span>
                   </div>
                 </div>
               </div>

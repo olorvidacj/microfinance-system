@@ -122,7 +122,7 @@ export const AdminLoginPage: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="admin@hoscomo.coop"
-                    className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition placeholder:text-slate-400"
+                    className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold-500/30 focus:border-gold-500 transition placeholder:text-slate-400"
                   />
                 </div>
               </div>
@@ -130,7 +130,7 @@ export const AdminLoginPage: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-slate-700">Password</label>
-                  <button type="button" className="text-xs text-blue-600 hover:underline font-medium">
+                  <button type="button" className="text-xs text-gold-600 hover:underline font-medium">
                     Forgot password?
                   </button>
                 </div>
@@ -141,7 +141,7 @@ export const AdminLoginPage: React.FC = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
-                    className="w-full pl-9 pr-10 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition placeholder:text-slate-400"
+                    className="w-full pl-9 pr-10 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gold-500/30 focus:border-gold-500 transition placeholder:text-slate-400"
                   />
                   <button
                     type="button"
@@ -159,7 +159,7 @@ export const AdminLoginPage: React.FC = () => {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
                   />
                   Remember me
                 </label>

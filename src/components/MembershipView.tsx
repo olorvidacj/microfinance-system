@@ -197,15 +197,15 @@ export const MembershipView: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
       {/* Top Banner: Cooperative Membership Workflow Overview */}
-      <div className="bg-gradient-to-r from-blue-900 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
+      <div className="bg-gradient-to-r from-navy-950 to-navy-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 text-xs font-semibold uppercase tracking-wider">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-300" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-500/20 text-slate-300 border border-gold-400/30 text-xs font-semibold uppercase tracking-wider">
+              <ShieldCheck className="w-3.5 h-3.5 text-gold-300" />
               1. Membership Services Module
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Cooperative Membership & Governance</h1>
-            <p className="text-sm text-blue-200/90 max-w-2xl leading-relaxed">
+            <p className="text-sm text-slate-300/90 max-w-2xl leading-relaxed">
               Complete 5-step approval pipeline from application to Board of Directors sign-off (~1 month), member info updates via multiple channels, and proactive inactive member monitoring.
             </p>
           </div>
@@ -214,7 +214,7 @@ export const MembershipView: React.FC = () => {
             <button
               id="new-mem-app-btn"
               onClick={() => setShowNewAppModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-semibold transition shadow-md"
+              className="flex items-center gap-2 px-4 py-2.5 bg-gold-500 hover:bg-navy-900 text-white rounded-xl text-sm font-semibold transition shadow-md"
             >
               <UserPlus className="w-4 h-4" />
               New Membership Application
@@ -233,12 +233,12 @@ export const MembershipView: React.FC = () => {
         {/* 5-Step Process Timeline Cards */}
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-5 gap-3 pt-6 border-t border-white/10">
           <div className="bg-white/5 backdrop-blur-xs rounded-2xl p-3.5 border border-white/10">
-            <div className="flex items-center gap-2 text-xs font-semibold text-blue-300">
-              <span className="w-5 h-5 rounded-full bg-blue-500/30 flex items-center justify-center text-[10px] text-white">1</span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-gold-300">
+              <span className="w-5 h-5 rounded-full bg-gold-500/30 flex items-center justify-center text-[10px] text-white">1</span>
               Submission
             </div>
             <p className="text-xs font-medium text-white mt-1">Application & Requirements</p>
-            <p className="text-[11px] text-blue-200/70 mt-0.5">Valid ID, Proof of Income, 2x2 Photo</p>
+            <p className="text-[11px] text-slate-300/70 mt-0.5">Valid ID, Proof of Income, 2x2 Photo</p>
           </div>
 
           <div className="bg-white/5 backdrop-blur-xs rounded-2xl p-3.5 border border-white/10">
@@ -285,7 +285,7 @@ export const MembershipView: React.FC = () => {
           onClick={() => setActiveSubTab('applications')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
             activeSubTab === 'applications'
-              ? 'border-blue-600 text-blue-600'
+              ? 'border-gold-500 text-gold-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -297,7 +297,7 @@ export const MembershipView: React.FC = () => {
           onClick={() => setActiveSubTab('updates')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
             activeSubTab === 'updates'
-              ? 'border-blue-600 text-blue-600'
+              ? 'border-gold-500 text-gold-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -309,7 +309,7 @@ export const MembershipView: React.FC = () => {
           onClick={() => setActiveSubTab('inactive')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
             activeSubTab === 'inactive'
-              ? 'border-blue-600 text-blue-600'
+              ? 'border-gold-500 text-gold-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -321,7 +321,7 @@ export const MembershipView: React.FC = () => {
           onClick={() => setActiveSubTab('members')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition whitespace-nowrap ${
             activeSubTab === 'members'
-              ? 'border-blue-600 text-blue-600'
+              ? 'border-gold-500 text-gold-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -344,7 +344,7 @@ export const MembershipView: React.FC = () => {
                 placeholder="Search applicant name, number, phone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gold-500/20"
               />
             </div>
 
@@ -377,12 +377,12 @@ export const MembershipView: React.FC = () => {
               return (
                 <div
                   key={app.id}
-                  className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs hover:border-blue-200 transition"
+                  className="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs hover:border-gold-400/30 transition"
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                     {/* Applicant Primary Info */}
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
+                      <div className="w-12 h-12 rounded-2xl bg-gold-500/10 border border-gold-400/30 flex items-center justify-center text-gold-600 font-bold text-lg">
                         {app.applicantName.charAt(0)}
                       </div>
                       <div>
@@ -396,7 +396,7 @@ export const MembershipView: React.FC = () => {
                           <span>📞 {app.phone}</span>
                           <span>🏢 {app.occupation}</span>
                           <span>💍 {app.civilStatus}</span>
-                          {app.facebookAccount && <span className="text-blue-600 font-medium">FB: {app.facebookAccount}</span>}
+                          {app.facebookAccount && <span className="text-gold-600 font-medium">FB: {app.facebookAccount}</span>}
                         </div>
                       </div>
                     </div>
@@ -404,8 +404,8 @@ export const MembershipView: React.FC = () => {
                     {/* Step Status Badge */}
                     <div className="flex items-center gap-3">
                       {isSubmitted && (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold">
-                          <Clock className="w-3.5 h-3.5 text-blue-600" />
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gold-500/10 text-gold-700 border border-gold-400/30 text-xs font-semibold">
+                          <Clock className="w-3.5 h-3.5 text-gold-600" />
                           Step 1: Submitted (Pending Staff Check)
                         </span>
                       )}
@@ -547,8 +547,8 @@ export const MembershipView: React.FC = () => {
       {/* ========================================== */}
       {activeSubTab === 'updates' && (
         <div className="space-y-4">
-          <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-4 flex items-start gap-3 text-sm text-blue-900">
-            <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+          <div className="bg-gold-500/10 border border-gold-400/30 rounded-2xl p-4 flex items-start gap-3 text-sm text-navy-900">
+            <Info className="w-5 h-5 text-gold-600 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold">Cooperative Member Information Policy:</span> Members can request updates to personal information via office visit, mobile, or Facebook. Required supporting documents (e.g. Marriage Contract for civil status change to married) must be submitted and verified before approval.
             </div>
@@ -567,7 +567,7 @@ export const MembershipView: React.FC = () => {
                       <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono">
                         {req.memberNumber}
                       </span>
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-gold-500/10 text-gold-700 font-medium">
                         Via {req.channel}
                       </span>
                     </div>
@@ -602,7 +602,7 @@ export const MembershipView: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-slate-400">New Value Requested:</span>
-                    <p className="font-bold text-blue-600 mt-0.5">{req.newValue}</p>
+                    <p className="font-bold text-gold-600 mt-0.5">{req.newValue}</p>
                     <p className="text-slate-500 mt-0.5">{req.reason}</p>
                   </div>
                   <div>
@@ -627,7 +627,7 @@ export const MembershipView: React.FC = () => {
                     </button>
                     <button
                       onClick={() => approveMemberUpdateRequest(req.id)}
-                      className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"
+                      className="px-4 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-semibold"
                     >
                       Verify Document & Approve Update
                     </button>
@@ -683,7 +683,7 @@ export const MembershipView: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
                         <span>📞 {member.phone}</span>
                         {member.facebookAccount && (
-                          <span className="text-blue-600 font-medium">FB: {member.facebookAccount}</span>
+                          <span className="text-gold-600 font-medium">FB: {member.facebookAccount}</span>
                         )}
                         <span>📍 {member.address}</span>
                       </div>
@@ -716,7 +716,7 @@ export const MembershipView: React.FC = () => {
                         setSelectedMemberForFollowUp(member);
                         setShowFollowUpModal(true);
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-semibold transition"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                       Log Facebook / Field Follow-Up
@@ -738,7 +738,7 @@ export const MembershipView: React.FC = () => {
           {/* Follow-up Logs Ledger */}
           <div className="mt-8 bg-white rounded-2xl p-5 border border-slate-100 shadow-xs">
             <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-blue-600" />
+              <Clock className="w-4 h-4 text-gold-600" />
               Follow-Up & Field Visit Audit History ({memberFollowUpLogs.length})
             </h3>
             <div className="overflow-x-auto">
@@ -760,7 +760,7 @@ export const MembershipView: React.FC = () => {
                       <td className="py-2.5 px-3 font-mono text-slate-600">{log.date}</td>
                       <td className="py-2.5 px-3 font-semibold text-slate-900">{log.memberName}</td>
                       <td className="py-2.5 px-3">
-                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                        <span className="px-2 py-0.5 rounded-full bg-gold-500/10 text-gold-700 font-medium">
                           {log.contactChannel}
                         </span>
                       </td>
@@ -816,7 +816,7 @@ export const MembershipView: React.FC = () => {
                     <td className="py-3 px-3.5 font-mono text-slate-600">{b.borrowerNumber}</td>
                     <td className="py-3 px-3.5 font-medium text-slate-700">{b.civilStatus}</td>
                     <td className="py-3 px-3.5 font-bold text-slate-900">{formatCurrency(b.savingsBalance)}</td>
-                    <td className="py-3 px-3.5 font-bold text-blue-700">{formatCurrency(b.shareCapital)}</td>
+                    <td className="py-3 px-3.5 font-bold text-gold-700">{formatCurrency(b.shareCapital)}</td>
                     <td className="py-3 px-3.5">
                       <span className={`px-2 py-0.5 rounded-full font-semibold ${b.activeLoansCount > 0 ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
                         {b.activeLoansCount} active
@@ -851,7 +851,7 @@ export const MembershipView: React.FC = () => {
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-2xl bg-gold-500/20 text-gold-700 flex items-center justify-center font-bold">
                   <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
@@ -877,7 +877,7 @@ export const MembershipView: React.FC = () => {
                     value={newAppForm.applicantName}
                     onChange={(e) => setNewAppForm({ ...newAppForm, applicantName: e.target.value })}
                     placeholder="e.g. Maria Teresa Cruz"
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gold-500/20"
                   />
                 </div>
 
@@ -963,7 +963,7 @@ export const MembershipView: React.FC = () => {
                       type="checkbox"
                       checked={newAppForm.validIdAttached}
                       onChange={(e) => setNewAppForm({ ...newAppForm, validIdAttached: e.target.checked })}
-                      className="rounded text-blue-600"
+                      className="rounded text-gold-600"
                     />
                     Valid Government ID
                   </label>
@@ -972,7 +972,7 @@ export const MembershipView: React.FC = () => {
                       type="checkbox"
                       checked={newAppForm.proofOfIncomeAttached}
                       onChange={(e) => setNewAppForm({ ...newAppForm, proofOfIncomeAttached: e.target.checked })}
-                      className="rounded text-blue-600"
+                      className="rounded text-gold-600"
                     />
                     Proof of Income / ITR
                   </label>
@@ -981,14 +981,14 @@ export const MembershipView: React.FC = () => {
                       type="checkbox"
                       checked={newAppForm.twoByTwoPhotoAttached}
                       onChange={(e) => setNewAppForm({ ...newAppForm, twoByTwoPhotoAttached: e.target.checked })}
-                      className="rounded text-blue-600"
+                      className="rounded text-gold-600"
                     />
                     2x2 ID Photos (2 copies)
                   </label>
                 </div>
               </div>
 
-              <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200/80 text-xs text-blue-900">
+              <div className="bg-gold-500/10 p-3.5 rounded-2xl border border-gold-400/30 text-xs text-navy-900">
                 <span className="font-bold">Next Stage:</span> Staff encodes info and collects ₱500 membership fee + initial share capital, followed by Education Committee Background Investigation and Board of Directors Approval (~1 month total).
               </div>
 
@@ -1002,7 +1002,7 @@ export const MembershipView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold shadow-xs"
+                  className="px-5 py-2 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-sm font-semibold shadow-xs"
                 >
                   Submit Application
                 </button>
@@ -1141,7 +1141,7 @@ export const MembershipView: React.FC = () => {
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-2xl bg-gold-500/20 text-gold-700 flex items-center justify-center font-bold">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
@@ -1217,7 +1217,7 @@ export const MembershipView: React.FC = () => {
                   <select
                     value={updateForm.supportingDocType}
                     onChange={(e) => setUpdateForm({ ...updateForm, supportingDocType: e.target.value as any })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-blue-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-navy-900"
                   >
                     <option value="Marriage Contract">Marriage Contract (PSA/Local)</option>
                     <option value="Barangay Certificate">Barangay Certificate</option>
@@ -1258,7 +1258,7 @@ export const MembershipView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold"
+                  className="px-5 py-2 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-sm font-semibold"
                 >
                   Submit Update Request
                 </button>
@@ -1350,7 +1350,7 @@ export const MembershipView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold"
+                  className="px-5 py-2 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-sm font-semibold"
                 >
                   Save Log Entry
                 </button>

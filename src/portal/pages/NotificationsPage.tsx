@@ -137,7 +137,7 @@ const NotificationsPage: React.FC = () => {
                 green: 'bg-emerald-50 text-emerald-600',
                 red: 'bg-rose-50 text-rose-500',
                 amber: 'bg-amber-50 text-amber-600',
-                blue: 'bg-blue-50 text-blue-600',
+                blue: 'bg-gold-500/10 text-gold-600',
                 purple: 'bg-violet-50 text-violet-600',
                 slate: 'bg-slate-100 text-slate-500',
               };

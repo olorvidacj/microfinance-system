@@ -582,7 +582,7 @@ const styles = StyleSheet.create({
     color: '#059669',
   },
   attachBtn: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFBEB',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,

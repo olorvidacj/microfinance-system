@@ -119,7 +119,7 @@ export const LegalComplianceView: React.FC = () => {
         </div>
         <div className={kpiCard}>
           <div className={`${kpiLabel} flex items-center gap-1.5`}>
-            <Landmark className="w-3.5 h-3.5 text-indigo-600" /> Collateralized Loans
+            <Landmark className="w-3.5 h-3.5 text-gold-600" /> Collateralized Loans
           </div>
           <div className={kpiValue}>{withCollateral.length}</div>
           <div className="text-xs text-slate-500 mt-1">secured documents</div>
@@ -218,7 +218,7 @@ export const LegalComplianceView: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {(l.collaterals || []).length > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gold-600">
                           <ShieldCheck className="w-3.5 h-3.5" /> {(l.collaterals || []).length}
                         </span>
                       ) : (
