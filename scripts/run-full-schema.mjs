@@ -8,10 +8,10 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const sqlPath = join(__dirname, '..', 'database', 'supabase_full_schema.sql');
+const sqlPath = join(__dirname, '..', 'supabase_schema.sql');
 
 const connectionString =
-  process.env.SUPABASE_DB_URL || process.env.CLOUD_SQL_DATABASE_URL;
+  process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.CLOUD_SQL_DATABASE_URL;
 
 if (!connectionString) {
   console.error(

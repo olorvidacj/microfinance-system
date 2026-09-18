@@ -435,13 +435,138 @@ export async function initDbSchema(): Promise<boolean> {
         is_read BOOLEAN NOT NULL DEFAULT false,
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS kyc_submissions (
+        id                TEXT PRIMARY KEY,
+        borrower_id       TEXT NOT NULL,
+        status            TEXT NOT NULL DEFAULT 'NOT_STARTED',
+        personal_info     JSONB,
+        address           JSONB,
+        employment        JSONB,
+        submitted_at      TEXT,
+        reviewed_at       TEXT,
+        reviewed_by       TEXT,
+        reviewed_by_name  TEXT,
+        correction_reason TEXT,
+        rejection_reason  TEXT,
+        verified_at       TEXT,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kyc_submissions_borrower ON kyc_submissions(borrower_id);
+      CREATE INDEX IF NOT EXISTS idx_kyc_submissions_status ON kyc_submissions(status);
+
+      CREATE TABLE IF NOT EXISTS kyc_documents (
+        id                  TEXT PRIMARY KEY,
+        kyc_submission_id   TEXT NOT NULL,
+        borrower_id         TEXT NOT NULL,
+        document_type       TEXT NOT NULL,
+        document_name       TEXT NOT NULL,
+        file_name           TEXT,
+        file_url            TEXT,
+        status              TEXT NOT NULL DEFAULT 'PENDING',
+        rejection_reason    TEXT,
+        verified_by         TEXT,
+        verified_at         TEXT,
+        created_at          TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kyc_documents_borrower ON kyc_documents(borrower_id);
+      CREATE INDEX IF NOT EXISTS idx_kyc_documents_submission ON kyc_documents(kyc_submission_id);
+
+      CREATE TABLE IF NOT EXISTS kyc_audit_log (
+        id                  TEXT PRIMARY KEY,
+        borrower_id         TEXT NOT NULL,
+        kyc_submission_id   TEXT,
+        staff_user_id       TEXT,
+        staff_name          TEXT,
+        action              TEXT NOT NULL,
+        previous_status     TEXT,
+        new_status          TEXT,
+        reason              TEXT,
+        created_at          TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_kyc_audit_borrower ON kyc_audit_log(borrower_id);
+
+      CREATE TABLE IF NOT EXISTS kyc_required_documents (
+        id                  TEXT PRIMARY KEY,
+        document_type       TEXT NOT NULL,
+        document_name       TEXT NOT NULL,
+        description         TEXT,
+        is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order          INTEGER NOT NULL DEFAULT 0,
+        created_at          TEXT NOT NULL
+      );
     `);
 
-    // Self-heal defaults on pre-existing databases that predate the zero-balance policy.
+    // Self-heal defaults and ensure modern columns on pre-existing databases
     await client.query(`
       ALTER TABLE borrowers ALTER COLUMN savings_balance SET DEFAULT 0;
       ALTER TABLE borrowers ALTER COLUMN share_capital SET DEFAULT 0;
       ALTER TABLE savings_accounts ALTER COLUMN balance SET DEFAULT 0;
+
+      -- Self-heal pre-existing borrowers table columns
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS email_verified_at TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS profile_completed_at TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS existing_member_id TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS barangay TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS city_municipality TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS province TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS source_of_income TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+
+      CREATE INDEX IF NOT EXISTS idx_borrowers_email_verified ON borrowers (email_verified);
+      CREATE INDEX IF NOT EXISTS idx_borrowers_profile_completed ON borrowers (profile_completed);
+      CREATE INDEX IF NOT EXISTS idx_borrowers_member_status ON borrowers (member_status);
+
+      -- Seed KYC required documents if empty
+      INSERT INTO kyc_required_documents (id, document_type, document_name, description, is_active, sort_order, created_at)
+      VALUES
+        ('KRD-001', 'VALID_ID',        'Government-Issued Photo ID',        'A valid, unexpired government-issued photo ID (PhilID, Passport, Driver License, UMID, SSS, PRC).',  true, 1,  NOW()::text),
+        ('KRD-002', 'PROOF_OF_ADDRESS','Barangay Clearance or Utility Bill','Recent proof of residence within the last 3 months.',                                                         true, 2,  NOW()::text),
+        ('KRD-003', 'PROOF_OF_INCOME', 'Payslip / Business Permit / Bank Statement','Evidence of regular income or business operations.',                                                     true, 3,  NOW()::text),
+        ('KRD-004', 'PHOTO_2X2',       'Recent 2x2 ID Photo',              'A recent photograph with white background.',                                                                 true, 4,  NOW()::text)
+      ON CONFLICT DO NOTHING;
+
+      -- Self-heal handle_new_user function in Supabase auth trigger
+      DO $func$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+          EXECUTE $fn$
+            CREATE OR REPLACE FUNCTION handle_new_user() RETURNS trigger AS $body$
+            DECLARE
+              v_role user_role := 'client';
+              v_meta_role text;
+            BEGIN
+              v_meta_role := LOWER(COALESCE(NEW.raw_user_meta_data->>'role', 'client'));
+              IF v_meta_role IN ('admin', 'client', 'loan_officer', 'manager', 'teller') THEN
+                v_role := v_meta_role::user_role;
+              END IF;
+
+              INSERT INTO public.profiles (id, full_name, phone, role)
+              VALUES (
+                NEW.id,
+                COALESCE(NULLIF(NEW.raw_user_meta_data->>'full_name', ''), SPLIT_PART(NEW.email, '@', 1)),
+                NEW.phone,
+                v_role
+              )
+              ON CONFLICT (id) DO UPDATE SET
+                full_name = EXCLUDED.full_name,
+                phone = COALESCE(EXCLUDED.phone, public.profiles.phone);
+
+              RETURN NEW;
+            EXCEPTION WHEN OTHERS THEN
+              RAISE WARNING 'handle_new_user error: %', SQLERRM;
+              RETURN NEW;
+            END $body$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+          $fn$;
+        END IF;
+      END
+      $func$;
     `);
 
     console.log('[Database] Schema verified and all tables ensured.');

@@ -101,8 +101,34 @@ CREATE TABLE IF NOT EXISTS public.borrowers (
     joined_date TEXT NOT NULL,
     last_activity_date TEXT NOT NULL,
     notes TEXT,
+    email_verified INTEGER DEFAULT 0,
+    email_verified_at TEXT,
+    profile_completed BOOLEAN DEFAULT FALSE,
+    profile_completed_at TEXT,
+    existing_member_id TEXT,
+    barangay TEXT,
+    city_municipality TEXT,
+    province TEXT,
+    source_of_income TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Keep existing databases compatible when columns are added after borrowers table creation
+ALTER TABLE public.borrowers
+    ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS email_verified_at TEXT,
+    ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS profile_completed_at TEXT,
+    ADD COLUMN IF NOT EXISTS existing_member_id TEXT,
+    ADD COLUMN IF NOT EXISTS barangay TEXT,
+    ADD COLUMN IF NOT EXISTS city_municipality TEXT,
+    ADD COLUMN IF NOT EXISTS province TEXT,
+    ADD COLUMN IF NOT EXISTS source_of_income TEXT,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_borrowers_email_verified ON public.borrowers (email_verified);
+CREATE INDEX IF NOT EXISTS idx_borrowers_profile_completed ON public.borrowers (profile_completed);
+CREATE INDEX IF NOT EXISTS idx_borrowers_member_status ON public.borrowers (member_status);
 
 -- Duplicate prevention on borrowers: unique phone and email
 CREATE UNIQUE INDEX IF NOT EXISTS uq_borrowers_phone ON public.borrowers (phone);
@@ -510,6 +536,79 @@ VALUES
     true,
     'Active'
 )
+ON CONFLICT (id) DO NOTHING;
+
+-- 15. KYC SUBMISSIONS & VERIFICATION TABLES
+CREATE TABLE IF NOT EXISTS public.kyc_submissions (
+    id                TEXT PRIMARY KEY,
+    borrower_id       TEXT NOT NULL REFERENCES public.borrowers(id) ON DELETE CASCADE,
+    status            TEXT NOT NULL DEFAULT 'NOT_STARTED',
+    personal_info     JSONB,
+    address           JSONB,
+    employment        JSONB,
+    submitted_at      TEXT,
+    reviewed_at       TEXT,
+    reviewed_by       TEXT,
+    reviewed_by_name  TEXT,
+    correction_reason TEXT,
+    rejection_reason  TEXT,
+    verified_at       TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kyc_submissions_borrower ON public.kyc_submissions(borrower_id);
+CREATE INDEX IF NOT EXISTS idx_kyc_submissions_status ON public.kyc_submissions(status);
+
+CREATE TABLE IF NOT EXISTS public.kyc_documents (
+    id                  TEXT PRIMARY KEY,
+    kyc_submission_id   TEXT NOT NULL,
+    borrower_id         TEXT NOT NULL REFERENCES public.borrowers(id) ON DELETE CASCADE,
+    document_type       TEXT NOT NULL,
+    document_name       TEXT NOT NULL,
+    file_name           TEXT,
+    file_url            TEXT,
+    status              TEXT NOT NULL DEFAULT 'PENDING',
+    rejection_reason    TEXT,
+    verified_by         TEXT,
+    verified_at         TEXT,
+    created_at          TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kyc_documents_borrower ON public.kyc_documents(borrower_id);
+CREATE INDEX IF NOT EXISTS idx_kyc_documents_submission ON public.kyc_documents(kyc_submission_id);
+
+CREATE TABLE IF NOT EXISTS public.kyc_audit_log (
+    id                  TEXT PRIMARY KEY,
+    borrower_id         TEXT NOT NULL REFERENCES public.borrowers(id) ON DELETE CASCADE,
+    kyc_submission_id   TEXT,
+    staff_user_id       TEXT,
+    staff_name          TEXT,
+    action              TEXT NOT NULL,
+    previous_status     TEXT,
+    new_status          TEXT,
+    reason              TEXT,
+    created_at          TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kyc_audit_borrower ON public.kyc_audit_log(borrower_id);
+
+CREATE TABLE IF NOT EXISTS public.kyc_required_documents (
+    id                  TEXT PRIMARY KEY,
+    document_type       TEXT NOT NULL,
+    document_name       TEXT NOT NULL,
+    description         TEXT,
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order          INTEGER NOT NULL DEFAULT 0,
+    created_at          TEXT NOT NULL
+);
+
+INSERT INTO public.kyc_required_documents (id, document_type, document_name, description, is_active, sort_order, created_at)
+VALUES
+  ('KRD-001', 'VALID_ID',        'Government-Issued Photo ID',        'A valid, unexpired government-issued photo ID (PhilID, Passport, Driver License, UMID, SSS, PRC).',  true, 1,  NOW()::text),
+  ('KRD-002', 'PROOF_OF_ADDRESS','Barangay Clearance or Utility Bill','Recent proof of residence within the last 3 months.',                                                         true, 2,  NOW()::text),
+  ('KRD-003', 'PROOF_OF_INCOME', 'Payslip / Business Permit / Bank Statement','Evidence of regular income or business operations.',                                                     true, 3,  NOW()::text),
+  ('KRD-004', 'PHOTO_2X2',       'Recent 2x2 ID Photo',              'A recent photograph with white background.',                                                                 true, 4,  NOW()::text)
 ON CONFLICT (id) DO NOTHING;
 
 -- ========================================================

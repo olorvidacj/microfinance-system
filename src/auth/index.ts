@@ -285,7 +285,12 @@ class AuthStore {
           if (u.email && u.email.toLowerCase() === normalizedEmail) return true;
           if (!u.phone) return false;
           const uDigits = String(u.phone).replace(/\D/g, '');
-          return cleanDigits.length > 0 && (uDigits === cleanDigits || cleanDigits.endsWith(uDigits.slice(-10)) || uDigits.endsWith(cleanDigits.slice(-10)));
+          if (uDigits.length < 7 || cleanDigits.length < 7) return false;
+          return (
+            uDigits === cleanDigits ||
+            (cleanDigits.length >= 10 && uDigits.endsWith(cleanDigits.slice(-10))) ||
+            (uDigits.length >= 10 && cleanDigits.endsWith(uDigits.slice(-10)))
+          );
         });
         if (match) return this.decorate(match as unknown as AuthUserRecord);
       } catch (err: any) {
@@ -304,10 +309,15 @@ class AuthStore {
         if (!error && Array.isArray(data)) {
           const match = data.find((u: any) => {
             const uEmail = (u.email || '').toLowerCase();
-            if (uEmail === normalizedEmail) return true;
-            const uPhone = String(u.phone || '');
-            const uDigits = uPhone.replace(/\D/g, '');
-            return cleanDigits.length > 0 && (uDigits === cleanDigits || cleanDigits.endsWith(uDigits.slice(-10)) || uDigits.endsWith(cleanDigits.slice(-10)));
+            if (uEmail && uEmail === normalizedEmail) return true;
+            if (!u.phone) return false;
+            const uDigits = String(u.phone || '').replace(/\D/g, '');
+            if (uDigits.length < 7 || cleanDigits.length < 7) return false;
+            return (
+              uDigits === cleanDigits ||
+              (cleanDigits.length >= 10 && uDigits.endsWith(cleanDigits.slice(-10))) ||
+              (uDigits.length >= 10 && cleanDigits.endsWith(uDigits.slice(-10)))
+            );
           });
           if (match) {
             const rec: AuthUserRecord = {

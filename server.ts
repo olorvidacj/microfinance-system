@@ -92,12 +92,21 @@ async function authenticate(req: AuthedRequest): Promise<void> {
         }
       } catch {}
     }
+    let borrowerId = payload.borrowerId || null;
+    if (!borrowerId && payload.role === 'CLIENT') {
+      try {
+        const u = await authStore.findById(payload.sub);
+        if (u?.borrowerId) {
+          borrowerId = u.borrowerId;
+        }
+      } catch {}
+    }
     req.authUser = {
       id: payload.sub,
       role: payload.role,
       staffRole: payload.staffRole || null,
       staffId: payload.staffId || null,
-      borrowerId: payload.borrowerId || null,
+      borrowerId,
       email: payload.email,
       fullName: fullName || payload.email.split('@')[0],
       phone,
@@ -124,7 +133,7 @@ async function authenticate(req: AuthedRequest): Promise<void> {
       record = await authStore.findByEmailOrPhone(email);
     } catch {}
   }
-  if (!record) {
+  if (!record || (record.role === 'CLIENT' && !record.borrowerId)) {
     try {
       record = await ensureLocalClientUser({
         id: supabaseUser.id,
@@ -143,6 +152,8 @@ async function authenticate(req: AuthedRequest): Promise<void> {
     staffId: record.staffId || null,
     borrowerId: record.borrowerId || null,
     email: record.email,
+    fullName: record.fullName,
+    phone: record.phone || null,
     branchId: record.branchId || null,
   };
 }
@@ -403,6 +414,14 @@ const regOtpStore = new Map<string, RegistrationOtpEntry>();
 app.post('/api/auth/send-registration-otp', async (req, res) => {
   try {
     const { phone, email } = req.body || {};
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        error: 'A valid email address (Gmail) is required to receive your 6-digit verification code.',
+      });
+    }
+
     if (!phone) {
       return res.status(400).json({ success: false, error: 'Philippine mobile number is required' });
     }
@@ -425,59 +444,79 @@ app.post('/api/auth/send-registration-otp', async (req, res) => {
       formattedPhone = `+63 ${digitsOnly.slice(2, 5)} ${digitsOnly.slice(5, 8)} ${digitsOnly.slice(8)}`;
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Send authentic 6-digit OTP code to Gmail using Supabase
+    await supabaseSendEmailOtp(cleanEmail);
+
     const expiresAt = Date.now() + 10 * 60 * 1000;
     const otpKey = digitsOnly.slice(-10);
 
     regOtpStore.set(otpKey, {
       phone: formattedPhone,
-      email: email || '',
-      otp,
+      email: cleanEmail,
+      otp: '',
+      expiresAt,
+      verified: false,
+    });
+    regOtpStore.set(cleanEmail, {
+      phone: formattedPhone,
+      email: cleanEmail,
+      otp: '',
       expiresAt,
       verified: false,
     });
 
-    console.log(`[Auth] SMS Registration OTP for ${formattedPhone}`);
+    console.log(`[Auth] Dispatched Supabase email OTP to Gmail: ${cleanEmail}`);
 
     res.json({
       success: true,
-      message: `A 6-digit verification code has been sent via SMS to ${formattedPhone}.`,
+      message: `A 6-digit verification code has been sent to ${cleanEmail}. Please check your Gmail inbox.`,
+      email: cleanEmail,
       formattedPhone,
-      demoOtp: null,
       expiresInSeconds: 600,
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 });
 
 app.post('/api/auth/verify-registration-otp', async (req, res) => {
   try {
-    const { phone, otp } = req.body || {};
-    if (!phone || !otp) {
-      return res.status(400).json({ success: false, error: 'Phone and OTP code are required' });
+    const { phone, email, otp } = req.body || {};
+    const cleanOtp = String(otp || '').trim().replace(/\D/g, '');
+    if (!cleanOtp || cleanOtp.length < 6 || cleanOtp.length > 8) {
+      return res.status(400).json({ success: false, error: 'Please enter the verification code sent to your email.' });
     }
-    const cleanPhone = String(phone).replace(/\D/g, '');
+
+    let targetEmail = String(email || '').trim().toLowerCase();
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
     const otpKey = cleanPhone.slice(-10);
-    const entry = regOtpStore.get(otpKey);
 
-    if (!entry) {
-      return res.status(400).json({ success: false, error: 'No active OTP verification code found for this number' });
+    if (!targetEmail && otpKey) {
+      const entry = regOtpStore.get(otpKey);
+      if (entry?.email) {
+        targetEmail = entry.email;
+      }
     }
 
-    if (Date.now() > entry.expiresAt) {
-      regOtpStore.delete(otpKey);
-      return res.status(400).json({ success: false, error: 'Verification code has expired. Please tap Resend.' });
+    if (!targetEmail) {
+      return res.status(400).json({ success: false, error: 'Email address is required for verification.' });
     }
 
-    if (entry.otp !== String(otp).trim()) {
-      return res.status(400).json({ success: false, error: 'Incorrect 6-digit OTP code. Please check SMS and try again.' });
+    // Real Supabase verification (No demo OTP accepted)
+    await supabaseVerifyEmailOtp(targetEmail, cleanOtp);
+
+    const entry = regOtpStore.get(otpKey) || regOtpStore.get(targetEmail);
+    if (entry) {
+      entry.verified = true;
     }
 
-    entry.verified = true;
-    res.json({ success: true, verified: true, message: 'Phone number verified successfully' });
+    res.json({
+      success: true,
+      verified: true,
+      message: 'Email verified successfully via Supabase.',
+    });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 400).json({ success: false, error: err.message || 'Invalid or expired verification code. Please check your Gmail.' });
   }
 });
 
@@ -506,36 +545,18 @@ app.post('/api/auth/send-email-otp', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
     }
 
-    // Resend cooldown guard (60s) — same UX contract as the phone OTP flow.
-    const now = Date.now();
-    const prev = emailOtpStore.get(cleanEmail);
-    if (prev && now - prev.expiresAt + 5 * 60 * 1000 > 60 * 1000 && now < prev.expiresAt && !prev.verified) {
-      return res.status(429).json({
-        success: false,
-        error: 'A verification code was already sent. Please wait a moment before requesting another.',
-        retryAfterSeconds: 60,
-      });
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = now + 5 * 60 * 1000;
-
     await supabaseSendEmailOtp(cleanEmail);
 
-    emailOtpStore.set(cleanEmail, { email: cleanEmail, otp, expiresAt, verified: false });
-
-    console.log(`[Auth] Email verification code dispatched to ${maskEmail(cleanEmail)}`);
+    console.log(`[Auth] Email verification code dispatched to ${cleanEmail}`);
 
     res.json({
       success: true,
-      message: `A 6-digit verification code has been sent to ${maskEmail(cleanEmail)}.`,
+      message: `A 6-digit verification code has been sent to ${maskEmail(cleanEmail)}. Please check your Gmail inbox.`,
       maskedEmail: maskEmail(cleanEmail),
-      demoOtp: null,
-      demoMode: false,
       expiresInSeconds: 300,
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 });
 
@@ -549,45 +570,23 @@ app.post('/api/auth/verify-email-otp', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email and a 6-digit verification code are required' });
     }
 
-    const entry = emailOtpStore.get(cleanEmail);
-    if (!entry) {
-      return res.status(400).json({ success: false, error: 'No active verification code was found for this email. Please request a new one.' });
-    }
-    if (Date.now() > entry.expiresAt) {
-      emailOtpStore.delete(cleanEmail);
-      return res.status(400).json({ success: false, error: 'This verification code has expired. Please request a new one.' });
-    }
-    if (entry.otp !== cleanOtp) {
-      return res.status(400).json({ success: false, error: 'Incorrect 6-digit code. Please check your email and try again.' });
-    }
-
-    // Local projection is trusted once verified; the Supabase user's
-    // email_confirmed_at is updated natively by verifyOtp(type: email).
-    entry.verified = true;
-    try {
-      const { verified, user } = await supabaseVerifyEmailOtp(cleanEmail, cleanOtp);
-      if (verified) {
-        try {
-          await writeAuditLog({
-            action: 'EMAIL_VERIFIED',
-            details: `Code verified for ${cleanEmail}`,
-            performedBy: user?.email || cleanEmail,
-          });
-        } catch {}
-      }
-    } catch (verifyErr: any) {
-      // Native verify may reject the code; surface a friendly message.
-      return res.status(400).json({
-        success: false,
-        error: /expired/i.test(String(verifyErr?.message || ''))
-          ? 'This verification code has expired. Please request a new one.'
-          : 'That code was not accepted. Please check your email and try again.',
-      });
+    const { verified, user } = await supabaseVerifyEmailOtp(cleanEmail, cleanOtp);
+    if (verified) {
+      try {
+        await writeAuditLog({
+          action: 'EMAIL_VERIFIED',
+          details: `Code verified for ${cleanEmail}`,
+          performedBy: user?.email || cleanEmail,
+        });
+      } catch {}
     }
 
-    res.json({ success: true, verified: true, message: 'Email verified successfully. You can now continue.' });
+    res.json({ success: true, verified: true, message: 'Email verified successfully via Supabase.' });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 400).json({
+      success: false,
+      error: err.message || 'Invalid or expired verification code. Please check your Gmail and try again.',
+    });
   }
 });
 
@@ -672,9 +671,12 @@ app.post('/api/auth/register', async (req, res) => {
     // ---- Duplicate check against local projection ----
     try {
       const dupEmail = await authStore.findByEmailOrPhone(loginEmail);
+      if (dupEmail) {
+        return res.status(409).json({ error: 'An account with this email address already exists. Please sign in.' });
+      }
       const dupPhone = displayPhone ? await authStore.findByEmailOrPhone(displayPhone) : null;
-      if (dupEmail || dupPhone) {
-        return res.status(409).json({ error: 'An account with this email address or phone number already exists. Please sign in.' });
+      if (dupPhone) {
+        return res.status(409).json({ error: 'An account with this mobile number already exists. Please sign in or use another number.' });
       }
     } catch {}
 

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { AppButton, AppCard, AppModal, AppTextInput, DocRow, LoadingView, ScreenHeader, WizardHeader } from '../../components';
@@ -134,13 +135,16 @@ export const KycFormScreen: React.FC = () => {
   }, []);
 
   const pickFor = async (doc: DocUpload) => {
+    // Request media permission first if needed
     if (!mediaPermission) {
       const granted = await requestPermission();
-      if (!granted) {
-        setPickTarget(null);
-        return;
-      }
+      if (!granted) return;
     }
+
+    // Small delay to let the modal fully dismiss before launching the native picker
+    // (important on Android — the native modal animation needs to finish first)
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
@@ -149,29 +153,40 @@ export const KycFormScreen: React.FC = () => {
     if (res.canceled) return;
     const asset = res.assets[0];
     const fileName = asset.fileName || `kyc-${doc.documentType.toLowerCase()}-${Date.now()}.jpg`;
+    // Determine MIME type from the URI extension
+    const uriLower = (asset.uri || '').toLowerCase();
+    const mime = uriLower.endsWith('.png') ? 'image/png' : uriLower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+
     setUploads((prev) =>
       prev.map((u) => (u.documentType === doc.documentType ? { ...u, status: 'UPLOADING', fileName, fileUrl: asset.uri } : u))
     );
     try {
+      // Read the image as a base64 string — the backend requires imageBase64, not a local URI
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const imageBase64 = `data:${mime};base64,${base64}`;
+
       const uploaded = await api.uploadKycDocument({
         documentType: doc.documentType,
         documentName: doc.documentName,
         fileName,
-        fileUrl: asset.uri,
+        imageBase64,
+        mime,
       });
       setUploads((prev) =>
         prev.map((u) =>
           u.documentType === doc.documentType
-            ? { ...u, fileName: uploaded.fileName ?? fileName, fileUrl: uploaded.fileUrl ?? asset.uri, status: 'DONE' }
+            ? { ...u, fileName: uploaded?.document?.fileName ?? fileName, fileUrl: uploaded?.document?.fileUrl ?? asset.uri, status: 'DONE' }
             : u
         )
       );
     } catch (err: any) {
+      console.warn('[KYC Upload] Error:', err?.message);
       setUploads((prev) =>
         prev.map((u) => (u.documentType === doc.documentType ? { ...u, status: 'ERROR' } : u))
       );
-    } finally {
-      setPickTarget(null);
+      setErrors((e) => ({ ...e, documents: err?.message || 'Upload failed. Please try again.' }));
     }
   };
 
@@ -523,11 +538,12 @@ export const KycFormScreen: React.FC = () => {
         confirmText="Choose Photo"
         onConfirm={() => {
           if (pickTarget) {
-            setConfirmVisible(false);
-            pickFor(pickTarget);
+            const target = pickTarget;
+            setPickTarget(null); // Close this modal FIRST, then launch the picker
+            pickFor(target);
           }
         }}
-        confirmLoading={pickTarget?.status === 'UPLOADING'}
+        confirmLoading={false}
       >
         <Text style={styles.modalNote}>
           Select a clear photo of your {pickTarget?.documentName.toLowerCase() ?? 'document'}. The file will be sent securely to the branch for verification.

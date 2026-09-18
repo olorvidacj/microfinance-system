@@ -4,11 +4,11 @@ import {
   Text,
   View,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Modal,
   Alert,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { UserSession } from './src/types';
 import { api } from './src/services/api';
 import { AuthScreen } from './src/screens/AuthScreen';
@@ -58,16 +58,19 @@ export default function App() {
 
   if (!session) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" />
-        <AuthScreen onSuccess={handleLoginSuccess} />
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="dark-content" />
+          <AuthScreen onSuccess={handleLoginSuccess} />
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" />
 
       {/* Top Mobile App Header */}
       <View style={styles.topHeader}>
@@ -180,6 +183,7 @@ export default function App() {
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
+  </SafeAreaProvider>
   );
 }
 

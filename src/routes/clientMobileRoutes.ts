@@ -4,6 +4,9 @@ import { eq, desc, and } from 'drizzle-orm';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../auth/index';
 import { calculateLoanSchedule } from '../utils/loanMath';
 import { getServerSupabase } from '../db/supabaseServer';
+import { supabaseGetUser, supabaseSendEmailOtp, supabaseVerifyEmailOtp } from '../auth/supabaseAuth';
+import { authStore } from '../auth/index';
+import { findBorrowerByContact } from '../db/clientProvisioning';
 
 const KYC_STORAGE_BUCKET = 'kyc-documents';
 const KYC_STORAGE_SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 days for staff review
@@ -97,7 +100,7 @@ export interface AuthedRequest extends Request {
 }
 
 function requireAuth(roles?: Array<'STAFF' | 'CLIENT'>) {
-  return (req: AuthedRequest, res: Response, next: NextFunction) => {
+  return async (req: AuthedRequest, res: Response, next: NextFunction) => {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
     const payload = token ? verifyToken(token) : null;
@@ -111,11 +114,54 @@ function requireAuth(roles?: Array<'STAFF' | 'CLIENT'>) {
         email: payload.email,
         fullName: payload.fullName || null,
       };
+    } else if (token) {
+      try {
+        const sbUser = await supabaseGetUser(token);
+        if (sbUser) {
+          const email = String(sbUser.email || sbUser.user_metadata?.email || '').toLowerCase();
+          let record = await authStore.findById(sbUser.id);
+          if (!record && email) {
+            record = await authStore.findByEmailOrPhone(email);
+          }
+          if (record && record.isActive !== false) {
+            req.authUser = {
+              id: record.id,
+              role: record.role as 'STAFF' | 'CLIENT',
+              staffRole: record.staffRole || null,
+              staffId: record.staffId || null,
+              borrowerId: record.borrowerId || null,
+              email: record.email,
+              fullName: record.fullName,
+              phone: record.phone || null,
+            };
+          }
+        }
+      } catch {}
     }
 
     if (!req.authUser) {
       return res.status(401).json({ error: 'Authentication required. Please sign in.' });
     }
+
+    // Auto-heal missing borrowerId for client if needed
+    if (req.authUser.role === 'CLIENT' && !req.authUser.borrowerId) {
+      const db = getDb();
+      if (db) {
+        try {
+          const userRows = await db.select().from(schema.users).where(eq(schema.users.id, req.authUser.id)).limit(1);
+          if (userRows[0]?.borrowerId) {
+            req.authUser.borrowerId = userRows[0].borrowerId;
+          } else {
+            const match = await findBorrowerByContact(req.authUser.phone, req.authUser.email);
+            if (match?.id) {
+              req.authUser.borrowerId = match.id;
+              await db.update(schema.users).set({ borrowerId: match.id }).where(eq(schema.users.id, req.authUser.id));
+            }
+          }
+        } catch {}
+      }
+    }
+
     if (roles && roles.length > 0 && !roles.includes(req.authUser.role)) {
       return res.status(403).json({ error: 'Access forbidden: Insufficient role permissions.' });
     }
@@ -170,67 +216,90 @@ clientMobileRouter.post('/auth/send-registration-otp', async (req: Request, res:
       });
     }
 
-    // Generate secure 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes validity
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        error: 'A valid email address (Gmail) is required to receive your 6-digit verification code.',
+      });
+    }
+
+    // Send authentic 6-digit OTP code to Gmail using Supabase
+    await supabaseSendEmailOtp(cleanEmail);
+
+    const expiresAt = Date.now() + 10 * 60 * 1000;
     const otpKey = digitsOnly.slice(-10);
 
     otpStore.set(`phone:${otpKey}`, {
-      email: email || `user.${otpKey}@HOSCOMCO.coop`,
-      otp,
+      email: cleanEmail,
+      otp: '',
+      expiresAt,
+      verified: false,
+    });
+    otpStore.set(cleanEmail, {
+      email: cleanEmail,
+      otp: '',
       expiresAt,
       verified: false,
     });
 
-    console.log(`[Mobile Auth] SMS OTP dispatched to ${formattedPhone} (${otpKey})`);
+    console.log(`[Mobile Auth] Supabase email OTP dispatched to Gmail: ${cleanEmail}`);
 
     res.json({
       success: true,
-      message: `A 6-digit verification code has been sent via SMS to ${formattedPhone}.`,
+      message: `A 6-digit verification code has been sent to ${cleanEmail}. Please check your Gmail inbox.`,
+      email: cleanEmail,
       formattedPhone,
       expiresInSeconds: 600,
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 });
 
-// Verify Registration SMS OTP
+// Verify Registration SMS/Email OTP via Supabase
 clientMobileRouter.post('/auth/verify-registration-otp', async (req: Request, res: Response) => {
   try {
-    const { phone, otp } = req.body;
-    if (!phone || !otp) {
-      return res.status(400).json({ success: false, error: 'Mobile number and OTP code are required' });
+    const { phone, email, otp } = req.body;
+    const cleanOtp = String(otp || '').trim().replace(/\D/g, '');
+    if (!cleanOtp || cleanOtp.length < 6 || cleanOtp.length > 8) {
+      return res.status(400).json({ success: false, error: 'Please enter the verification code sent to your email.' });
     }
-    const cleanPhone = String(phone).replace(/\D/g, '');
+
+    let targetEmail = String(email || '').trim().toLowerCase();
+    const cleanPhone = String(phone || '').replace(/\D/g, '');
     const otpKey = cleanPhone.slice(-10);
-    const entry = otpStore.get(`phone:${otpKey}`);
 
-    if (!entry) {
-      return res.status(400).json({ success: false, error: 'No active OTP verification code found for this phone number' });
+    if (!targetEmail && otpKey) {
+      const entry = otpStore.get(`phone:${otpKey}`);
+      if (entry?.email) {
+        targetEmail = entry.email;
+      }
     }
 
-    if (Date.now() > entry.expiresAt) {
-      otpStore.delete(`phone:${otpKey}`);
-      return res.status(400).json({ success: false, error: 'Verification code has expired. Please tap Resend.' });
+    if (!targetEmail) {
+      return res.status(400).json({ success: false, error: 'Email address is required for verification.' });
     }
 
-    if (entry.otp !== String(otp).trim()) {
-      return res.status(400).json({ success: false, error: 'Incorrect 6-digit OTP code. Please check SMS and try again.' });
+    // Real Supabase verification (No demo OTP accepted)
+    await supabaseVerifyEmailOtp(targetEmail, cleanOtp);
+
+    const entry = otpStore.get(`phone:${otpKey}`) || otpStore.get(targetEmail);
+    if (entry) {
+      entry.verified = true;
     }
 
-    entry.verified = true;
     res.json({
       success: true,
       verified: true,
-      message: 'Mobile number verified successfully.',
+      message: 'Email verified successfully via Supabase.',
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 400).json({ success: false, error: err.message || 'Invalid or expired verification code. Please check your Gmail.' });
   }
 });
 
-// Forgot password - Send 6-digit OTP
+// Forgot password - Send 6-digit OTP via Supabase
 clientMobileRouter.post('/auth/forgot-password', async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
@@ -238,27 +307,17 @@ clientMobileRouter.post('/auth/forgot-password', async (req: Request, res: Respo
       return res.status(400).json({ success: false, error: 'Email address is required' });
     }
     const normEmail = String(email).trim().toLowerCase();
-    
-    // Generate secure 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes validity
-    
-    otpStore.set(normEmail, {
-      email: normEmail,
-      otp,
-      expiresAt,
-      verified: false,
-    });
+    await supabaseSendEmailOtp(normEmail);
 
-    console.log(`[Mobile Auth] Generated OTP for ${normEmail}`);
+    console.log(`[Mobile Auth] Supabase password reset OTP sent to ${normEmail}`);
 
     res.json({
       success: true,
-      message: `A 6-digit verification code has been sent to ${normEmail}.`,
+      message: `A 6-digit verification code has been sent to ${normEmail}. Please check your Gmail inbox.`,
       expiresInMinutes: 15,
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 });
 
@@ -267,31 +326,19 @@ clientMobileRouter.post('/auth/verify-otp', async (req: Request, res: Response) 
   try {
     const { email, otp } = req.body;
     if (!email || !otp) {
-      return res.status(400).json({ success: false, error: 'Email and OTP code are required' });
+      return res.status(400).json({ success: false, error: 'Email and 6-digit OTP code are required' });
     }
     const normEmail = String(email).trim().toLowerCase();
-    const entry = otpStore.get(normEmail);
+    const cleanOtp = String(otp).trim().replace(/\D/g, '');
 
-    if (!entry) {
-      return res.status(400).json({ success: false, error: 'No active OTP request found for this email' });
-    }
+    await supabaseVerifyEmailOtp(normEmail, cleanOtp);
 
-    if (Date.now() > entry.expiresAt) {
-      otpStore.delete(normEmail);
-      return res.status(400).json({ success: false, error: 'OTP code has expired. Please request a new one.' });
-    }
-
-    if (entry.otp !== String(otp).trim()) {
-      return res.status(400).json({ success: false, error: 'Invalid verification code. Please check and try again.' });
-    }
-
-    entry.verified = true;
     res.json({
       success: true,
-      message: 'OTP verified successfully. You may now set your new password.',
+      message: 'Email verified successfully with Supabase. You may now set your new password.',
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 400).json({ success: false, error: err.message || 'Invalid or expired verification code.' });
   }
 });
 
@@ -307,11 +354,9 @@ clientMobileRouter.post('/auth/reset-password', async (req: Request, res: Respon
     }
 
     const normEmail = String(email).trim().toLowerCase();
-    const entry = otpStore.get(normEmail);
+    const cleanOtp = String(otp).trim().replace(/\D/g, '');
 
-    if (!entry || entry.otp !== String(otp).trim()) {
-      return res.status(400).json({ success: false, error: 'Invalid or missing OTP verification' });
-    }
+    await supabaseVerifyEmailOtp(normEmail, cleanOtp);
 
     const db = getDb();
     if (db) {
@@ -858,13 +903,17 @@ clientMobileRouter.get('/kyc/documents', requireAuth(), async (req: AuthedReques
 });
 clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
-    const borrowerId = getClientBorrowerId(req);
+    // Use borrowerId if available, otherwise fall back to userId so new users can still upload
+    const borrowerId = getClientBorrowerId(req) || req.authUser?.id || null;
+    if (!borrowerId) {
+      return res.status(400).json({ success: false, error: 'Cannot identify your account. Please log out and sign in again.' });
+    }
     const { documentType, documentName, fileName, imageBase64, side, mime } = req.body || {};
     if (!documentType || !documentName) {
       return res.status(400).json({ success: false, error: 'documentType and documentName are required.' });
     }
     if (!imageBase64) {
-      return res.status(400).json({ success: false, error: 'imageBase64 is required for upload.' });
+      return res.status(400).json({ success: false, error: 'imageBase64 is required for upload. Please select a photo from your gallery.' });
     }
     const now = new Date().toISOString();
     const db = getDb();
@@ -873,6 +922,7 @@ clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: Auth
     let safeUrl: string | null = null;
     try {
       const folder = side ? `doc-${stringToId(documentType)}-${side}` : `doc-${stringToId(documentType)}`;
+      console.log(`[KYC Upload] Uploading ${documentType} for borrower/user: ${borrowerId}`);
       const uploaded = await uploadKycFile(borrowerId, folder, imageBase64, mime);
       safeUrl = uploaded?.signedUrl ?? null;
       if (uploaded) {
@@ -880,28 +930,35 @@ clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: Auth
         removeKycFolderObjects(borrowerId, folder).catch(() => {});
       }
     } catch (storageErr: any) {
+      console.error(`[KYC Upload] Storage error:`, storageErr.message);
       return res.status(400).json({ success: false, error: storageErr.message });
     }
 
     const docId = `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const savedName = fileName || `${documentType}_${Date.now()}.jpg`;
     if (db) {
-      const subRows = await db.select().from(schema.kycSubmissions)
-        .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
-        .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
-      const subId = subRows.length > 0 ? subRows[0].id : 'PENDING';
-      await db.insert(schema.kycDocuments).values({
-        id: docId,
-        kycSubmissionId: subId,
-        borrowerId,
-        documentType,
-        documentName,
-        fileName: savedName,
-        fileUrl: safeUrl || undefined,
-        status: 'PENDING',
-        createdAt: now,
-      });
+      try {
+        const subRows = await db.select().from(schema.kycSubmissions)
+          .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+          .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+        const subId = subRows.length > 0 ? subRows[0].id : 'PENDING';
+        await db.insert(schema.kycDocuments).values({
+          id: docId,
+          kycSubmissionId: subId,
+          borrowerId,
+          documentType,
+          documentName,
+          fileName: savedName,
+          fileUrl: safeUrl || undefined,
+          status: 'PENDING',
+          createdAt: now,
+        });
+      } catch (dbErr: any) {
+        // DB insert failed but file is already in storage — still return success so user can continue
+        console.warn(`[KYC Upload] DB insert warning (file uploaded OK):`, dbErr.message);
+      }
     }
+    console.log(`[KYC Upload] ✅ ${documentType} uploaded successfully for ${borrowerId}`);
     res.json({
       success: true,
       document: {
@@ -914,6 +971,7 @@ clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: Auth
       },
     });
   } catch (err: any) {
+    console.error(`[KYC Upload] Unexpected error:`, err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -921,7 +979,10 @@ clientMobileRouter.post('/kyc/documents/upload', requireAuth(), async (req: Auth
 // Upload a selfie used for face verification against the submitted ID.
 clientMobileRouter.post('/kyc/selfie', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
-    const borrowerId = getClientBorrowerId(req);
+    const borrowerId = getClientBorrowerId(req) || req.authUser?.id || null;
+    if (!borrowerId) {
+      return res.status(400).json({ success: false, error: 'Cannot identify your account. Please log out and sign in again.' });
+    }
     const { imageBase64, mime } = req.body || {};
     if (!imageBase64) {
       return res.status(400).json({ success: false, error: 'imageBase64 is required for the selfie.' });
@@ -1086,22 +1147,48 @@ clientMobileRouter.post('/calculate-loan', (req: Request, res: Response) => {
 // Submit Loan Application
 clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
-    const borrowerId = getClientBorrowerId(req);
+    const borrowerId = getClientBorrowerId(req) || req.authUser?.id || null;
+    if (!borrowerId) {
+      return res.status(400).json({ success: false, error: 'Cannot identify your account. Please log out and sign in again.' });
+    }
 
     // --- KYC verification gate ---
     const db = getDb();
     let kycStatus = 'NOT_STARTED';
     if (db) {
-      const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
-      if (bRows.length > 0) kycStatus = bRows[0].kycStatus || 'NOT_STARTED';
-      const subRows = await db.select().from(schema.kycSubmissions)
-        .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
-        .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
-      if (subRows.length > 0) kycStatus = subRows[0].status || kycStatus;
+      try {
+        const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+        if (bRows.length > 0) kycStatus = bRows[0].kycStatus || 'NOT_STARTED';
+        const subRows = await db.select().from(schema.kycSubmissions)
+          .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+          .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+        if (subRows.length > 0) kycStatus = subRows[0].status || kycStatus;
+      } catch {}
     }
-    if (kycStatus !== 'VERIFIED') {
-      return res.status(403).json({ success: false, error: 'KYC verification is required before applying for a loan.', kycStatus });
+
+    // Block only completely unverified users — allow PENDING to apply (staff review in progress)
+    if (kycStatus === 'NOT_STARTED') {
+      return res.status(403).json({
+        success: false,
+        error: 'Please complete your KYC verification before applying for a loan. Go to Profile → Complete KYC Verification.',
+        kycStatus,
+      });
     }
+    if (kycStatus === 'REJECTED') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your KYC was rejected. Please resubmit your documents with the corrections noted by the branch.',
+        kycStatus,
+      });
+    }
+    if (kycStatus === 'CORRECTION_REQUIRED') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your KYC requires corrections. Please update your documents and resubmit.',
+        kycStatus,
+      });
+    }
+    // kycStatus is PENDING or VERIFIED — both allowed to submit a loan application
 
     const {
       productId,

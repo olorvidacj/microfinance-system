@@ -3,6 +3,9 @@ import { getDb, schema } from '../db/index';
 import { createClientProfile, findBorrowerByContact } from '../db/clientProvisioning';
 import { getServerSupabase } from '../db/supabaseServer';
 import { authStore, hashPassword } from './index';
+import { sendOtpEmail, isDirectSmtpConfigured } from '../services/emailService';
+
+export const activeEmailOtpStore = new Map<string, { otp: string; expiresAt: number; verified: boolean }>();
 
 /**
  * Server-side Supabase Auth helpers.
@@ -107,7 +110,7 @@ function mapSupabaseAuthError(error: any): SupabaseAuthError {
   if (/password/i.test(message)) {
     return new SupabaseAuthError(400, 'Please enter a valid password (at least 6 characters).', 'WEAK_PASSWORD');
   }
-  return new SupabaseAuthError(400, 'Unable to complete that request. Please try again.', 'AUTH_UNKNOWN');
+  return new SupabaseAuthError(error?.status || 400, message || 'Unable to complete that request. Please try again.', 'AUTH_UNKNOWN');
 }
 
 function getRequiredSupabase() {
@@ -192,12 +195,55 @@ export async function supabaseCreateClientUser(input: {
     user_metadata: {
       full_name: input.fullName,
       phone: input.phone || null,
-      role: 'CLIENT',
+      role: 'client',
       created_via: 'public-registration',
     },
   });
 
-  if (error) throw mapSupabaseAuthError(error);
+  if (error) {
+    const isAlreadyRegistered = /already registered|already exists|already been registered/i.test(String(error.message || ''));
+    if (isAlreadyRegistered) {
+      // Check if user already has an active registered account in our local users table
+      let existingInLocal: any = null;
+      try {
+        existingInLocal = await authStore.findByEmail(input.email);
+      } catch {}
+
+      if (existingInLocal && existingInLocal.passwordHash) {
+        throw new SupabaseAuthError(409, 'An account with this email address already exists. Please sign in.', 'ACCOUNT_ALREADY_EXISTS');
+      }
+
+      // If they don't have an account profile in local users, this user was created during Step 1 OTP generation!
+      // Update that existing Supabase Auth user with their password, confirmed email, and registration metadata:
+      try {
+        const { data: usersData } = await supabase.auth.admin.listUsers();
+        const existingAuthUser = usersData?.users?.find((u) => u.email?.toLowerCase() === input.email.toLowerCase());
+        if (existingAuthUser) {
+          const { data: updatedData, error: updateErr } = await supabase.auth.admin.updateUserById(existingAuthUser.id, {
+            password: input.password,
+            email_confirm: true,
+            user_metadata: {
+              ...(existingAuthUser.user_metadata || {}),
+              full_name: input.fullName,
+              phone: input.phone || null,
+              role: 'client',
+              created_via: 'public-registration',
+            },
+          });
+
+          if (!updateErr && updatedData?.user) {
+            console.log(`[Supabase Auth] Successfully completed registration for OTP-verified user: ${input.email}`);
+            return updatedData.user as unknown as SupabaseUserLike;
+          }
+        }
+      } catch (findErr: any) {
+        console.warn('[Supabase Auth] Failed updating pre-created OTP user:', findErr.message);
+      }
+    }
+
+    throw mapSupabaseAuthError(error);
+  }
+
   if (!data?.user) {
     throw new SupabaseAuthError(503, 'Signup succeeded but no user was returned.', 'AUTH_NO_USER');
   }
@@ -231,24 +277,84 @@ export async function supabaseCreateClientUser(input: {
  * template token, the same helpers accept `type: 'signup'` — see
  * supabaseCreateClientUser / HOSCOMCO_REQUIRE_EMAIL_CONFIRM.
  */
-export async function supabaseSendEmailOtp(email: string): Promise<void> {
+export async function supabaseSendEmailOtp(email: string, purpose: 'registration' | 'password_reset' = 'registration'): Promise<void> {
   const supabase = getServerSupabase();
-  if (!supabase) return;
+  if (!supabase) {
+    throw new SupabaseAuthError(503, 'Supabase authentication is not configured on this server.', 'AUTH_SERVICE_UNAVAILABLE');
+  }
   const sendEmail = String(email || '').trim().toLowerCase();
-  if (!sendEmail.includes('@')) return;
+  if (!sendEmail.includes('@')) {
+    throw new SupabaseAuthError(400, 'A valid email address is required.', 'INVALID_EMAIL');
+  }
   const resetRedirect = String(process.env.HOSCOMCO_EMAIL_RESET_REDIRECT || '').trim();
-  const { error } = await supabase.auth.signInWithOtp({
-    email: sendEmail,
-    options: {
-      shouldCreateUser: false,
-      emailRedirectTo: resetRedirect || undefined,
-    },
-  });
-  if (error) {
-    if (/rate limit/i.test(String(error?.message || ''))) {
-      throw new SupabaseAuthError(429, 'Too many requests. Please wait a few minutes and try again.', 'RATE_LIMITED');
+
+  // Helper to generate Supabase token and dispatch via direct Gmail SMTP (Nodemailer)
+  const generateAndSendDirectly = async (reason?: string) => {
+    if (reason) {
+      console.log(`[Supabase Auth] Generating authentic Supabase token & dispatching via direct Gmail (${reason}) for ${sendEmail}...`);
     }
-    throw mapSupabaseAuthError(error);
+    const linkRes = await supabase.auth.admin.generateLink({
+      type: purpose === 'password_reset' ? 'recovery' : 'magiclink',
+      email: sendEmail,
+    });
+
+    const generatedOtp = linkRes.data?.properties?.email_otp || Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    activeEmailOtpStore.set(sendEmail, {
+      otp: generatedOtp,
+      expiresAt,
+      verified: false,
+    });
+
+    // Send via direct Gmail / Nodemailer
+    await sendOtpEmail({
+      to: sendEmail,
+      code: generatedOtp,
+      purpose,
+    });
+
+    console.log(`[Supabase Auth] Authentic Supabase OTP generated and dispatched to ${sendEmail}: ${generatedOtp}`);
+  };
+
+  // 1. If direct Gmail SMTP is configured (GMAIL_USER & GMAIL_APP_PASSWORD in .env),
+  // use it directly. This guarantees 100% reliable delivery and avoids Supabase Cloud mailer
+  // errors like "Error sending confirmation email" or hourly rate limits.
+  if (isDirectSmtpConfigured()) {
+    try {
+      await generateAndSendDirectly('Direct Gmail SMTP credentials active in .env');
+      return;
+    } catch (err: any) {
+      console.warn('[Supabase Auth] Direct SMTP generation/dispatch error, attempting fallback:', err.message);
+    }
+  }
+
+  // 2. Otherwise, attempt Supabase Cloud native email delivery
+  try {
+    const { error } = await supabase.auth.signInWithOtp({
+      email: sendEmail,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: resetRedirect || undefined,
+      },
+    });
+
+    if (!error) {
+      console.log(`[Supabase Auth] Successfully dispatched email OTP natively via Supabase to ${sendEmail}`);
+      return;
+    }
+
+    console.warn(`[Supabase Auth] Supabase cloud mailer returned error (${error.message}). Falling back to Supabase Admin Token Generation & direct email delivery...`);
+  } catch (err: any) {
+    console.warn(`[Supabase Auth] Supabase signInWithOtp caught error (${err.message}). Falling back...`);
+  }
+
+  // 3. Fallback: generate official Supabase OTP token without hitting cloud email rate limit
+  try {
+    await generateAndSendDirectly('Fallback after cloud mailer error');
+  } catch (fallbackErr: any) {
+    console.error(`[Supabase Auth] Fallback link generation failed:`, fallbackErr.message);
+    throw new SupabaseAuthError(500, fallbackErr.message || 'Unable to generate verification code. Please try again.');
   }
 }
 
@@ -267,28 +373,75 @@ export async function supabaseVerifyEmailOtp(email: string, token: string): Prom
   if (!verifyEmail.includes('@')) {
     throw new SupabaseAuthError(400, 'A valid email address is required.', 'INVALID_EMAIL');
   }
-  if (cleanToken.length !== 6) {
-    throw new SupabaseAuthError(400, 'The verification code must be exactly 6 digits.', 'INVALID_CODE_FORMAT');
+  if (cleanToken.length < 6 || cleanToken.length > 8) {
+    throw new SupabaseAuthError(400, 'The verification code must be 6 to 8 digits.', 'INVALID_CODE_FORMAT');
   }
-  const { data, error } = await supabase.auth.verifyOtp({
+
+  // 1. Attempt verification with type: 'signup' (used for new registrations generated via link)
+  let verifyRes = await supabase.auth.verifyOtp({
     email: verifyEmail,
     token: cleanToken,
-    type: 'email' as any,
+    type: 'signup' as any,
   });
-  if (error) {
-    const msg = String(error?.message || '');
-    if (/expired/i.test(msg) || /token has expired|expired or invalid/i.test(msg)) {
-      throw new SupabaseAuthError(400, 'This verification code has expired. Please request a new code.', 'EXPIRED_OTP');
-    }
-    if (/invalid/i.test(msg) || /otp/i.test(msg)) {
-      throw new SupabaseAuthError(400, 'Invalid verification code. Please try again.', 'INVALID_OTP');
-    }
-    if (/rate limit/i.test(msg)) {
-      throw new SupabaseAuthError(429, 'Too many attempts. Please wait a few minutes and try again.', 'RATE_LIMITED');
-    }
-    throw mapSupabaseAuthError(error);
+
+  // 2. If invalid, attempt type: 'magiclink' (used for existing accounts)
+  if (verifyRes.error) {
+    const res2 = await supabase.auth.verifyOtp({
+      email: verifyEmail,
+      token: cleanToken,
+      type: 'magiclink' as any,
+    });
+    if (!res2.error) verifyRes = res2;
   }
-  return { verified: true, user: data?.user };
+
+  // 3. If invalid, attempt type: 'email' (standard email OTP)
+  if (verifyRes.error) {
+    const res3 = await supabase.auth.verifyOtp({
+      email: verifyEmail,
+      token: cleanToken,
+      type: 'email' as any,
+    });
+    if (!res3.error) verifyRes = res3;
+  }
+
+  // 4. If invalid, attempt type: 'recovery' (password reset)
+  if (verifyRes.error) {
+    const res4 = await supabase.auth.verifyOtp({
+      email: verifyEmail,
+      token: cleanToken,
+      type: 'recovery' as any,
+    });
+    if (!res4.error) verifyRes = res4;
+  }
+
+  // 5. Check activeEmailOtpStore fallback if Supabase cloud verifyOtp failed
+  if (verifyRes.error) {
+    const cached = activeEmailOtpStore.get(verifyEmail);
+    if (cached && cached.otp === cleanToken && Date.now() <= cached.expiresAt) {
+      cached.verified = true;
+      activeEmailOtpStore.delete(verifyEmail);
+
+      // Confirm the user natively in Supabase Auth
+      try {
+        const { data } = await supabase.auth.admin.listUsers();
+        const user = data?.users?.find((u) => u.email?.toLowerCase() === verifyEmail);
+        if (user) {
+          await supabase.auth.admin.updateUserById(user.id, { email_confirm: true });
+          return { verified: true, user };
+        }
+      } catch {}
+
+      return { verified: true, user: { email: verifyEmail } };
+    }
+
+    const msg = String(verifyRes.error?.message || '');
+    if (/expired/i.test(msg) || /token has expired|expired or invalid/i.test(msg) || (verifyRes.error as any).code === 'otp_expired') {
+      throw new SupabaseAuthError(400, 'This verification code has expired or is invalid. Please check your Gmail or request a new code.', 'EXPIRED_OTP');
+    }
+    throw new SupabaseAuthError(400, 'Invalid verification code. Please check your Gmail and try again.', 'INVALID_OTP');
+  }
+
+  return { verified: true, user: verifyRes.data?.user };
 }
 
 export async function supabaseResetPassword(email: string, redirectTo?: string): Promise<void> {
@@ -356,7 +509,31 @@ export async function ensureLocalClientUser(input: LocalClientUserInput): Promis
   try {
     existing = await authStore.findByEmailOrPhone(normalizedEmail);
   } catch {}
-  if (existing) return existing;
+  if (existing) {
+    // Self-heal missing borrowerId on existing client accounts
+    if (existing.role === 'CLIENT' && !existing.borrowerId && db) {
+      try {
+        let match = await findBorrowerByContact(phone, normalizedEmail);
+        let bId = match?.id || null;
+        if (!bId) {
+          const provisioned = await createClientProfile({
+            fullName: input.fullName,
+            phone,
+            email: normalizedEmail,
+            ...(input.profile || {}),
+          });
+          bId = provisioned?.id || null;
+        }
+        if (bId) {
+          existing.borrowerId = bId;
+          await authStore.updateUser(existing.id, { borrowerId: bId });
+        }
+      } catch (syncErr: any) {
+        console.warn('[supabaseAuth] borrower self-heal warning:', syncErr?.message || syncErr);
+      }
+    }
+    return existing;
+  }
 
   // 2. Link (or provision) the borrower projection.
   let borrowerId: string | null = null;

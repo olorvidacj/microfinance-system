@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const sqlPath = join(__dirname, '..', 'database', 'migrations', '0014_remove_demo_and_zero_defaults.sql');
 
 const connectionString =
-  process.env.SUPABASE_DB_URL || process.env.CLOUD_SQL_DATABASE_URL;
+  process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.CLOUD_SQL_DATABASE_URL;
 
 if (!connectionString) {
   console.error(

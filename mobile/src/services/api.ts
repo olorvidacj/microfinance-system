@@ -144,8 +144,8 @@ class ApiService {
   async sendRegistrationOtp(phone: string, email?: string): Promise<{
     success: boolean;
     message: string;
+    email?: string;
     formattedPhone?: string;
-    demoOtp?: string;
     expiresInSeconds?: number;
   }> {
     return this.request('/auth/send-registration-otp', {
@@ -154,18 +154,18 @@ class ApiService {
     });
   }
 
-  async verifyRegistrationOtp(phone: string, otp: string): Promise<{
+  async verifyRegistrationOtp(phone: string, otp: string, email?: string): Promise<{
     success: boolean;
     verified: boolean;
     message: string;
   }> {
     return this.request('/auth/verify-registration-otp', {
       method: 'POST',
-      body: JSON.stringify({ phone, otp }),
+      body: JSON.stringify({ phone, otp, email }),
     });
   }
 
-  async forgotPassword(email: string): Promise<{ success: boolean; message: string; demoOtp?: string }> {
+  async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
     return this.request('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
@@ -236,7 +236,7 @@ class ApiService {
     documentName: string;
     fileName: string;
     side?: 'front' | 'back';
-    imageBase64?: string;
+    imageBase64: string;   // base64-encoded image (e.g. data:image/jpeg;base64,...)
     mime?: string;
   }): Promise<any> {
     return this.request('/client/kyc/documents/upload', {

@@ -101,8 +101,38 @@ CREATE TABLE IF NOT EXISTS public.borrowers (
     joined_date TEXT NOT NULL,
     last_activity_date TEXT NOT NULL,
     notes TEXT,
+    email_verified INTEGER DEFAULT 0,
+    email_verified_at TEXT,
+    profile_completed BOOLEAN DEFAULT FALSE,
+    profile_completed_at TEXT,
+    existing_member_id TEXT,
+    barangay TEXT,
+    city_municipality TEXT,
+    province TEXT,
+    source_of_income TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Keep existing databases compatible when columns are added after borrowers table creation
+ALTER TABLE public.borrowers
+    ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS email_verified_at TEXT,
+    ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS profile_completed_at TEXT,
+    ADD COLUMN IF NOT EXISTS existing_member_id TEXT,
+    ADD COLUMN IF NOT EXISTS barangay TEXT,
+    ADD COLUMN IF NOT EXISTS city_municipality TEXT,
+    ADD COLUMN IF NOT EXISTS province TEXT,
+    ADD COLUMN IF NOT EXISTS source_of_income TEXT,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_borrowers_email_verified ON public.borrowers (email_verified);
+CREATE INDEX IF NOT EXISTS idx_borrowers_profile_completed ON public.borrowers (profile_completed);
+CREATE INDEX IF NOT EXISTS idx_borrowers_member_status ON public.borrowers (member_status);
+
+-- Duplicate prevention on borrowers: unique phone and email
+CREATE UNIQUE INDEX IF NOT EXISTS uq_borrowers_phone ON public.borrowers (phone);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_borrowers_email_lower ON public.borrowers (LOWER(email));
 
 -- 5. MEMBERSHIP APPLICATIONS TABLE
 CREATE TABLE IF NOT EXISTS public.membership_applications (
@@ -362,7 +392,28 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes & Policies
+-- 16. USERS TABLE (AUTHENTICATION - STAFF & CLIENT PORTAL ACCOUNTS)
+CREATE TABLE IF NOT EXISTS public.users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('STAFF', 'CLIENT')),
+    staff_role TEXT,
+    staff_id TEXT REFERENCES public.staff(id) ON DELETE SET NULL,
+    borrower_id TEXT REFERENCES public.borrowers(id) ON DELETE SET NULL,
+    phone TEXT,
+    avatar TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ========================================================
+-- INDEXES FOR MAXIMUM QUERY PERFORMANCE
+-- ========================================================
+CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
+CREATE INDEX IF NOT EXISTS idx_users_borrower ON public.users(borrower_id);
 CREATE INDEX IF NOT EXISTS idx_borrowers_branch ON public.borrowers(branch_id);
 CREATE INDEX IF NOT EXISTS idx_borrowers_kyc ON public.borrowers(kyc_status);
 CREATE INDEX IF NOT EXISTS idx_loans_borrower ON public.loans(borrower_id);
@@ -373,6 +424,9 @@ CREATE INDEX IF NOT EXISTS idx_payments_borrower ON public.payments(borrower_id)
 CREATE INDEX IF NOT EXISTS idx_savings_member ON public.savings_transactions(member_id);
 CREATE INDEX IF NOT EXISTS idx_solidarity_branch ON public.solidarity_groups(branch_id);
 
+-- ========================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ========================================================
 ALTER TABLE public.branches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loan_products ENABLE ROW LEVEL SECURITY;
@@ -389,6 +443,7 @@ ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.solidarity_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
+-- Allow full access for anon and authenticated API clients (Cooperative Intranet & Portal)
 CREATE POLICY "Allow full access to branches" ON public.branches FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow full access to staff" ON public.staff FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow full access to loan_products" ON public.loan_products FOR ALL USING (true) WITH CHECK (true);
@@ -405,7 +460,11 @@ CREATE POLICY "Allow full access to payments" ON public.payments FOR ALL USING (
 CREATE POLICY "Allow full access to solidarity_groups" ON public.solidarity_groups FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow full access to audit_logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
 
--- Seed Data
+-- ========================================================
+-- SEED DATA FOR HOSCOMCO MICROFINANCE COOPERATIVE
+-- ========================================================
+
+-- 1. Insert Branches
 INSERT INTO public.branches (id, code, name, city, address, phone, manager_name, manager_email, active_disbursed_pool, cash_vault_balance, active_loans_count, color)
 VALUES
 ('b-1', 'HO-MAIN', 'HOSCOMCO Main Office', 'Tacloban City', 'Coop Bldg, Real St., Tacloban City', '+63 917 111 2222', 'Elena Rostata', 'elena.rostata@HOSCOMCO.coop', 2450000, 850000, 38, '#2563EB'),
@@ -413,6 +472,7 @@ VALUES
 ('b-3', 'HO-ORMOC', 'Ormoc Agri-Microfinance Unit', 'Ormoc City', 'Agri-Trade Center, Ormoc City', '+63 917 555 6666', 'Maria Carmela Tan', 'carmela.tan@HOSCOMCO.coop', 1920000, 610000, 29, '#D97706')
 ON CONFLICT (id) DO NOTHING;
 
+-- 2. Insert Staff
 INSERT INTO public.staff (id, name, email, role, assigned_branch_id, title, avatar, committee)
 VALUES
 ('s-1', 'Elena Rostata', 'elena.rostata@HOSCOMCO.coop', 'SUPER_ADMIN', 'all', 'General Manager & CEO', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150', 'Management'),
@@ -422,6 +482,7 @@ VALUES
 ('s-5', 'Danilo Santos', 'danilo.s@HOSCOMCO.coop', 'TELLER', 'b-1', 'Head Teller & Cashier', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', 'Operations')
 ON CONFLICT (id) DO NOTHING;
 
+-- 3. Insert Loan Products
 INSERT INTO public.loan_products (id, code, name, category, interest_rate, interest_type, min_amount, max_amount, min_term_months, max_term_months, repayment_frequency, default_repayment_frequency, processing_fee_percentage, late_penalty_rate, early_settlement_rebate_rate, requires_collateral, requires_guarantor, description, badge_color)
 VALUES
 ('p-1', 'ML-MICRO', 'Kabuhayan Micro-Enterprise Loan', 'Livelihood & MSME', 12.0, 'Flat Rate', 5000, 100000, 3, 24, 'Weekly', 'Weekly', 2.0, 3.0, 100.0, false, true, 'Working capital for sari-sari stores, market vendors, and micro-entrepreneurs with solidarity group support.', '#2563EB'),
@@ -430,6 +491,7 @@ VALUES
 ('p-4', 'ED-STUDY', 'Edukasyon Youth Tuition Loan', 'Education', 8.0, 'Reducing Balance', 5000, 50000, 3, 10, 'Monthly', 'Monthly', 1.0, 2.0, 100.0, false, true, 'Semester tuition assistance for children of active cooperative members in good standing.', '#7C3AED')
 ON CONFLICT (id) DO NOTHING;
 
+-- 4. Insert Initial Borrowers / Members
 INSERT INTO public.borrowers (id, borrower_number, full_name, id_number, phone, email, date_of_birth, gender, civil_status, address, facebook_account, branch_id, employment_status, employer_or_business, occupation, monthly_income, monthly_expenses, credit_score, credit_tier, kyc_status, member_status, membership_date, savings_balance, share_capital, active_loans_count, total_borrowed, total_repaid, avatar, joined_date, last_activity_date, notes)
 VALUES
 ('b-1', 'MBR-2024-001', 'Teresa Alcantara', 'UMID-9821-4821', '+63 917 123 4567', 'teresa.alcantara@gmail.com', '1984-06-15', 'Female', 'Married', 'Brgy. 88 San Jose, Tacloban City', 'facebook.com/teresa.sarisari', 'b-1', 'Business Owner', 'Teresa Sari-Sari Store & Dry Goods', 'Store Proprietor', 42000, 24000, 780, 'Excellent', 'Verified', 'Active', '2021-03-15', 18500, 25000, 1, 80000, 48000, 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150', '2021-03-15', '2026-08-15', 'Solidarity Group Leader for Tacloban Center 1. Consistently on time.'),
@@ -437,6 +499,7 @@ VALUES
 ('b-3', 'MBR-2024-003', 'Marivic Santos', 'PRC-0081294', '+63 919 345 6789', 'marivic.santos@gmail.com', '1988-03-08', 'Female', 'Single', 'Brgy. Cogon, Ormoc City', 'facebook.com/marivic.bakes', 'b-3', 'Self-Employed', 'Sweet Delights Pastry Shop', 'Baker & Owner', 58000, 29000, 810, 'Excellent', 'Verified', 'Active', '2020-07-22', 32000, 40000, 1, 120000, 95000, 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150', '2020-07-22', '2026-08-18', 'High capital cooperative shareholder.')
 ON CONFLICT (id) DO NOTHING;
 
+-- 5. Insert Initial Savings Accounts
 INSERT INTO public.savings_accounts (id, member_id, member_name, passbook_number, balance, maintaining_balance, interest_rate)
 VALUES
 ('sav-b-1', 'b-1', 'Teresa Alcantara', 'PB-2024-001', 18500, 1000, 1.0),
@@ -444,6 +507,7 @@ VALUES
 ('sav-b-3', 'b-3', 'Marivic Santos', 'PB-2024-003', 32000, 1000, 1.0)
 ON CONFLICT (id) DO NOTHING;
 
+-- 6. Insert Solidarity Groups
 INSERT INTO public.solidarity_groups (id, group_code, group_name, center_name, branch_id, formed_date, meeting_day, meeting_time, meeting_location, loan_officer_id, loan_officer_name, leader_borrower_id, leader_name, leader_phone, members, total_active_loans, total_group_savings, repayment_rate, solidarity_fund_balance, joint_liability_agreed, status)
 VALUES
 (
@@ -473,3 +537,80 @@ VALUES
     'Active'
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- 15. KYC SUBMISSIONS & VERIFICATION TABLES
+CREATE TABLE IF NOT EXISTS public.kyc_submissions (
+    id                TEXT PRIMARY KEY,
+    borrower_id       TEXT NOT NULL REFERENCES public.borrowers(id) ON DELETE CASCADE,
+    status            TEXT NOT NULL DEFAULT 'NOT_STARTED',
+    personal_info     JSONB,
+    address           JSONB,
+    employment        JSONB,
+    submitted_at      TEXT,
+    reviewed_at       TEXT,
+    reviewed_by       TEXT,
+    reviewed_by_name  TEXT,
+    correction_reason TEXT,
+    rejection_reason  TEXT,
+    verified_at       TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kyc_submissions_borrower ON public.kyc_submissions(borrower_id);
+CREATE INDEX IF NOT EXISTS idx_kyc_submissions_status ON public.kyc_submissions(status);
+
+CREATE TABLE IF NOT EXISTS public.kyc_documents (
+    id                  TEXT PRIMARY KEY,
+    kyc_submission_id   TEXT NOT NULL,
+    borrower_id         TEXT NOT NULL REFERENCES public.borrowers(id) ON DELETE CASCADE,
+    document_type       TEXT NOT NULL,
+    document_name       TEXT NOT NULL,
+    file_name           TEXT,
+    file_url            TEXT,
+    status              TEXT NOT NULL DEFAULT 'PENDING',
+    rejection_reason    TEXT,
+    verified_by         TEXT,
+    verified_at         TEXT,
+    created_at          TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kyc_documents_borrower ON public.kyc_documents(borrower_id);
+CREATE INDEX IF NOT EXISTS idx_kyc_documents_submission ON public.kyc_documents(kyc_submission_id);
+
+CREATE TABLE IF NOT EXISTS public.kyc_audit_log (
+    id                  TEXT PRIMARY KEY,
+    borrower_id         TEXT NOT NULL REFERENCES public.borrowers(id) ON DELETE CASCADE,
+    kyc_submission_id   TEXT,
+    staff_user_id       TEXT,
+    staff_name          TEXT,
+    action              TEXT NOT NULL,
+    previous_status     TEXT,
+    new_status          TEXT,
+    reason              TEXT,
+    created_at          TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kyc_audit_borrower ON public.kyc_audit_log(borrower_id);
+
+CREATE TABLE IF NOT EXISTS public.kyc_required_documents (
+    id                  TEXT PRIMARY KEY,
+    document_type       TEXT NOT NULL,
+    document_name       TEXT NOT NULL,
+    description         TEXT,
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order          INTEGER NOT NULL DEFAULT 0,
+    created_at          TEXT NOT NULL
+);
+
+INSERT INTO public.kyc_required_documents (id, document_type, document_name, description, is_active, sort_order, created_at)
+VALUES
+  ('KRD-001', 'VALID_ID',        'Government-Issued Photo ID',        'A valid, unexpired government-issued photo ID (PhilID, Passport, Driver License, UMID, SSS, PRC).',  true, 1,  NOW()::text),
+  ('KRD-002', 'PROOF_OF_ADDRESS','Barangay Clearance or Utility Bill','Recent proof of residence within the last 3 months.',                                                         true, 2,  NOW()::text),
+  ('KRD-003', 'PROOF_OF_INCOME', 'Payslip / Business Permit / Bank Statement','Evidence of regular income or business operations.',                                                     true, 3,  NOW()::text),
+  ('KRD-004', 'PHOTO_2X2',       'Recent 2x2 ID Photo',              'A recent photograph with white background.',                                                                 true, 4,  NOW()::text)
+ON CONFLICT (id) DO NOTHING;
+
+-- ========================================================
+-- DATABASE SCHEMA SETUP COMPLETED SUCCESSFULLY!
+-- ========================================================

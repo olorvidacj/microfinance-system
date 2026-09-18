@@ -28,14 +28,29 @@ CREATE TRIGGER trg_groups_updated_at        BEFORE UPDATE ON lending_groups     
 --    role/full_name come from signup metadata; defaults to 'client'.
 -- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION handle_new_user() RETURNS trigger AS $$
+DECLARE
+  v_role user_role := 'client';
+  v_meta_role text;
 BEGIN
+  v_meta_role := LOWER(COALESCE(NEW.raw_user_meta_data->>'role', 'client'));
+  IF v_meta_role IN ('admin', 'client', 'loan_officer', 'manager', 'teller') THEN
+    v_role := v_meta_role::user_role;
+  END IF;
+
   INSERT INTO public.profiles (id, full_name, phone, role)
   VALUES (
     NEW.id,
     COALESCE(NULLIF(NEW.raw_user_meta_data->>'full_name', ''), SPLIT_PART(NEW.email, '@', 1)),
     NEW.phone,
-    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'client')
-  );
+    v_role
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    phone = COALESCE(EXCLUDED.phone, public.profiles.phone);
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'handle_new_user error: %', SQLERRM;
   RETURN NEW;
 END $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
