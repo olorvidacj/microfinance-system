@@ -109,6 +109,7 @@ function requireAuth(roles?: Array<'STAFF' | 'CLIENT'>) {
         staffId: payload.staffId || null,
         borrowerId: payload.borrowerId || null,
         email: payload.email,
+        fullName: payload.fullName || null,
       };
     }
 
@@ -734,7 +735,32 @@ clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest,
         previousStatus = 'NOT_STARTED';
       }
 
-      await db.update(schema.borrowers).set({ kycStatus: 'PENDING' }).where(eq(schema.borrowers.id, borrowerId));
+      const fullAddress = [
+        address.houseUnit,
+        address.street,
+        address.barangay,
+        address.city,
+        address.province,
+        address.postalCode,
+      ].filter(Boolean).join(', ');
+
+      await db.update(schema.borrowers).set({
+        kycStatus: 'PENDING',
+        profileCompleted: true,
+        ...(personalInfo.fullName ? { fullName: String(personalInfo.fullName).trim() } : {}),
+        ...(personalInfo.dateOfBirth ? { dateOfBirth: String(personalInfo.dateOfBirth) } : {}),
+        ...(personalInfo.gender ? { gender: String(personalInfo.gender) } : {}),
+        ...(personalInfo.civilStatus ? { civilStatus: String(personalInfo.civilStatus) } : {}),
+        ...(fullAddress ? { address: fullAddress } : {}),
+        ...(address.barangay ? { barangay: String(address.barangay) } : {}),
+        ...(address.city ? { cityMunicipality: String(address.city) } : {}),
+        ...(address.province ? { province: String(address.province) } : {}),
+        ...(employment.occupation ? { occupation: String(employment.occupation) } : {}),
+        ...(employment.employer ? { employerOrBusiness: String(employment.employer) } : {}),
+        ...(employment.monthlyIncome ? { monthlyIncome: Number(employment.monthlyIncome) || 0 } : {}),
+        ...(employment.sourceOfIncome ? { sourceOfIncome: String(employment.sourceOfIncome) } : {}),
+        ...(idInfo?.idNumber ? { idNumber: String(idInfo.idNumber) } : {}),
+      }).where(eq(schema.borrowers.id, borrowerId));
 
       // Upsert document metadata for the submitted submission.
       for (const doc of docMap) {

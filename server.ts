@@ -67,6 +67,8 @@ interface AuthedRequest extends Request {
     staffId?: string | null;
     borrowerId?: string | null;
     email: string;
+    fullName?: string | null;
+    phone?: string | null;
     branchId?: string | null;
   };
 }
@@ -79,6 +81,17 @@ async function authenticate(req: AuthedRequest): Promise<void> {
   // 1. Local HMAC token (legacy fallback + fully-local dev mode)
   const payload = verifyToken(token);
   if (payload) {
+    let fullName = payload.fullName || null;
+    let phone: string | null = null;
+    if (!fullName) {
+      try {
+        const u = await authStore.findById(payload.sub);
+        if (u) {
+          fullName = u.fullName;
+          phone = u.phone || null;
+        }
+      } catch {}
+    }
     req.authUser = {
       id: payload.sub,
       role: payload.role,
@@ -86,6 +99,8 @@ async function authenticate(req: AuthedRequest): Promise<void> {
       staffId: payload.staffId || null,
       borrowerId: payload.borrowerId || null,
       email: payload.email,
+      fullName: fullName || payload.email.split('@')[0],
+      phone,
       branchId: payload.branchId || null,
     };
     return;
@@ -233,30 +248,36 @@ function publicUser(u: any) {
 // the client portal can gate "Complete Your Profile" and KYC onboarding.
 async function enrichProfileFlags(u: any) {
   const out: any = { ...u };
-  if (!u.borrowerId) {
+  if (u.role === 'STAFF') {
     out.profileComplete = true;
     out.kycStatus = 'NOT_REQUIRED';
     return out;
   }
+
+  // Clients default to Incomplete Profile and Pending KYC
+  out.profileComplete = false;
+  out.kycStatus = 'PENDING';
+  out.profileCompleteStep = 'required';
+
   const db = getDb();
-  if (db) {
+  if (db && u.borrowerId) {
     try {
       const rows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, u.borrowerId)).limit(1);
       const b = rows[0];
-      if (!b) return out;
-      const isEmpty = (v: any) => !v || String(v).trim() === '';
-      const requiredCollected = !!(
-        b.dateOfBirth &&
-        b.gender &&
-        b.civilStatus &&
-        b.address &&
-        b.occupation &&
-        b.employerOrBusiness &&
-        Number(b.monthlyIncome || 0) > 0
-      );
-      out.profileComplete = (b as any).profileCompleted === true || requiredCollected;
-      out.kycStatus = b.kycStatus || 'NOT_STARTED';
-      out.profileCompleteStep = requiredCollected ? 'done' : 'required';
+      if (b) {
+        const requiredCollected = !!(
+          b.dateOfBirth &&
+          b.gender &&
+          b.civilStatus &&
+          b.address &&
+          b.occupation &&
+          b.employerOrBusiness &&
+          Number(b.monthlyIncome || 0) > 0
+        );
+        out.profileComplete = (b as any).profileCompleted === true || requiredCollected;
+        out.kycStatus = b.kycStatus || 'PENDING';
+        out.profileCompleteStep = out.profileComplete ? 'done' : 'required';
+      }
     } catch {}
   }
   return out;
@@ -313,7 +334,7 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
-    if (!tokenUser && supabaseError && ![401, 404].includes(supabaseError.status)) {
+    if (!tokenUser && supabaseError && ![401, 404, 503].includes(supabaseError.status)) {
       // Only hard-fail on Supabase-specific errors (email not confirmed, rate
       // limit, etc.). Invalid credentials fall through to the local fallback.
       return res.status(supabaseError.status).json({ error: supabaseError.message });
@@ -726,6 +747,9 @@ app.post('/api/auth/register', async (req, res) => {
         } catch (provisionErr) {
           console.warn('[Auth] local client provisioning warning:', provisionErr);
         }
+      }
+      if (!borrowerId) {
+        borrowerId = `bor-${crypto.randomUUID().slice(0, 8)}`;
       }
       user = await authStore.createUser({
         id: `u-${crypto.randomUUID()}`,

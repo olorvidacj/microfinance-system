@@ -50,9 +50,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [regPassword, setRegPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [borrowerNumber, setBorrowerNumber] = useState('');
-  const [address, setAddress] = useState('');
-  const [occupation, setOccupation] = useState('');
-  const [monthlyIncome, setMonthlyIncome] = useState('35000');
   const [agreeTerms, setAgreeTerms] = useState(true);
 
   // Feedback state
@@ -112,13 +109,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
     try {
       const linked = await register({
         fullName: fullName.trim(),
-        email: regEmail.trim() || undefined,
+        email: regEmail.trim().toLowerCase() || undefined,
         phone: phone.trim(),
         password: regPassword,
         borrowerNumber: borrowerNumber.trim() || undefined,
-        address: address.trim() || undefined,
-        occupation: occupation.trim() || undefined,
-        monthlyIncome: monthlyIncome ? Number(monthlyIncome) : 35000,
       });
 
       if (!linked.borrowerId) {
@@ -394,41 +388,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     placeholder="e.g. MBR-2024-001"
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition uppercase"
                   />
-                </div>
-              </div>
-
-              {/* Address & Occupation */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Residential Address
-                  </label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="e.g. Tacloban City, Leyte"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Occupation / Business
-                  </label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={occupation}
-                      onChange={(e) => setOccupation(e.target.value)}
-                      placeholder="e.g. Sari-Sari Store Owner"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs sm:text-sm transition"
-                    />
-                  </div>
                 </div>
               </div>
 

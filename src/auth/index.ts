@@ -25,6 +25,7 @@ export interface TokenPayload {
   role: 'STAFF' | 'CLIENT';
   staffRole?: string | null;
   email: string;
+  fullName?: string | null;
   borrowerId?: string | null;
   staffId?: string | null;
   branchId?: string | null;
@@ -125,6 +126,7 @@ export function signToken(user: {
   role: string;
   staffRole?: string | null;
   email: string;
+  fullName?: string | null;
   borrowerId?: string | null;
   staffId?: string | null;
   branchId?: string | null;
@@ -134,6 +136,7 @@ export function signToken(user: {
     role: user.role as 'STAFF' | 'CLIENT',
     staffRole: user.staffRole || null,
     email: user.email,
+    fullName: user.fullName || null,
     borrowerId: user.borrowerId || null,
     staffId: user.staffId || null,
     branchId: user.branchId || null,
