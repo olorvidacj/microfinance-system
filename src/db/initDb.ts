@@ -243,7 +243,9 @@ export async function initDbSchema(): Promise<boolean> {
         member_id TEXT NOT NULL,
         member_name TEXT NOT NULL,
         branch_id TEXT NOT NULL,
+        account_id TEXT,
         current_balance DOUBLE PRECISION NOT NULL,
+        account_balance_before DOUBLE PRECISION,
         requested_amount DOUBLE PRECISION NOT NULL,
         maintaining_balance DOUBLE PRECISION DEFAULT 1000,
         remaining_balance_after DOUBLE PRECISION NOT NULL,
@@ -414,14 +416,49 @@ export async function initDbSchema(): Promise<boolean> {
         client_name TEXT,
         loan_id TEXT,
         loan_number TEXT,
-        doc_name TEXT NOT NULL,
-        doc_type TEXT NOT NULL,
-        file_url TEXT,
-        uploaded_by TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'Active',
-        notes TEXT,
-        created_at TEXT NOT NULL
-      );
+          doc_name TEXT NOT NULL,
+          doc_type TEXT NOT NULL,
+          file_url TEXT,
+          storage_path TEXT,
+          file_name TEXT,
+          uploaded_by TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'Active',
+          notes TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS payment_proofs (
+          id TEXT PRIMARY KEY,
+          borrower_id TEXT NOT NULL,
+          loan_id TEXT NOT NULL,
+          loan_number TEXT,
+          amount DOUBLE PRECISION NOT NULL CHECK (amount > 0),
+          currency TEXT NOT NULL DEFAULT 'PHP',
+          payment_method TEXT NOT NULL,
+          payment_date TEXT NOT NULL,
+          reference_number TEXT,
+          notes TEXT,
+          document_id TEXT,
+          storage_path TEXT,
+          file_name TEXT,
+          branch_id TEXT NOT NULL,
+          submitted_by TEXT,
+          submitted_at TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'PENDING_REVIEW'
+            CHECK (status IN ('PENDING_REVIEW','UNDER_REVIEW','VERIFIED','REJECTED')),
+          reviewed_by TEXT,
+          reviewed_by_name TEXT,
+          reviewed_at TEXT,
+          rejection_reason TEXT,
+          payment_id TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_payment_proofs_queue
+          ON payment_proofs (branch_id, status, submitted_at);
+        CREATE INDEX IF NOT EXISTS idx_payment_proofs_borrower
+          ON payment_proofs (borrower_id, submitted_at);
 
       CREATE TABLE IF NOT EXISTS branch_notifications (
         id TEXT PRIMARY KEY,

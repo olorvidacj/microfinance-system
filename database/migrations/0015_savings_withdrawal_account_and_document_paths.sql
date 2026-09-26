@@ -57,10 +57,21 @@ UPDATE savings_withdrawal_requests swr
  WHERE swr.account_id IS NULL
    AND swr.member_id = sa.member_id;
 
--- Backfill account_balance_before only for rows we just resolved to a
--- single account. NOT current_balance: that is the member total.
+-- Backfill account_balance_before only for rows we resolved to a single
+-- account.
+--
+-- The value is current_balance, NOT current_balance - requested_amount.
+-- A pending request has not been debited yet, so the balance before is
+-- the balance recorded when the request was raised. Subtracting the
+-- requested amount would store remaining_balance_after and mislabel the
+-- after-value as the before-value.
+--
+-- Where a member holds exactly one account (all 15 currently do) the
+-- account balance and the member total coincide, so this is exact. The
+-- column starts to diverge only for multi-passbook members, which is
+-- precisely the case it exists to capture.
 UPDATE savings_withdrawal_requests swr
-   SET account_balance_before = swr.current_balance - swr.requested_amount
+   SET account_balance_before = swr.current_balance
  WHERE swr.account_id IS NOT NULL
    AND swr.account_balance_before IS NULL;
 

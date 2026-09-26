@@ -65,6 +65,8 @@ export interface StoredDocument {
   signedUrl: string;
   contentType: string;
   sizeBytes: number;
+  /** Original filename supplied by the client, or the generated name. */
+  fileName: string;
 }
 
 /**
@@ -134,5 +136,9 @@ export async function storeDocument(params: {
     signedUrl: signed.signedUrl,
     contentType,
     sizeBytes: buffer.length,
+    // The caller's original filename, for the documents.file_name column.
+    // Falls back to the generated unique name when the client sent none.
+    // This is the display name only; `path` is the durable location.
+    fileName: fileName?.trim() || unique,
   };
 }

@@ -223,13 +223,21 @@ export const savingsTransactions = pgTable("savings_transactions", {
 });
 
 export const savingsWithdrawalRequests = pgTable("savings_withdrawal_requests", {
-  id: text("id").primaryKey(),
-  requestId: text("request_id").notNull(),
-  memberId: text("member_id").notNull(),
-  memberName: text("member_name").notNull(),
-  branchId: text("branch_id").notNull(),
-  currentBalance: doublePrecision("current_balance").notNull(),
-  requestedAmount: doublePrecision("requested_amount").notNull(),
+    id: text("id").primaryKey(),
+    requestId: text("request_id").notNull(),
+    memberId: text("member_id").notNull(),
+    memberName: text("member_name").notNull(),
+    branchId: text("branch_id").notNull(),
+    // The savings account this withdrawal was raised against (0015).
+    // Nullable: pre-0015 rows and requests whose member holds more than
+    // one passbook are deliberately left unresolved rather than guessed.
+    accountId: text("account_id"),
+    currentBalance: doublePrecision("current_balance").notNull(),
+    // Balance of that specific account when the request was raised.
+    // Distinct from currentBalance, which is the member-wide total, and
+    // from remainingBalanceAfter, which is the post-debit figure.
+    accountBalanceBefore: doublePrecision("account_balance_before"),
+    requestedAmount: doublePrecision("requested_amount").notNull(),
   maintainingBalance: doublePrecision("maintaining_balance").default(1000),
   remainingBalanceAfter: doublePrecision("remaining_balance_after").notNull(),
   requestDate: text("request_date").notNull(),
@@ -399,14 +407,73 @@ export const documents = pgTable("documents", {
   clientName: text("client_name"),
   loanId: text("loan_id"),
   loanNumber: text("loan_number"),
-  docName: text("doc_name").notNull(),
-  docType: text("doc_type").notNull(),
-  fileUrl: text("file_url"),
-  uploadedBy: text("uploaded_by").notNull(),
-  status: text("status").notNull().default("Active"),
-  notes: text("notes"),
-  createdAt: text("created_at").notNull(),
-});
+    docName: text("doc_name").notNull(),
+    docType: text("doc_type").notNull(),
+    // fileUrl is overloaded: it may hold a durable object path for new
+    // uploads or a public/signed URL for anything seeded earlier. A
+    // signed URL expires, so it must never be treated as the record of
+    // where the bytes live.
+    fileUrl: text("file_url"),
+    // The non-expiring path inside the private bucket (0015).
+    storagePath: text("storage_path"),
+    // Original uploaded filename, for display. Not derivable from docName,
+    // which is the human label.
+    fileName: text("file_name"),
+    uploadedBy: text("uploaded_by").notNull(),
+    status: text("status").notNull().default("Active"),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull(),
+  });
+
+  // ---------------------------------------------------------------------------
+  // Payment proofs (0016)
+  //
+  // A client paying a loan uploads a receipt. The bytes live in the private
+  // kyc-documents bucket and a `documents` row records them, but a documents
+  // row is a generic file record: it carries no amount, no payer and no
+  // verification decision, so there was no queue a teller could actually
+  // work. This table is that queue. `documents` keeps holding the bytes;
+  // a proof row holds the claim made about them.
+  //
+  // A proof is a CLAIM awaiting verification, never a payment. There is
+  // deliberately no FK to `payments`: approving a proof is what creates
+  // the payment, not the other way round. The legacy schema has no foreign
+  // keys on any financial table, so documentId is a soft reference.
+  // ---------------------------------------------------------------------------
+  export const paymentProofs = pgTable("payment_proofs", {
+    id: text("id").primaryKey(),
+    // the claim
+    borrowerId: text("borrower_id").notNull(),
+    loanId: text("loan_id").notNull(),
+    loanNumber: text("loan_number"),
+    amount: doublePrecision("amount").notNull(),
+    currency: text("currency").notNull().default("PHP"),
+    paymentMethod: text("payment_method").notNull(),
+    paymentDate: text("payment_date").notNull(),
+    referenceNumber: text("reference_number"),
+    notes: text("notes"),
+    // the evidence
+    documentId: text("document_id"),
+    storagePath: text("storage_path"),
+    fileName: text("file_name"),
+    // branch routing
+    branchId: text("branch_id").notNull(),
+    submittedBy: text("submitted_by"),
+    submittedAt: text("submitted_at").notNull(),
+    // the decision
+    status: text("status").notNull().default("PENDING_REVIEW"),
+    reviewedBy: text("reviewed_by"),
+    reviewedByName: text("reviewed_by_name"),
+    reviewedAt: text("reviewed_at"),
+    rejectionReason: text("rejection_reason"),
+    // set only once a verified payment row exists
+    paymentId: text("payment_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  });
+  // Indexes (idx_payment_proofs_queue, idx_payment_proofs_borrower) are
+  // created by 0016. No table in this file declares indexes inline; the
+  // hand-authored SQL in database/migrations owns them.
 
 // ---------------------------------------------------------------------------
 // KYC (Know Your Customer) tables

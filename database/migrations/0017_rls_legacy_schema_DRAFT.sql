@@ -45,20 +45,25 @@
 --   findByEmailOrPhone). This helper uses the same email identity
 --   so RLS and the application agree on who the caller is.
 --
--- THINGS TO DECIDE BEFORE APPLYING
---   1. LOCAL-HMAC / DEV MODE. authenticate() also accepts a locally
---      signed HMAC token, which is NOT a Supabase token. In that
---      mode auth.jwt() is empty, so every helper below returns NULL
---      and RLS will deny all client access. Dev mode must either
---      run with the service-role key (which bypasses RLS) or the
---      helpers need a dev bypass. Pick one deliberately.
---   2. BRANCH SCOPING. staff branch lives in staff.assigned_branch_id;
---      users has no branch_id column. The staff policy below scopes
---      by that join. If global roles (ADMINISTRATOR, CREDIT_COMMITTEE,
---      BOARD_OF_DIRECTORS) should see every branch, adjust
---      is_global_staff() before applying.
+-- DECISIONS TAKEN (resolved, no longer open)
+--   1. LOCAL-HMAC / DEV MODE -> dev tooling must connect with the
+--      service-role key, exactly as production does. No dev bypass is
+--      added to the helpers. Rationale: a conditional bypass is one
+--      misconfiguration away from being a production hole, whereas
+--      "dev uses the same key as prod" cannot leak. Consequence: a
+--      dev session presenting a locally signed HMAC token and calling
+--      the database as anon/authenticated will be denied. It must
+--      present the service-role key instead.
+--   2. BRANCH SCOPING -> staff branch lives in staff.assigned_branch_id
+--      because users has no branch_id column. Global roles
+--      (ADMINISTRATOR, MANAGER, CREDIT_COMMITTEE, BOARD_OF_DIRECTORS)
+--      are cross-branch via is_global_staff() below.
 --
---   Nothing in this file has been applied to the live database.
+-- STILL UNAPPLIED
+--   0015 and 0016 are live. This file is not: 15 "Allow full access"
+--   USING (true) policies are still in place and the 8 previously
+--   unprotected tables still have RLS disabled. Verified present as of
+--   the 0015/0016 apply.
 -- ============================================================
 
 -- ------------------------------------------------------------

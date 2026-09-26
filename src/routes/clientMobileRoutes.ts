@@ -1554,6 +1554,11 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
 
     // Retain the receipt itself. Without this the submission was unrecoverable.
     let storedPath: string | null = null;
+    // Durable bucket path, set only when we stored the bytes ourselves. A
+    // caller-supplied http(s) link has no storage path of our own, so durablePath
+    // stays null rather than holding a link that will expire.
+    let durablePath: string | null = null;
+    let storedFileName: string | null = receiptProofName ? String(receiptProofName) : null;
     if (receiptProofBase64) {
       try {
         const stored = await storeDocument({
@@ -1565,6 +1570,8 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
           mime: receiptProofMime ? String(receiptProofMime) : undefined,
         });
         storedPath = stored.path;
+        durablePath = stored.path;
+        storedFileName = stored.fileName;
       } catch (storageErr: any) {
         console.error('[Payment Proof] storage failed:', storageErr?.message || storageErr);
         return res.status(400).json({ success: false, error: storageErr?.message || 'The receipt could not be stored.' });
@@ -1594,6 +1601,8 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
       docName: `Payment proof - ${proofAmount.toLocaleString()} (${String(paymentMethod)})`,
       docType: 'Payment Proof',
       fileUrl: storedPath,
+      storagePath: durablePath,
+      fileName: storedFileName,
       uploadedBy: String(borrower?.fullName || req.authUser?.fullName || 'Client'),
       status: 'Pending Verification',
       notes: [
@@ -1607,6 +1616,36 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
         .filter(Boolean)
         .join(' | '),
       createdAt: now,
+    });
+
+    // The real verification queue (0016). Until this existed the only trace of
+    // a pending payment was a documents row whose status was the literal string
+    // 'Pending Verification' plus a notification - nothing a teller could filter,
+    // count, or record a decision against. This row is that queue entry.
+    //
+    // It stays PENDING_REVIEW and is NOT written to `payments`: posting the money
+    // requires a teller to verify the claim and compute the principal/interest/
+    // penalty split, exactly as the documents row above already explained.
+    await db.insert(schema.paymentProofs).values({
+      id: proofId,
+      borrowerId,
+      loanId: String(targetLoan.id),
+      loanNumber: String(targetLoan.loanNumber || targetLoan.id),
+      amount: proofAmount,
+      currency: 'PHP',
+      paymentMethod: String(paymentMethod),
+      paymentDate: String(paymentDateValue),
+      referenceNumber: referenceNumber ? String(referenceNumber) : null,
+      notes: notes ? String(notes) : null,
+      documentId: `doc-${proofId}`,
+      storagePath: durablePath,
+      fileName: storedFileName,
+      branchId,
+      submittedBy: String(borrower?.fullName || req.authUser?.fullName || 'Client'),
+      submittedAt: now,
+      status: 'PENDING_REVIEW',
+      createdAt: now,
+      updatedAt: now,
     });
 
     // Surface it to the branch so a teller actually has a queue to work.
@@ -1847,13 +1886,20 @@ clientMobileRouter.post('/savings/withdraw', requireAuth(), async (req: AuthedRe
     };
 
     if (db) {
+      // account.balance is the figure read from the ledger before this debit,
+      // so it is the account-level "before" balance. memberTotalBefore is a
+      // different number (the sum across every account the member holds) and
+      // must not be written here.
+      const accountBalanceBefore = Number(account.balance) || 0;
       await db.insert(schema.savingsWithdrawalRequests).values({
         id: `swr-${Date.now()}`,
         requestId: request.requestId,
         memberId: borrowerId,
         memberName,
         branchId: memberBranch,
+        accountId: String(account.id),
         currentBalance: memberTotalBefore,
+        accountBalanceBefore,
         requestedAmount,
         remainingBalanceAfter: memberTotalAfter,
         requestDate: today,

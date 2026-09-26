@@ -1517,6 +1517,11 @@ branchRouter.post('/documents', requireBranch(['register_clients', 'manage_kyc']
   // link the next day. GET /documents/:id/file re-signs the path on demand.
   const originalName = body.fileName ? String(body.fileName) : null;
   let fileRef: string;
+  // The durable bucket path, known only for content we stored ourselves. A
+  // caller-supplied http(s) link has no storage path of our own, so it stays
+  // null rather than being filled with a URL that will expire.
+  let storagePath: string | null = null;
+  let storedFileName: string | null = originalName;
   if (body.fileBase64) {
     try {
       const stored = await storeDocument({
@@ -1528,6 +1533,8 @@ branchRouter.post('/documents', requireBranch(['register_clients', 'manage_kyc']
         mime: body.mime ? String(body.mime) : undefined,
       });
       fileRef = stored.path;
+      storagePath = stored.path;
+      storedFileName = stored.fileName;
     } catch (storageErr: any) {
       console.error('[Documents] storage failed:', storageErr?.message || storageErr);
       return res.status(400).json({ error: storageErr?.message || 'The file could not be stored.' });
@@ -1557,6 +1564,8 @@ branchRouter.post('/documents', requireBranch(['register_clients', 'manage_kyc']
     docName: String(body.docName || originalName || 'Untitled document'),
     docType: String(body.docType || 'Client Document'),
     fileUrl: fileRef,
+    storagePath,
+    fileName: storedFileName,
     uploadedBy: ctx.staffName,
     status: 'Active',
     notes: body.notes ? String(body.notes) : null,
