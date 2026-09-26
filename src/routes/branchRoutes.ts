@@ -1029,22 +1029,65 @@ branchRouter.get('/collections/today', requireBranch(['process_loan_repayments',
   });
 });
 
-branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async (req, res) => {
-  const ctx = ctxOf(req);
+/**
+ * The single place money is moved against a loan.
+ *
+ * Both a teller's direct collection (POST /payments) and the verification of a
+ * client-submitted payment proof call this, so both produce an identical
+ * ledger: the same schedule allocation, the same principal/interest/penalty
+ * split, the same loan and borrower rollups, the same financial_transactions
+ * row, and the same audit trail. Duplicating this for proofs would create a
+ * second, silently divergent path for posting money.
+ *
+ * Returns a discriminated result rather than throwing, so callers can map an
+ * expected validation failure onto their own status code without catching.
+ */
+async function postLoanPayment(
+  ctx: BranchCtx,
+  input: {
+    loanId: string;
+    amount: number;
+    date?: string;
+    paymentMethod?: string;
+    transactionReference?: string;
+    notes?: string | null;
+    /**
+     * How the money arrived. Recorded in the ledger so a later reader can tell
+     * a walk-in collection apart from a proof that took a day to verify.
+     */
+    source?: 'BRANCH_COLLECTION' | 'PROOF_VERIFICATION';
+    /** Set when source is PROOF_VERIFICATION; cross-referenced in the ledger. */
+    proofId?: string;
+  },
+): Promise<
+  | { ok: true; receipt: Record<string, any> }
+  | { ok: false; status: number; error: string }
+> {
   const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const loanId = String(body.loanId || '');
-  const amount = Number(body.amount) || 0;
-  if (!loanId || amount <= 0) return res.status(400).json({ error: 'loanId and a positive amount are required.' });
-  const rows = await db.select().from(schema.loans).where(and(eq(schema.loans.id, loanId), scopeCond(ctx, schema.loans.branchId) as any)).limit(1);
-  if (rows.length === 0) return res.status(404).json({ error: 'Loan not found in this branch.' });
-  const loan = rows[0] as any;
-  if (amount > (loan.remainingBalance || 0) + 0.01) {
-    return res.status(400).json({ error: `Payment exceeds outstanding balance (₱${(loan.remainingBalance || 0).toLocaleString()}).` });
+  if (!db) return { ok: false, status: 503, error: 'Database unavailable' };
+
+  const { loanId, amount } = input;
+  if (!loanId || !(amount > 0)) {
+    return { ok: false, status: 400, error: 'loanId and a positive amount are required.' };
   }
 
-  const paymentDate = String(body.date || todayStr());
+  const rows = await db
+    .select()
+    .from(schema.loans)
+    .where(and(eq(schema.loans.id, loanId), scopeCond(ctx, schema.loans.branchId) as any))
+    .limit(1);
+  if (rows.length === 0) return { ok: false, status: 404, error: 'Loan not found in this branch.' };
+  const loan = rows[0] as any;
+
+  if (amount > (loan.remainingBalance || 0) + 0.01) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Payment exceeds outstanding balance (₱${(loan.remainingBalance || 0).toLocaleString()}).`,
+    };
+  }
+
+  const paymentDate = String(input.date || todayStr());
   const schedule: InstallmentRow[] = Array.isArray(loan.schedule) ? loan.schedule : [];
   const allocation = allocatePaymentToSchedule(schedule, amount, paymentDate);
   const id = genId('pay');
@@ -1052,7 +1095,12 @@ branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async
   const newTotalPaid = Math.min(Math.round(((loan.totalPaid || 0) + amount) * 100) / 100, loan.totalPayable);
   const newRemaining = Math.max(0, Math.round((loan.totalPayable - newTotalPaid) * 100) / 100);
   const nextUnpaid = allocation.updatedSchedule.find((s: any) => (s.amountPaid || 0) < s.totalDue - 0.001);
-  const newStatus = newRemaining <= 0.01 ? 'Completed' : ['Draft', 'Submitted', 'Under Review', 'For Assessment', 'Approved'].includes(loan.status) ? 'Active' : loan.status;
+  const newStatus =
+    newRemaining <= 0.01
+      ? 'Completed'
+      : ['Draft', 'Submitted', 'Under Review', 'For Assessment', 'Approved'].includes(loan.status)
+        ? 'Active'
+        : loan.status;
 
   await db.insert(schema.payments).values({
     id,
@@ -1064,8 +1112,8 @@ branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async
     branchId: loan.branchId,
     amount,
     paymentDate,
-    paymentMethod: String(body.paymentMethod || 'Cash'),
-    transactionReference: String(body.transactionReference || ''),
+    paymentMethod: String(input.paymentMethod || 'Cash'),
+    transactionReference: String(input.transactionReference || ''),
     collectedBy: ctx.staffName,
     principalPortion: allocation.principalPaid,
     interestPortion: allocation.interestPaid,
@@ -1073,7 +1121,7 @@ branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async
     rebateDiscount: 0,
     paymentScheduleType: 'Installment',
     isAdvancePayment: false,
-    notes: body.notes ? String(body.notes) : null,
+    notes: input.notes ? String(input.notes) : null,
   });
 
   await db
@@ -1090,15 +1138,28 @@ branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async
     .where(eq(schema.loans.id, loan.id));
 
   if (loan.borrowerId) {
-    const borrowerRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, loan.borrowerId)).limit(1);
+    const borrowerRows = await db
+      .select()
+      .from(schema.borrowers)
+      .where(eq(schema.borrowers.id, loan.borrowerId))
+      .limit(1);
     if (borrowerRows.length > 0) {
       const prev = borrowerRows[0] as any;
       await db
         .update(schema.borrowers)
-        .set({ totalRepaid: Math.round(((prev.totalRepaid || 0) + amount) * 100) / 100, lastActivityDate: paymentDate })
+        .set({
+          totalRepaid: Math.round(((prev.totalRepaid || 0) + amount) * 100) / 100,
+          lastActivityDate: paymentDate,
+        })
         .where(eq(schema.borrowers.id, loan.borrowerId));
     }
   }
+
+  const source = input.source || 'BRANCH_COLLECTION';
+  const sourceNote =
+    source === 'PROOF_VERIFICATION'
+      ? `Verified from client-submitted proof${input.proofId ? ` ${input.proofId}` : ''}`
+      : 'Branch collection';
 
   await db.insert(schema.financialTransactions).values({
     id: genId('txn'),
@@ -1111,40 +1172,377 @@ branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async
     transactionType: 'Loan Repayment',
     amount,
     transactionDate: paymentDate,
-    paymentMethod: String(body.paymentMethod || 'Cash'),
+    paymentMethod: String(input.paymentMethod || 'Cash'),
     processedBy: `${ctx.staffName} (${ctx.title})`,
     processedByRole: ctx.staffRole,
     status: 'Completed',
-    notes: `Collection for ${loan.loanNumber} · ${receiptNumber}`,
-    metadata: { principalPortion: allocation.principalPaid, interestPortion: allocation.interestPaid },
+    notes: `Collection for ${loan.loanNumber} · ${receiptNumber} · ${sourceNote}`,
+    metadata: {
+      principalPortion: allocation.principalPaid,
+      interestPortion: allocation.interestPaid,
+      source,
+      ...(input.proofId ? { proofId: input.proofId } : {}),
+    },
     createdAt: nowIso(),
     updatedAt: nowIso(),
   });
 
-  await audit(ctx, 'PAYMENT_RECEIVED', `Received ₱${amount.toLocaleString()} from ${loan.borrowerName} for ${loan.loanNumber}. Receipt ${receiptNumber}.`, 'PAYMENT', { targetType: 'Loan', targetId: loan.id });
-  await notify(ctx, 'PAYMENT', 'Payment received', `₱${amount.toLocaleString()} payment received for ${loan.loanNumber}.`, { relatedType: 'Loan', relatedId: loan.id });
+  await audit(
+    ctx,
+    'PAYMENT_RECEIVED',
+    `Received ₱${amount.toLocaleString()} from ${loan.borrowerName} for ${loan.loanNumber}. Receipt ${receiptNumber}.`,
+    'PAYMENT',
+    { targetType: 'Loan', targetId: loan.id },
+  );
 
-  res.status(201).json({
+  return {
+    ok: true,
+    receipt: {
+      id,
+      receiptNumber,
+      loanId: loan.id,
+      loanNumber: loan.loanNumber,
+      clientId: loan.borrowerId,
+      clientName: loan.borrowerName,
+      amount,
+      paymentDate,
+      paymentMethod: String(input.paymentMethod || 'Cash'),
+      transactionReference: String(input.transactionReference || ''),
+      processedBy: ctx.staffName,
+      principalPortion: allocation.principalPaid,
+      interestPortion: allocation.interestPaid,
+      remainingBalance: newRemaining,
+    },
+  };
+}
+
+branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async (req, res) => {
+  const ctx = ctxOf(req);
+  const body = req.body || {};
+  const result = await postLoanPayment(ctx, {
+    loanId: String(body.loanId || ''),
+    amount: Number(body.amount) || 0,
+    date: body.date ? String(body.date) : undefined,
+    paymentMethod: body.paymentMethod ? String(body.paymentMethod) : undefined,
+    transactionReference: body.transactionReference ? String(body.transactionReference) : undefined,
+    notes: body.notes ? String(body.notes) : null,
+    source: 'BRANCH_COLLECTION',
+  });
+  if ('error' in result) return res.status(result.status).json({ error: result.error });
+  await notify(
+    ctx,
+    'PAYMENT',
+    'Payment received',
+    `₱${result.receipt.amount.toLocaleString()} payment received for ${result.receipt.loanNumber}.`,
+    { relatedType: 'Loan', relatedId: result.receipt.loanId },
+  );
+  res.status(201).json({ success: true, data: { receipt: result.receipt } });
+});
+
+// ---------------------------------------------------------------------------
+// Payment proof queue
+//
+// A client paying a loan uploads a receipt, which lands in payment_proofs as a
+// PENDING_REVIEW claim (see clientMobileRoutes). These endpoints are the teller
+// side of that queue: list it, verify it, or reject it.
+//
+// Verification deliberately does NOT re-implement the money path. It calls
+// postLoanPayment, the same function behind POST /payments, so a verified proof
+// produces exactly the ledger a direct collection would: identical schedule
+// allocation, principal/interest split, loan and borrower rollups, financial
+// transaction, and audit entry.
+//
+// Rejection moves no money at all. A rejected proof is a declined CLAIM, not a
+// reversed payment - nothing was ever posted, so there is nothing to reverse.
+// ---------------------------------------------------------------------------
+
+/** Loads a proof scoped to the caller's branch, or null. */
+async function loadScopedProof(ctx: BranchCtx, proofId: string) {
+  const db = getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(schema.paymentProofs)
+    .where(
+      and(
+        eq(schema.paymentProofs.id, proofId),
+        scopeCond(ctx, schema.paymentProofs.branchId) as any,
+      ),
+    )
+    .limit(1);
+  return rows.length > 0 ? (rows[0] as any) : null;
+}
+
+branchRouter.get('/payment-proofs', requireBranch(['process_loan_repayments']), async (req, res) => {
+  const ctx = ctxOf(req);
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+
+  const statusFilter = req.query.status ? String(req.query.status) : null;
+  const conditions: any[] = [scopeCond(ctx, schema.paymentProofs.branchId)];
+  if (statusFilter && statusFilter !== 'ALL') conditions.push(eq(schema.paymentProofs.status, statusFilter));
+
+  const rows = await db
+    .select()
+    .from(schema.paymentProofs)
+    .where(and(...conditions))
+    .orderBy(desc(schema.paymentProofs.submittedAt));
+
+  const all = await db
+    .select()
+    .from(schema.paymentProofs)
+    .where(scopeCond(ctx, schema.paymentProofs.branchId) as any);
+
+  const byStatus: Record<string, number> = {};
+  for (const p of all as any[]) byStatus[p.status] = (byStatus[p.status] || 0) + 1;
+
+  res.json({
     success: true,
     data: {
-      receipt: {
-        id,
-        receiptNumber,
-        loanId: loan.id,
-        loanNumber: loan.loanNumber,
-        clientId: loan.borrowerId,
-        clientName: loan.borrowerName,
-        amount,
-        paymentDate,
-        paymentMethod: String(body.paymentMethod || 'Cash'),
-        transactionReference: String(body.transactionReference || ''),
-        processedBy: ctx.staffName,
-        principalPortion: allocation.principalPaid,
-        interestPortion: allocation.interestPaid,
-        remainingBalance: newRemaining,
+      proofs: rows,
+      counts: {
+        total: (all as any[]).length,
+        byStatus,
+        pending: byStatus.PENDING_REVIEW || 0,
+        underReview: byStatus.UNDER_REVIEW || 0,
+        verified: byStatus.VERIFIED || 0,
+        rejected: byStatus.REJECTED || 0,
       },
     },
   });
+});
+
+/** Marks a proof as picked up so two tellers do not work the same claim. */
+branchRouter.patch('/payment-proofs/:id/claim', requireBranch(['process_loan_repayments']), async (req, res) => {
+  const ctx = ctxOf(req);
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+
+  const proof = await loadScopedProof(ctx, String(req.params.id || ''));
+  if (!proof) return res.status(404).json({ error: 'Payment proof not found in this branch.' });
+  if (proof.status !== 'PENDING_REVIEW') {
+    return res.status(409).json({
+      error: `This proof is already ${String(proof.status).toLowerCase().replace(/_/g, ' ')}.`,
+      status: proof.status,
+    });
+  }
+
+  const now = nowIso();
+  await db
+    .update(schema.paymentProofs)
+    .set({ status: 'UNDER_REVIEW', reviewedBy: ctx.staffId || ctx.userId, reviewedByName: ctx.staffName, updatedAt: now })
+    .where(eq(schema.paymentProofs.id, proof.id));
+
+  res.json({ success: true, data: { id: proof.id, status: 'UNDER_REVIEW' } });
+});
+
+branchRouter.post('/payment-proofs/:id/verify', requireBranch(['process_loan_repayments']), async (req, res) => {
+  const ctx = ctxOf(req);
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+
+  const proof = await loadScopedProof(ctx, String(req.params.id || ''));
+  if (!proof) return res.status(404).json({ error: 'Payment proof not found in this branch.' });
+  if (proof.status === 'VERIFIED') {
+    return res.status(409).json({ error: 'This proof has already been verified.', status: proof.status });
+  }
+  if (proof.status === 'REJECTED') {
+    return res.status(409).json({ error: 'This proof was rejected and cannot be verified.', status: proof.status });
+  }
+
+  // The claim's amount is the client's assertion. A teller may correct it - the
+  // receipt can show a different figure than the form - but only ever downward.
+  // Accepting more than claimed would let a client inflate a payment beyond what
+  // they consented to, so that is refused outright.
+  const body = req.body || {};
+  const claimed = Number(proof.amount) || 0;
+  const amount = body.amount === undefined ? claimed : Number(body.amount);
+  if (!(amount > 0)) return res.status(400).json({ error: 'The verified amount must be positive.' });
+  if (amount > claimed + 0.01) {
+    return res.status(400).json({
+      error: `The verified amount (₱${amount.toLocaleString()}) exceeds the amount the member submitted (₱${claimed.toLocaleString()}).`,
+    });
+  }
+
+  // Claim the proof by moving PENDING_REVIEW -> UNDER_REVIEW in a single
+  // conditional UPDATE, and only continue if this statement is the one that
+  // changed the row.
+  //
+  // Without this, two tellers opening the same proof would both pass a plain
+  // status read and both post the money. There is no transaction available here
+  // to make the claim and the posting atomic together (postLoanPayment opens its
+  // own connection and the codebase uses none), so the claim is taken FIRST and
+  // the money is posted second.
+  //
+  // That ordering makes the failure direction safe. If posting then fails, the
+  // worst case is a proof stuck UNDER_REVIEW, which a teller can re-claim - not
+  // money credited twice. The claim is released on failure below so the queue
+  // does not silently strand the item.
+  const myStaffKey = String(ctx.staffId || ctx.userId || '');
+  const claim = await db
+    .update(schema.paymentProofs)
+    .set({ status: 'UNDER_REVIEW', reviewedBy: myStaffKey, reviewedByName: ctx.staffName, updatedAt: nowIso() })
+    .where(and(eq(schema.paymentProofs.id, proof.id), eq(schema.paymentProofs.status, 'PENDING_REVIEW')));
+
+  if (claim.rowCount === 0) {
+    // Not claimable by us. Allow a retry of our own in-flight claim, refuse
+    // anyone else's, and refuse anything already decided.
+    const heldByMe = proof.status === 'UNDER_REVIEW' && String(proof.reviewedBy || '') === myStaffKey;
+    if (!heldByMe) {
+      return res.status(409).json({
+        error:
+          proof.status === 'UNDER_REVIEW'
+            ? 'Another staff member is already reviewing this payment proof.'
+            : `This proof is already ${String(proof.status).toLowerCase().replace(/_/g, ' ')}.`,
+        status: proof.status,
+      });
+    }
+  }
+
+  let posted: Awaited<ReturnType<typeof postLoanPayment>>;
+  try {
+    posted = await postLoanPayment(ctx, {
+      loanId: String(proof.loanId),
+      amount,
+      date: proof.paymentDate ? String(proof.paymentDate) : undefined,
+      paymentMethod: proof.paymentMethod ? String(proof.paymentMethod) : undefined,
+      transactionReference: proof.referenceNumber ? String(proof.referenceNumber) : undefined,
+      notes:
+        body.notes ? String(body.notes) : `Verified payment proof ${proof.id}` +
+        (amount !== claimed ? ` (adjusted from ₱${claimed.toLocaleString()})` : ''),
+      source: 'PROOF_VERIFICATION',
+      proofId: proof.id,
+    });
+  } catch (postErr: any) {
+    // Release the claim so the item returns to the queue instead of being
+    // stranded in UNDER_REVIEW with no money moved.
+    try {
+      await db
+        .update(schema.paymentProofs)
+        .set({ status: 'PENDING_REVIEW', reviewedBy: null, reviewedByName: null, updatedAt: nowIso() })
+        .where(and(eq(schema.paymentProofs.id, proof.id), eq(schema.paymentProofs.status, 'UNDER_REVIEW')));
+    } catch (releaseErr: any) {
+      console.error('[Payment Proof] failed to release claim:', releaseErr?.message || releaseErr);
+    }
+    console.error('[Payment Proof] posting failed:', postErr?.message || postErr);
+    return res.status(500).json({ error: postErr?.message || 'The payment could not be posted.' });
+  }
+
+  if ('error' in posted) {
+    // A validation failure (loan gone, amount now over balance). Nothing was
+    // posted, so release the claim for the same reason.
+    try {
+      await db
+        .update(schema.paymentProofs)
+        .set({ status: 'PENDING_REVIEW', reviewedBy: null, reviewedByName: null, updatedAt: nowIso() })
+        .where(and(eq(schema.paymentProofs.id, proof.id), eq(schema.paymentProofs.status, 'UNDER_REVIEW')));
+    } catch (releaseErr: any) {
+      console.error('[Payment Proof] failed to release claim:', releaseErr?.message || releaseErr);
+    }
+    return res.status(posted.status).json({ error: posted.error });
+  }
+
+  const now = nowIso();
+  await db
+    .update(schema.paymentProofs)
+    .set({
+      status: 'VERIFIED',
+      amount,
+      reviewedBy: ctx.staffId || ctx.userId,
+      reviewedByName: ctx.staffName,
+      reviewedAt: now,
+      paymentId: posted.receipt.id,
+      updatedAt: now,
+    })
+    .where(eq(schema.paymentProofs.id, proof.id));
+
+  // Close out the submission's own document so the two views agree.
+  if (proof.documentId) {
+    try {
+      await db
+        .update(schema.documents)
+        .set({ status: 'Verified' })
+        .where(eq(schema.documents.id, String(proof.documentId)));
+    } catch (docErr: any) {
+      // The proof is the system of record now; a stale document status is not
+      // worth failing a completed verification over.
+      console.error('[Payment Proof] document status update failed:', docErr?.message || docErr);
+    }
+  }
+
+  await notify(
+    ctx,
+    'PAYMENT',
+    'Payment proof verified',
+    `Payment proof ${proof.id} for ${proof.loanNumber || proof.loanId} was verified and credited (${posted.receipt.receiptNumber}).`,
+    { relatedType: 'Loan', relatedId: String(proof.loanId) },
+  );
+  await audit(
+    ctx,
+    'PAYMENT_PROOF_VERIFIED',
+    `Verified payment proof ${proof.id} for ${proof.loanNumber || proof.loanId}. ₱${amount.toLocaleString()} credited as ${posted.receipt.receiptNumber}.`,
+    'PAYMENT',
+    { targetType: 'PaymentProof', targetId: proof.id },
+  );
+
+  res.json({
+    success: true,
+    data: { id: proof.id, status: 'VERIFIED', paymentId: posted.receipt.id, receipt: posted.receipt },
+  });
+});
+
+branchRouter.post('/payment-proofs/:id/reject', requireBranch(['process_loan_repayments']), async (req, res) => {
+  const ctx = ctxOf(req);
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+
+  const reason = String((req.body || {}).reason || '').trim();
+  if (!reason) return res.status(400).json({ error: 'A rejection reason is required so the member knows what to fix.' });
+
+  const proof = await loadScopedProof(ctx, String(req.params.id || ''));
+  if (!proof) return res.status(404).json({ error: 'Payment proof not found in this branch.' });
+  if (proof.status === 'VERIFIED') {
+    return res.status(409).json({
+      error: 'This proof was already verified and credited. Reverse the payment instead of rejecting the proof.',
+    });
+  }
+  if (proof.status === 'REJECTED') {
+    return res.status(409).json({ error: 'This proof was already rejected.', status: proof.status });
+  }
+
+  const now = nowIso();
+  await db
+    .update(schema.paymentProofs)
+    .set({
+      status: 'REJECTED',
+      rejectionReason: reason,
+      reviewedBy: ctx.staffId || ctx.userId,
+      reviewedByName: ctx.staffName,
+      reviewedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(schema.paymentProofs.id, proof.id));
+
+  if (proof.documentId) {
+    try {
+      await db
+        .update(schema.documents)
+        .set({ status: 'Rejected', notes: reason })
+        .where(eq(schema.documents.id, String(proof.documentId)));
+    } catch (docErr: any) {
+      console.error('[Payment Proof] document status update failed:', docErr?.message || docErr);
+    }
+  }
+
+  await audit(
+    ctx,
+    'PAYMENT_PROOF_REJECTED',
+    `Rejected payment proof ${proof.id} for ${proof.loanNumber || proof.loanId}: ${reason}`,
+    'PAYMENT',
+    { targetType: 'PaymentProof', targetId: proof.id },
+  );
+
+  res.json({ success: true, data: { id: proof.id, status: 'REJECTED', rejectionReason: reason } });
 });
 
 // ---------------------------------------------------------------------------
