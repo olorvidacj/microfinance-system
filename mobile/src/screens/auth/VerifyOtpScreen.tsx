@@ -24,8 +24,11 @@ export const VerifyOtpScreen: React.FC<Props> = ({ navigation, route }) => {
     setLoading(true);
     try {
       const res = await api.verifyOtp(email, otp.trim());
-      if (!res.verified && res.verified === false) {
-        setError('Invalid verification code. Please check and try again.');
+      // The route returns { success, message }; it has no `verified` field, so
+      // the old `res.verified` guard was permanently false and this branch was
+      // dead code (failures only surfaced because request() throws on 4xx).
+      if (!res.success) {
+        setError(res.message || 'Invalid verification code. Please check and try again.');
         setLoading(false);
         return;
       }

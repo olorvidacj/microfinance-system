@@ -47,7 +47,18 @@ export const ProfileScreen: React.FC = () => {
       setOccupation(profData.occupation || '');
       setEmployer(profData.employer || '');
       setMonthlyIncome(profData.monthlyIncome ? String(profData.monthlyIncome) : '');
-      setKycDocs(kycData.requiredDocuments || []);
+      // requiredDocuments arrives in the API's KycRequiredDocumentItem shape
+      // (optional type/name/submitted, plus a wider status union) while this
+      // list is rendered as KycDocument, so normalise rather than assigning.
+      setKycDocs(
+        (kycData.requiredDocuments || []).map((d) => ({
+          type: d.type ?? d.documentType,
+          name: d.name ?? d.documentName,
+          submitted: !!d.submitted,
+          status:
+            d.status === 'VERIFIED' || d.status === 'REJECTED' ? d.status : ('PENDING' as const),
+        }))
+      );
 
       // If user is brand new (e.g. phone-only registration), auto-enable editing if empty name
       if (!profData.fullName || profData.fullName.startsWith('Member (') || profData.fullName === 'New Member') {

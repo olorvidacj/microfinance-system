@@ -110,7 +110,20 @@ export interface LoanApplication {
   principalAmount: number;
   termMonths: number;
   applicationDate: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISBURSED';
+  // GET /client/loan-applications returns raw `loans` rows, whose status is the
+  // server's pipeline text (Draft / Submitted / Under Review / For Assessment /
+  // Approved / Rejected / Cancelled), so the union has to cover those too.
+  status:
+    | 'PENDING'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'DISBURSED'
+    | 'DRAFT'
+    | 'SUBMITTED'
+    | 'UNDER_REVIEW'
+    | 'FOR_ASSESSMENT'
+    | 'CANCELLED'
+    | (string & {});
   coopStep?: string;
   rejectionReason?: string | null;
   disbursedAt?: string | null;
@@ -228,6 +241,9 @@ export interface KycStatusData {
   submittedAt?: string;
   reviewedAt?: string;
   correctionReason?: string;
+  rejectionReason?: string;
+  staffRemarks?: string;
+  referenceNumber?: string;
   verifiedAt?: string;
   reviewedByName?: string;
 }
@@ -292,7 +308,9 @@ export interface KycSubmissionPayload {
 
 export interface KycSubmission {
   id: string;
-  submissionNumber: string;
+  // Optional: the branch KYC queue response does not include a submission
+  // number, and nothing in the app reads it.
+  submissionNumber?: string;
   borrowerId?: string;
   borrowerNumber?: string;
   status: 'PENDING' | 'UNDER_REVIEW' | 'CORRECTION_REQUIRED' | 'VERIFIED' | 'REJECTED';
@@ -327,6 +345,7 @@ export interface BranchKycQueueItem {
   phone?: string;
   email?: string;
   kycStatus: KYCStatus;
+  memberStatus?: string;
   submittedDocuments?: number;
   gender?: string;
   dateOfBirth?: string;

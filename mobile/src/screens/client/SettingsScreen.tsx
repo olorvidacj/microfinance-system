@@ -128,7 +128,7 @@ export const SettingsScreen: React.FC = () => {
                 <Text style={styles.rowSub}>{sub}</Text>
               </View>
               <Switch
-                value={notifPrefs[key]}
+                value={!!notifPrefs[key]}
                 onValueChange={(v) => toggleNotif(key, v)}
                 trackColor={{ true: colors.teal, false: colors.border }}
                 thumbColor={colors.surface}
@@ -188,7 +188,7 @@ export const SettingsScreen: React.FC = () => {
                 <View style={styles.deviceRow}>
                   <Text style={styles.rowTitle}>{s.device}</Text>
                   <Text style={[styles.statusText, s.status === 'ACTIVE' ? { color: colors.green } : { color: colors.textFaint }]}>
-                    {humanizeStatus(s.status)}
+                    {humanizeStatus(s.status ?? 'UNKNOWN')}
                   </Text>
                 </View>
                 <Text style={styles.rowSub}>{s.location}</Text>

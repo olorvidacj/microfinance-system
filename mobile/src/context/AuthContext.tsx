@@ -54,7 +54,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {
       session,
       isReady,
-      isBranchPersonnel: role === 'STAFF' || role === 'BRANCH_PERSONNEL',
+      // /auth/login returns a coarse role of 'STAFF' | 'CLIENT' (the specific
+      // job title travels separately in staffRole), so 'BRANCH_PERSONNEL' was
+      // never a possible value here.
+      isBranchPersonnel: role === 'STAFF',
       role,
       signIn,
       signOut,

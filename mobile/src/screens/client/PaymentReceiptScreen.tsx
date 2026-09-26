@@ -51,7 +51,7 @@ export const PaymentReceiptScreen: React.FC<Props> = ({ navigation, route }) => 
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Method</Text>
-            <Text style={styles.value}>{receipt.paymentMethod.replace(/_/g, ' ')}</Text>
+            <Text style={styles.value}>{(receipt.paymentMethod ?? 'unspecified').replace(/_/g, ' ')}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Loan</Text>
@@ -85,12 +85,14 @@ export const PaymentReceiptScreen: React.FC<Props> = ({ navigation, route }) => 
             onPress={() => navigation.navigate('LoansList')}
             icon={<Ionicons name="checkmark" size={18} color={colors.white} />}
           />
-          <AppButton
-            title="View Loan Details"
-            variant="outline"
-            style={{ marginTop: 10 }}
-            onPress={() => navigation.replace('LoanDetail', { loanId: receipt.loanId })}
-          />
+          {receipt.loanId ? (
+            <AppButton
+              title="View Loan Details"
+              variant="outline"
+              style={{ marginTop: 10 }}
+              onPress={() => navigation.replace('LoanDetail', { loanId: receipt.loanId! })}
+            />
+          ) : null}
         </View>
 
         <Text style={styles.footerNote}>

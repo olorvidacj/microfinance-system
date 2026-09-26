@@ -71,7 +71,14 @@ export const GroupLendingScreen: React.FC = () => {
     );
   }
 
-  const progress = group.groupLoan ? Math.round((group.groupLoan.paidAmount / group.groupLoan.totalAmount) * 100) : 0;
+  // groupLoan.paidAmount and groupLoan.schedule are optional on the wire, so
+  // default them instead of dividing by / dereferencing undefined.
+  const paidAmount = group.groupLoan?.paidAmount ?? 0;
+  const schedule = group.groupLoan?.schedule ?? [];
+  const progress =
+    group.groupLoan && group.groupLoan.totalAmount > 0
+      ? Math.round((paidAmount / group.groupLoan.totalAmount) * 100)
+      : 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -107,7 +114,7 @@ export const GroupLendingScreen: React.FC = () => {
               </View>
               <View style={styles.progressHeader}>
                 <Text style={styles.progressLabel}>{progress}% repaid</Text>
-                <Text style={styles.progressAmount}>{formatCurrency(group.groupLoan.paidAmount)} paid</Text>
+                <Text style={styles.progressAmount}>{formatCurrency(paidAmount)} paid</Text>
               </View>
               <ProgressBar progress={progress} color={colors.green} height={9} animated />
               <View style={styles.nextPay}>
@@ -118,11 +125,11 @@ export const GroupLendingScreen: React.FC = () => {
               </View>
             </AppCard>
 
-            {group.groupLoan.schedule.length ? (
+            {schedule.length ? (
               <>
                 <SectionHeader title="Contribution Schedule" subtitle="Group repayments by installment" />
                   <AppCard padded={false} style={{ marginBottom: 16 }}>
-                    {group.groupLoan.schedule.slice(0, 6).map((item, i) => (
+                    {schedule.slice(0, 6).map((item, i) => (
                       <View key={String(item.installmentNumber)} style={[styles.schedRow, i < 5 && styles.schedRowBorder]}>
                         <View style={styles.schedNum}>
                           <Text style={styles.schedNumText}>{item.installmentNumber}</Text>
@@ -143,7 +150,7 @@ export const GroupLendingScreen: React.FC = () => {
         <SectionHeader title="Group Members" subtitle="Mutually guaranteeing each other's loans" />
         <AppCard padded={false} style={{ marginBottom: 8 }}>
           {group.members.map((m, i) => {
-            const color = STATUS_COLORS[m.contributionStatus] ?? colors.textMuted;
+            const color = (m.contributionStatus ? STATUS_COLORS[m.contributionStatus] : undefined) ?? colors.textMuted;
             return (
               <View key={m.borrowerId} style={[styles.memberRow, i < group.members.length - 1 && styles.memberRowBorder]}>
                 <Avatar name={m.name} size={38} />

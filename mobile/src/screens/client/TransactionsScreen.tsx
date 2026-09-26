@@ -37,7 +37,7 @@ export const TransactionsScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [type, setType] = useState<TypeKey>('ALL');
 
-  const load = useCallback(async (params: { search?: string; type?: string }, silent = false) => {
+  const load = useCallback(async (params: { search?: string; type?: TransactionType | 'ALL' }, silent = false) => {
     if (!silent) setLoaded(false);
     setError(null);
     try {

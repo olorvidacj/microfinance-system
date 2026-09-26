@@ -38,7 +38,17 @@ export const HelpSupportScreen: React.FC = () => {
       (async () => {
         try {
           const [f, t] = await Promise.all([api.getFaqs(), api.getSupportTickets()]);
-          setFaqs(f);
+          // getFaqs() returns a flat FaqItem[]; this state is keyed by category.
+          // Assigning the array directly made Object.entries() yield the array
+          // index as the "category" and a single item (not an array) as the
+          // value, so headings rendered as "0"/"1"/"2" and expanding a category
+          // called .map() on an object. Group explicitly.
+          const grouped: Record<string, FaqItem[]> = {};
+          for (const item of f) {
+            const key = (item.category && String(item.category).trim()) || 'General';
+            (grouped[key] = grouped[key] || []).push(item);
+          }
+          setFaqs(grouped);
           setTickets(t);
         } catch {}
         setLoaded(true);
@@ -126,7 +136,7 @@ export const HelpSupportScreen: React.FC = () => {
                       <Text style={styles.ticketStatus}>{humanizeStatus(t.status)}</Text>
                     </View>
                     <Text style={styles.ticketSubject}>{t.subject}</Text>
-                    <Text style={styles.ticketMeta}>{t.category} · Updated {formatDate(t.lastUpdate)}</Text>
+                    <Text style={styles.ticketMeta}>{t.category} · Updated {formatDate(t.updatedAt ?? t.createdAt)}</Text>
                   </View>
                 </View>
               ))}

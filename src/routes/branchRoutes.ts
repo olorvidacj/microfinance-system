@@ -746,7 +746,15 @@ branchRouter.post('/kyc/:id/review', requireBranch(['manage_kyc']), async (req, 
   });
   await audit(ctx, 'KYC_REVIEWED', `KYC decision '${targetStatus}' for client ${req.params.id}. ${notes ? 'Reason: ' + notes : ''}`, 'BORROWER', { targetType: 'Borrower', targetId: req.params.id });
   await notify(ctx, 'KYC', `KYC ${targetStatus}`, `The KYC verification for client ${req.params.id} was marked '${targetStatus}'.`, { relatedType: 'Borrower', relatedId: req.params.id });
-  res.json({ success: true, status: targetStatus });
+  // Return the persisted decision details so the client can record an accurate
+  // audit entry. Previously only { success, status } was returned, leaving
+  // clients to fabricate the review timestamp and show an undefined reviewer.
+  res.json({
+    success: true,
+    status: targetStatus,
+    reviewedAt: now,
+    reviewerName: ctx.staffName,
+  });
 });
 
 // ---------------------------------------------------------------------------

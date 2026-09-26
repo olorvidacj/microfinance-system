@@ -69,7 +69,15 @@ export const SavingsScreen: React.FC = () => {
     setWithdrawing(true);
     try {
       const res = await api.requestSavingsWithdrawal({ amount: amt, reason: withdrawReason.trim() });
-      setWithdrawResult({ requestId: res.requestId, message: res.message });
+      // The route nests the reference under `request` and sends no `message`;
+      // reading res.requestId/res.message showed "—" and a blank confirmation.
+      const ref = res.request?.requestId || res.request?.id || '';
+      setWithdrawResult({
+        requestId: ref,
+        message: ref
+          ? `Request ${ref} submitted. It is now pending teller approval.`
+          : 'Your withdrawal request was submitted and is pending teller approval.',
+      });
       setWithdrawDone(true);
     } catch (err: any) {
       setWithdrawError(err?.message || 'Request failed. Please try again.');

@@ -13,20 +13,13 @@ import { LoansStackParamList } from '../../navigation/types';
 type Props = NativeStackScreenProps<LoansStackParamList, 'LoanDetail'>;
 
 export const LoanDetailScreen: React.FC<Props> = ({ navigation, route }) => {
-  const loan: LoanItem =
-    'loan' in route.params
-      ? route.params.loan
-      : {
-          id: route.params.loanId,
-          loanNumber: '',
-          productName: 'Loan',
-          principalAmount: 0,
-          interestRate: 0,
-          termMonths: 0,
-          monthlyInstallment: 0,
-          remainingBalance: 0,
-          status: 'PENDING',
-        };
+  // The screen is reachable two ways: with a full loan object (LoansScreen) or
+  // with only an id (PaymentReceipt's "View Loan Details"). In the id-only case
+  // the loan must be resolved from the API, otherwise every figure below the
+  // header renders from a hardcoded placeholder (0.00 balance, PENDING status).
+  const passedLoan = 'loan' in route.params ? route.params.loan : undefined;
+  const loanId = passedLoan?.id ?? ('loanId' in route.params ? route.params.loanId : undefined);
+  const [loan, setLoan] = useState<LoanItem | null>(passedLoan ?? null);
 
   const [schedule, setSchedule] = useState<InstallmentScheduleItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -41,23 +34,41 @@ export const LoanDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     if (!silent) setLoaded(false);
     setError(null);
     try {
-      const sched = await api.getLoanSchedule(loan.id);
-      setSchedule(sched);
+      let target = passedLoan;
+      if (!target && loanId) {
+        const { allLoans } = await api.getLoans();
+        target = allLoans.find((l) => l.id === loanId);
+        if (target) setLoan(target);
+      }
+      if (target) {
+        setSchedule(await api.getLoanSchedule(target.id));
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to load the loan schedule.');
     } finally {
       setLoaded(true);
       setRefreshing(false);
     }
-  }, [loan.id]);
+  }, [loanId, passedLoan]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const isActive = ['ACTIVE', 'APPROVED', 'DISBURSED', 'OVERDUE', 'IN_ARREARS'].includes(String(loan.status).toUpperCase());
-
   if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Loan Details" /><LoadingView /></SafeAreaView>;
+
+  if (!loan) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ScreenHeader title="Loan Details" />
+        <View style={styles.errorWrap}>
+          <Text style={styles.error}>{error || 'This loan is no longer available.'}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const isActive = ['ACTIVE', 'APPROVED', 'DISBURSED', 'OVERDUE', 'IN_ARREARS'].includes(String(loan.status).toUpperCase());
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -163,6 +174,7 @@ export const LoanDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  errorWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   error: { fontSize: 12, color: colors.danger, textAlign: 'center', marginBottom: 10 },
   content: { padding: 16, paddingBottom: 60 },
   heroCard: {

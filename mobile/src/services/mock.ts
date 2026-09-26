@@ -143,23 +143,26 @@ export const mockProfile: ClientProfile = {
 };
 
 export const mockKycDocuments: KycDocumentItem[] = [
-  { type: 'VALID_ID', name: 'Primary Government ID (UMID / Driver License / Passport)', submitted: true, status: 'VERIFIED', description: 'A valid, current government-issued photo ID.' },
-  { type: 'PROOF_OF_ADDRESS', name: 'Barangay Clearance or Utility Bill', submitted: true, status: 'VERIFIED', description: 'Recent proof of residence within the last 3 months.' },
-  { type: 'PROOF_OF_INCOME', name: 'Payslip / Business Permit / Bank Statement', submitted: true, status: 'VERIFIED', description: 'Evidence of regular income or business operations.' },
-  { type: 'PHOTO_2X2', name: 'Recent 2x2 ID Photo', submitted: true, status: 'VERIFIED', description: 'A recent photograph with white background.' },
+  { id: 'doc-1', type: 'VALID_ID', name: 'Primary Government ID (UMID / Driver License / Passport)', submitted: true, status: 'VERIFIED', description: 'A valid, current government-issued photo ID.' },
+  { id: 'doc-2', type: 'PROOF_OF_ADDRESS', name: 'Barangay Clearance or Utility Bill', submitted: true, status: 'VERIFIED', description: 'Recent proof of residence within the last 3 months.' },
+  { id: 'doc-3', type: 'PROOF_OF_INCOME', name: 'Payslip / Business Permit / Bank Statement', submitted: true, status: 'VERIFIED', description: 'Evidence of regular income or business operations.' },
+  { id: 'doc-4', type: 'PHOTO_2X2', name: 'Recent 2x2 ID Photo', submitted: true, status: 'VERIFIED', description: 'A recent photograph with white background.' },
 ];
 
+// KycStatusData.requiredDocuments is KycRequiredDocumentItem[], which requires
+// documentType/documentName. The status screen reads the display fields
+// (type/name/submitted/status), so carry both shapes here as the API does.
 export const mockKycRequiredDocs: KycRequiredDocumentItem[] = [
-  { id: 'doc-1', documentType: 'VALID_ID', documentName: 'Primary Government ID (UMID / Driver License / Passport)', description: 'A valid, current government-issued photo ID.', sortOrder: 1, isActive: true },
-  { id: 'doc-2', documentType: 'PROOF_OF_ADDRESS', documentName: 'Barangay Clearance or Utility Bill', description: 'Recent proof of residence within the last 3 months.', sortOrder: 2, isActive: true },
-  { id: 'doc-3', documentType: 'PROOF_OF_INCOME', documentName: 'Payslip / Business Permit / Bank Statement', description: 'Evidence of regular income or business operations.', sortOrder: 3, isActive: true },
-  { id: 'doc-4', documentType: 'PHOTO_2X2', documentName: 'Recent 2x2 ID Photo', description: 'A recent photograph with white background.', sortOrder: 4, isActive: true },
+  { id: 'doc-1', documentType: 'VALID_ID', documentName: 'Primary Government ID (UMID / Driver License / Passport)', description: 'A valid, current government-issued photo ID.', sortOrder: 1, isActive: true, type: 'VALID_ID', name: 'Primary Government ID (UMID / Driver License / Passport)', submitted: true, status: 'VERIFIED' },
+  { id: 'doc-2', documentType: 'PROOF_OF_ADDRESS', documentName: 'Barangay Clearance or Utility Bill', description: 'Recent proof of residence within the last 3 months.', sortOrder: 2, isActive: true, type: 'PROOF_OF_ADDRESS', name: 'Barangay Clearance or Utility Bill', submitted: true, status: 'VERIFIED' },
+  { id: 'doc-3', documentType: 'PROOF_OF_INCOME', documentName: 'Payslip / Business Permit / Bank Statement', description: 'Evidence of regular income or business operations.', sortOrder: 3, isActive: true, type: 'PROOF_OF_INCOME', name: 'Payslip / Business Permit / Bank Statement', submitted: true, status: 'VERIFIED' },
+  { id: 'doc-4', documentType: 'PHOTO_2X2', documentName: 'Recent 2x2 ID Photo', description: 'A recent photograph with white background.', sortOrder: 4, isActive: true, type: 'PHOTO_2X2', name: 'Recent 2x2 ID Photo', submitted: true, status: 'VERIFIED' },
 ];
 
 export const mockKycStatus: KycStatusData = {
   kycStatus: 'VERIFIED',
   isVerified: true,
-  requiredDocuments: mockKycDocuments,
+  requiredDocuments: mockKycRequiredDocs,
   uploadedDocuments: mockKycDocuments,
   submissionId: 'KYC-2026-00382',
   submittedAt: '2026-01-12T09:24:00.000Z',
@@ -171,7 +174,7 @@ export const mockKycStatus: KycStatusData = {
 export const mockKycStatusPending: KycStatusData = {
   kycStatus: 'PENDING',
   isVerified: false,
-  requiredDocuments: mockKycDocuments,
+  requiredDocuments: mockKycRequiredDocs,
   uploadedDocuments: mockKycDocuments,
   submissionId: 'KYC-2026-00411',
   submittedAt: daysAgo(2),
@@ -181,7 +184,7 @@ export const mockKycStatusPending: KycStatusData = {
 export const mockKycStatusCorrection: KycStatusData = {
   kycStatus: 'CORRECTION_REQUIRED',
   isVerified: false,
-  requiredDocuments: mockKycDocuments,
+  requiredDocuments: mockKycRequiredDocs,
   uploadedDocuments: mockKycDocuments,
   submissionId: 'KYC-2026-00398',
   submittedAt: daysAgo(5),
@@ -523,13 +526,22 @@ const kycQueueBase: Array<Partial<BranchKycQueueItem>> = [
   },
 ];
 
+// A KYC submission can only be in one of these states, whereas a borrower's
+// kycStatus may be NOT_STARTED / IN_PROGRESS / CANCELLED. The server only
+// attaches a submission when a kyc_submissions row exists, so collapse anything
+// outside the submission set instead of leaking a borrower-level status.
+const SUBMISSION_STATUSES = ['PENDING', 'UNDER_REVIEW', 'CORRECTION_REQUIRED', 'REJECTED', 'VERIFIED'] as const;
+type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
+const toSubmissionStatus = (status: unknown): SubmissionStatus =>
+  SUBMISSION_STATUSES.includes(status as SubmissionStatus) ? (status as SubmissionStatus) : 'PENDING';
+
 export const mockKycQueue: BranchKycQueueItem[] = kycQueueBase.map((q, i) => ({
   borrowerNumber: q.borrowerNumber as string,
   id: q.id as string,
   fullName: q.fullName as string,
   phone: q.phone ?? '',
   email: q.email ?? '',
-  kycStatus: q.kycStatus as string,
+  kycStatus: q.kycStatus as KYCStatus,
   submittedDocuments: q.submittedDocuments ?? 0,
   gender: q.gender,
   dateOfBirth: q.dateOfBirth,
@@ -543,7 +555,7 @@ export const mockKycQueue: BranchKycQueueItem[] = kycQueueBase.map((q, i) => ({
   monthlyIncome: q.monthlyIncome,
   kycSubmission: {
     id: `KYC-SUB-${i + 1}`,
-    status: q.kycStatus as KYCStatus,
+    status: toSubmissionStatus(q.kycStatus),
     submittedAt: daysAgo(1 + i * 2),
     reviewedAt: q.kycStatus === 'CORRECTION_REQUIRED' ? daysAgo(2) : undefined,
     reviewedByName: q.kycStatus === 'CORRECTION_REQUIRED' ? 'Elena Santos' : undefined,

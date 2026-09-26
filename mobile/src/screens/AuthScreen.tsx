@@ -88,7 +88,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
 
   // OTP Timer effect for Registration
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    // ReturnType<typeof setInterval> resolves in a React Native TS project,
+    // where the NodeJS namespace is not in scope.
+    let timer: ReturnType<typeof setInterval>;
     if (isVerifyingOtp && otpCountdown > 0) {
       timer = setInterval(() => {
         setOtpCountdown((prev) => {

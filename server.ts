@@ -623,6 +623,10 @@ app.post('/api/auth/register', async (req, res) => {
       address,
       barangay,
       cityMunicipality,
+      // The mobile client sends `city`; the DB column is city_municipality and
+      // every other caller sends `cityMunicipality`. Accept both so the mobile
+      // registration form does not silently drop the field.
+      city,
       province,
       occupation,
       employerOrBusiness,
@@ -672,7 +676,7 @@ app.post('/api/auth/register', async (req, res) => {
       civilStatus: civilStatus ? String(civilStatus) : null,
       address: address ? String(address) : null,
       barangay: barangay ? String(barangay) : null,
-      cityMunicipality: cityMunicipality ? String(cityMunicipality) : null,
+      cityMunicipality: cityMunicipality ? String(cityMunicipality) : (city ? String(city) : null),
       province: province ? String(province) : null,
       occupation: occupation ? String(occupation) : null,
       employerOrBusiness: employerOrBusiness ? String(employerOrBusiness) : null,

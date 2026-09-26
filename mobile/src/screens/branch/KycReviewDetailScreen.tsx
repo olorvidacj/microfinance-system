@@ -96,7 +96,9 @@ export const KycReviewDetailScreen: React.FC<Props> = ({ navigation, route }) =>
         },
         ...prev,
       ]);
-      setItem((prev) => (prev ? { ...prev, kycStatus: res.status } : prev));
+      setItem((prev) =>
+        prev && res.status ? { ...prev, kycStatus: res.status as BranchKycQueueItem['kycStatus'] } : prev
+      );
       setDecisionModal(null);
     } catch (err: any) {
       setReviewError(err?.message || 'Unable to submit decision.');

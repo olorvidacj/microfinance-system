@@ -132,8 +132,8 @@ export const KycStatusScreen: React.FC = () => {
             {(data?.requiredDocuments ?? []).map((doc, i) => (
               <DocRow
                 key={`${doc.type}-${i}`}
-                name={doc.name}
-                type={doc.type}
+                name={doc.name ?? doc.documentName}
+                type={doc.type ?? doc.documentType}
                 submitted={doc.submitted}
                 status={doc.status}
                 fileName={doc.fileName}

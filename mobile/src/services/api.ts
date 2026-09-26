@@ -28,7 +28,6 @@ import {
   PaymentMethod,
   InstallmentScheduleItem as InstallmentScheduleItemAlias,
   KycReviewDecision,
-  AuditLogEntry,
   BranchContextData,
   BranchKycQueueItem,
   KycSubmission as KycSubmissionAlias,
@@ -124,14 +123,27 @@ class ApiService {
     phone: string;
     password?: string;
     fullName?: string;
+    firstName?: string;
+    middleName?: string;
+    lastName?: string;
     email?: string;
     borrowerNumber?: string;
     dateOfBirth?: string;
+    gender?: string;
     address?: string;
+    barangay?: string;
+    city?: string;
+    cityMunicipality?: string;
+    province?: string;
     civilStatus?: string;
     occupation?: string;
     employerOrBusiness?: string;
     monthlyIncome?: number;
+    monthlyExpenses?: number;
+    sourceOfIncome?: string;
+    idNumber?: string;
+    facebookAccount?: string;
+    employmentStatus?: string;
   }): Promise<UserSession> {
     const data = await this.request<{ success: boolean; token: string; user: any }>('/auth/register', {
       method: 'POST',
@@ -219,8 +231,11 @@ class ApiService {
     });
   }
 
-  async getKycStatus(): Promise<{ success: boolean; kycStatus: string; isVerified: boolean; requiredDocuments: any[] }> {
-    return this.request('/client/kyc-status');
+  async getKycStatus(): Promise<KycStatusData> {
+    // The route returns the status fields alongside `success`; callers assign
+    // the result straight into KycStatusData state, so declare it as such
+    // rather than the old 4-field envelope that hid the rest of the payload.
+    return this.request<{ success: boolean } & KycStatusData>('/client/kyc-status');
   }
 
   // 8. KYC — required documents, uploads (real file bytes → Supabase Storage), submit, resubmit
@@ -381,7 +396,7 @@ class ApiService {
     return res.transactions;
   }
 
-  async requestSavingsWithdrawal(payload: { amount: number; reason: string; accountId?: string }): Promise<{ success: boolean; request?: any }> {
+  async requestSavingsWithdrawal(payload: { amount: number; reason: string; accountId?: string }): Promise<{ success: boolean; request?: { requestId?: string; id?: string; amount?: number; status?: string; reason?: string } }> {
     // The route is /savings/withdraw; '/savings/request-withdrawal' does not
     // exist and 404'd.
     return this.request('/client/savings/withdraw', {
@@ -487,23 +502,31 @@ class BranchApiService {
   }
 
   async getKycQueue(): Promise<BranchKycQueueItem[]> {
-    const res = await api.request<{ success: boolean; queue: BranchKycQueueItem[] }>('/branch/kyc/queue');
-    return res.queue;
+    // The route is /kyc-queue (not /kyc/queue, which 404'd) and it answers
+    // with `data`, not `queue`, so the old res.queue was always undefined and
+    // the KYC queue screen rendered empty.
+    const res = await api.request<{ success: boolean; data: BranchKycQueueItem[] }>('/branch/kyc-queue');
+    return res.data || [];
   }
 
   async reviewKyc(payload: {
     clientId: string;
     decision: KycReviewDecision;
     notes?: string;
-    CorrectionReason?: string;
+    correctionReason?: string;
     rejectedDocumentIds?: string[];
     reason?: string;
-  }): Promise<{ success: boolean; message: string; auditLogEntry?: AuditLogEntry }> {
-    const res = await api.request<{ success: boolean; message: string; auditLogEntry?: AuditLogEntry }>('/branch/kyc/review', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    return res;
+  }): Promise<{ success: boolean; status?: string; reviewedAt?: string; reviewerName?: string }> {
+    // The route is /kyc/:id/review, so the client id has to be in the path.
+    // Posting to /kyc/review 404'd and no KYC decision could be recorded.
+    const { clientId, ...body } = payload;
+    return api.request<{ success: boolean; status?: string; reviewedAt?: string; reviewerName?: string }>(
+      `/branch/kyc/${encodeURIComponent(clientId)}/review`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
   }
 }
 
