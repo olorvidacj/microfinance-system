@@ -199,8 +199,23 @@ function requirePermission(permissions: SystemPermission | SystemPermission[]) {
       });
     }
 
-    // If staff user, check staffRole against required permissions
-    const effectiveStaffRole = normalizeRole(req.authUser.staffRole || 'ADMINISTRATOR');
+    // If staff user, check staffRole against required permissions.
+    //
+    // A staff account with no staffRole is an ACCOUNT PROBLEM, not a licence to
+    // be maximally privileged. Defaulting it to ADMINISTRATOR meant any
+    // half-provisioned staff login inherited every permission in the system
+    // (approve_sensitive_operations, manage_users, manage_settings, and so on).
+    // Deny instead, and say why, so the condition is fixable.
+    if (!req.authUser.staffRole) {
+      return res.status(403).json({
+        error:
+          'Access denied: this staff account has no role assigned. An administrator must set its staff role before it can access protected operations.',
+        userRole: null,
+        requiredPermissions: perms,
+      });
+    }
+
+    const effectiveStaffRole = normalizeRole(req.authUser.staffRole);
     const permitted = hasAnyPermission(effectiveStaffRole, perms);
 
     if (!permitted) {
@@ -1287,6 +1302,16 @@ app.post('/api/admin/users', requirePermission('manage_users'), async (req: Auth
       return res.status(400).json({ error: 'Email, password, fullName, and role are required' });
     }
 
+    // A staff account MUST be created with an explicit staff role. Defaulting to
+    // ADMINISTRATOR turned every staff-creation call that forgot the field into
+    // a superuser grant.
+    const isStaff = role !== 'CLIENT';
+    if (isStaff && !staffRole) {
+      return res.status(400).json({
+        error: 'staffRole is required when creating a STAFF account. Specify the role explicitly; it is never defaulted.',
+      });
+    }
+
     const normEmail = String(email).trim().toLowerCase();
     const existing = await authStore.findByEmail(normEmail);
     if (existing) {
@@ -1297,8 +1322,8 @@ app.post('/api/admin/users', requirePermission('manage_users'), async (req: Auth
       email: normEmail,
       fullName: String(fullName).trim(),
       passwordHash: hashPassword(String(password)),
-      role: role === 'CLIENT' ? 'CLIENT' : 'STAFF',
-      staffRole: role === 'STAFF' ? normalizeRole(staffRole || 'ADMINISTRATOR') : null,
+      role: isStaff ? 'STAFF' : 'CLIENT',
+      staffRole: isStaff ? normalizeRole(staffRole) : null,
       staffId: staffId || null,
       borrowerId: borrowerId || null,
       phone: phone ? String(phone) : null,

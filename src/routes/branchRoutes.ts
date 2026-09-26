@@ -115,7 +115,16 @@ function requireBranch(permissions: SystemPermission[] = []) {
       return res.status(401).json({ error: 'Branch personnel authentication required. Please sign in.' });
     }
 
-    const staffRole = normalizeRole(auth.staffRole || 'ADMINISTRATOR');
+    // Fail closed: a staff login with no staffRole must not inherit
+    // ADMINISTRATOR permissions, which would expose every branch mutation.
+    if (!auth.staffRole) {
+      return res.status(403).json({
+        error:
+          'Access denied: this staff account has no role assigned. An administrator must set its staff role before it can access branch operations.',
+      });
+    }
+
+    const staffRole = normalizeRole(auth.staffRole);
     const isObserver = OBSERVER_ROLES.has(staffRole);
     const effectivePermissions = isObserver
       ? Array.from(new Set<SystemPermission>([...getRolePermissions(staffRole), ...OBSERVER_READ_PERMISSIONS]))

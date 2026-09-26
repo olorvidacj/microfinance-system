@@ -18,9 +18,14 @@ interface UserFormState {
   phone: string;
   role: string;
   branch: string;
+  password: string;
 }
 
-const EMPTY_FORM: UserFormState = { fullName: '', email: '', phone: '', role: 'Teller', branch: 'Tacloban Main' };
+const EMPTY_FORM: UserFormState = { fullName: '', email: '', phone: '', role: 'Teller', branch: 'Tacloban Main', password: '' };
+
+/** Maps a console role label onto the coarse account role the API expects. */
+const toAccountRole = (role: string): 'STAFF' | 'CLIENT' =>
+  role === 'Client Services Staff' || role === 'Client' ? 'CLIENT' : 'STAFF';
 
 export const UserManagementPage: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -55,39 +60,74 @@ export const UserManagementPage: React.FC = () => {
   };
 
   const openAdd = () => { setEditUser(null); setForm(EMPTY_FORM); setShowAddModal(true); };
-  const openEdit = (u: AdminUser) => { setEditUser(u); setForm({ fullName: u.fullName, email: u.email, phone: u.phone, role: u.role, branch: u.branch }); setShowAddModal(true); };
+  const openEdit = (u: AdminUser) => { setEditUser(u); setForm({ fullName: u.fullName, email: u.email, phone: u.phone, role: u.role, branch: u.branch, password: '' }); setShowAddModal(true); };
 
-  const saveUser = () => {
+  const reload = () => adminApi.users().then(setUsers).catch((e: Error) => showToast(e.message));
+
+  const saveUser = async () => {
     if (editUser) {
-      setUsers(users.map((u) => u.id === editUser.id ? { ...u, ...form, role: form.role as AdminUser['role'] } : u));
-      showToast(`User "${form.fullName}" updated successfully.`);
-    } else {
-      const newUser: AdminUser = {
-        id: `USR-${String(users.length + 1).padStart(3, '0')}`,
-        fullName: form.fullName,
-        email: form.email,
-        phone: form.phone,
-        role: form.role as AdminUser['role'],
-        status: 'Pending',
-        dateRegistered: new Date().toISOString().slice(0, 10),
-        avatar: `https://i.pravatar.cc/150?u=usr${users.length + 1}`,
-        branch: form.branch,
-      };
-      setUsers([newUser, ...users]);
-      showToast(`User "${form.fullName}" created successfully.`);
+      try {
+        await adminApi.updateUser(editUser.id, {
+          fullName: form.fullName,
+          staffRole: toAccountRole(form.role) === 'STAFF' ? form.role : undefined,
+          phone: form.phone,
+        });
+        await reload();
+        setShowAddModal(false);
+        showToast(`User "${form.fullName}" updated successfully.`);
+      } catch (e) {
+        showToast((e as Error).message);
+      }
+      return;
     }
-    setShowAddModal(false);
+    if (!form.email || !form.fullName) {
+      showToast('Full name and email are required.');
+      return;
+    }
+    if (!form.password || form.password.length < 8) {
+      showToast('A temporary password of at least 8 characters is required for a new account.');
+      return;
+    }
+    try {
+      const accountRole = toAccountRole(form.role);
+      const created = await adminApi.createUser({
+        email: form.email,
+        password: form.password,
+        fullName: form.fullName,
+        role: accountRole,
+        staffRole: accountRole === 'STAFF' ? form.role : undefined,
+        phone: form.phone,
+      });
+      setShowAddModal(false);
+      await reload();
+      showToast(`User "${created.fullName}" created successfully.`);
+    } catch (e) {
+      showToast((e as Error).message);
+    }
   };
 
-  const toggleStatus = (u: AdminUser) => {
-    setUsers(users.map((x) => x.id === u.id ? { ...x, status: x.status === 'Active' ? 'Inactive' : 'Active' } : x));
-    showToast(`Account for "${u.fullName}" ${u.status === 'Active' ? 'deactivated' : 'activated'}.`);
+  // The API exposes deactivation, not deletion. Reporting a delete that never
+  // happens would be a lie, so this deactivates and says so.
+  const toggleStatus = async (u: AdminUser) => {
+    const nextActive = u.status !== 'Active';
+    try {
+      await adminApi.updateUser(u.id, { isActive: nextActive });
+      await reload();
+      showToast(`Account for "${u.fullName}" ${nextActive ? 'activated' : 'deactivated'}.`);
+    } catch (e) {
+      showToast((e as Error).message);
+    }
   };
 
-  const deleteUser = () => {
-    if (deleteTarget) {
-      setUsers(users.filter((u) => u.id !== deleteTarget.id));
-      showToast(`User "${deleteTarget.fullName}" deleted.`);
+  const deleteUser = async () => {
+    if (!deleteTarget) return;
+    try {
+      await adminApi.updateUser(deleteTarget.id, { isActive: false });
+      await reload();
+      setDeleteTarget(null);
+      showToast(`"${deleteTarget.fullName}" deactivated. Accounts are archived, never hard-deleted.`);
+    } catch (e) {
+      showToast((e as Error).message);
     }
   };
 
@@ -261,8 +301,15 @@ export const UserManagementPage: React.FC = () => {
           </div>
           {!editUser && (
             <div className="md:col-span-2">
-              <label className={labelCls}>Temporary Password (Optional)</label>
-              <input type="password" className={inputCls} defaultValue="" placeholder="Leave blank to auto-generate one-time code" />
+              <label className={labelCls}>Temporary Password (required, min 8 characters)</label>
+              <input
+                type="password"
+                className={inputCls}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="Set an initial password the user can change on first sign-in"
+                autoComplete="new-password"
+              />
             </div>
           )}
         </div>
@@ -347,7 +394,15 @@ export const UserManagementPage: React.FC = () => {
       <ConfirmDialog
         isOpen={!!resetTarget}
         onClose={() => setResetTarget(null)}
-        onConfirm={() => { setResetTarget(null); showToast(`Password reset email sent to "${resetTarget?.email}".`); }}
+        onConfirm={() => {
+          const target = resetTarget;
+          setResetTarget(null);
+          if (!target) return;
+          adminApi
+            .sendPasswordReset(target.email)
+            .then(() => showToast(`If an account exists for "${target.email}", a password reset link has been sent.`))
+            .catch((e: Error) => showToast(e.message));
+        }}
         title="Reset Password"
         message={`Send a password reset link to "${resetTarget?.email}" for "${resetTarget?.fullName}"?`}
         confirmLabel="Send Reset Link"
