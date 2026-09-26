@@ -6,6 +6,7 @@ import { calculateLoanSchedule, computeLoanRemainingBalance, canWithdrawFromSavi
 import { getServerSupabase } from '../db/supabaseServer';
 import { supabaseGetUser, supabaseSendEmailOtp, supabaseVerifyEmailOtp } from '../auth/supabaseAuth';
 import { authStore } from '../auth/index';
+import { normalizeRole } from '../auth/permissions';
 import { findBorrowerByContact } from '../db/clientProvisioning';
 
 const KYC_STORAGE_BUCKET = 'kyc-documents';
@@ -1285,20 +1286,30 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
       }
     } catch {}
 
+    // loans.loan_officer_id / loan_officer_name are NOT NULL, so an unresolved
+    // officer is a hard stop, not something to paper over. Pick someone who can
+    // actually carry a loan rather than whichever staff row sorts first.
     let loanOfficerId: string | null = null;
     let loanOfficerName: string | null = null;
     try {
       const officers = await db
         .select()
         .from(schema.staff)
-        .where(eq(schema.staff.assignedBranchId, branchId))
-        .limit(1);
-      const officer: any = (officers as any[])[0];
+        .where(eq(schema.staff.assignedBranchId, branchId));
+      const OFFICER_ROLES = ['LOAN_OFFICER', 'MANAGER', 'ADMINISTRATOR', 'CREDIT_COMMITTEE', 'BRANCH_MANAGER'];
+      const officer: any = (officers as any[]).find((s: any) => OFFICER_ROLES.includes(normalizeRole(s.role)));
       if (officer) {
         loanOfficerId = String(officer.id);
         loanOfficerName = String(officer.name);
       }
     } catch {}
+
+    if (!loanOfficerId) {
+      return res.status(503).json({
+        success: false,
+        error: `No loan officer is assigned to ${branchId}, so this application cannot be routed. Please contact your branch officer.`,
+      });
+    }
 
     // Canonical invariant: outstanding = total amount due - valid payments.
     const remainingBalance = computeLoanRemainingBalance(totalPayable, 0);
@@ -1364,7 +1375,13 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
           loanOfficerName,
         });
       } catch (dbErr) {
-        console.log('[Mobile Apply] DB insert:', dbErr);
+        // A swallowed insert failure produced a 201 "submitted successfully" for
+        // an application that was never stored. Surface it instead.
+        console.error('[Mobile Apply] DB insert failed:', dbErr);
+        return res.status(500).json({
+          success: false,
+          error: 'Your application could not be saved. Please try again, and contact your branch if this persists.',
+        });
       }
     }
 

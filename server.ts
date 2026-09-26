@@ -47,6 +47,7 @@ import {
   normalizeRole,
 } from './src/auth/permissions';
 import { desc, eq, sql } from 'drizzle-orm';
+import { calculateLoanSchedule } from './src/utils/loanMath';
 import { clientMobileRouter } from './src/routes/clientMobileRoutes';
 import { branchRouter } from './src/routes/branchRoutes';
 
@@ -1542,6 +1543,38 @@ async function resolveBorrowerNumbers(db: any): Promise<Map<string, string>> {
   return new Map(rows.map((r: any) => [r.id, r.borrowerNumber]));
 }
 
+/**
+ * Resolves the branch a staff caller is confined to for list endpoints.
+ *
+ * Returns null when the caller may see every branch, which happens when either
+ * the role carries 'view_all_records' or the staff record is explicitly scoped
+ * to 'all'. Anything else is pinned to their assigned branch, so a loan officer
+ * at one branch cannot enumerate another branch's borrowers through a shared
+ * list endpoint. Unassigned staff are confined to the default branch rather than
+ * given the whole cooperative.
+ */
+async function resolveStaffBranchScope(db: any, authUser: any): Promise<string | null> {
+  if (authUser?.role === 'CLIENT') return null;
+  const role = authUser?.staffRole ? normalizeRole(authUser.staffRole) : null;
+  if (!role) return null;
+  if (hasAnyPermission(role, ['view_all_records'])) return null;
+
+  let branchId: string | null = authUser?.branchId || null;
+  if (!branchId && authUser?.staffId && db) {
+    try {
+      const rows = await db
+        .select({ assignedBranchId: schema.staff.assignedBranchId })
+        .from(schema.staff)
+        .where(eq(schema.staff.id, authUser.staffId))
+        .limit(1);
+      branchId = rows.length > 0 ? (rows[0] as any).assignedBranchId || null : null;
+    } catch {}
+  }
+  if (!branchId || branchId === 'unassigned' || branchId === '') return 'br-main';
+  if (branchId === 'all') return null;
+  return branchId;
+}
+
 function mapAdminClient(b: any, branchNames: Map<string, string>): any {
   return {
     id: b.id,
@@ -2662,7 +2695,19 @@ app.use(
   branchRouter
 );
 app.use('/api/client', clientMobileRouter);
-app.use('/api', clientMobileRouter);
+
+// NOTE: clientMobileRouter is deliberately NOT also mounted at a bare '/api'.
+//
+// It used to be, which made it a catch-all in front of every '/api/*' route
+// registered below. Express dispatches on the first router that matches the path
+// AND method, so the bare mount silently swallowed requests meant for the staff
+// routes declared afterwards - notably GET /api/loans, which the client router
+// answers with a borrowerId-scoped list. Staff have no borrowerId, so the
+// all-loans admin/branch endpoint below could never run and always returned [].
+// Any future /api route matching a client path would have been lost the same way.
+//
+// Every client and mobile caller uses the explicit '/api/client' prefix, so the
+// bare mount had no legitimate consumer.
 
 // Test custom connection string endpoint
 app.post('/api/db/test-connection', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
@@ -2814,20 +2859,139 @@ app.get('/api/loans', requirePermission(['review_client_loan_info', 'process_loa
       return res.json(list);
     }
 
-    const list = await db.select().from(schema.loans);
+    // Branch isolation: staff without view_all_records see only their own branch.
+    // Returning every loan to any staff role with review/monitor permissions
+    // leaked the whole cooperative's borrowers through this list endpoint.
+    const scope = await resolveStaffBranchScope(db, req.authUser);
+    const list = scope
+      ? await db.select().from(schema.loans).where(eq(schema.loans.branchId, scope))
+      : await db.select().from(schema.loans);
     res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/loans', requirePermission(['process_loan_applications', 'client_apply_services']), async (req: AuthedRequest, res) => {
+// Staff-only loan creation.
+//
+// This previously accepted 'client_apply_services' and inserted req.body
+// verbatim, which let any signed-in client write a fully-formed loan row -
+// arbitrary amount, arbitrary terms, and a status of their choosing - straight
+// into the loans table, completely bypassing the product validation, canonical
+// amortization schedule, and officer assignment enforced by
+// POST /api/client/apply-loan. Clients must apply through that route.
+app.post('/api/loans', requirePermission(['process_loan_applications', 'manage_loan_applications']), async (req: AuthedRequest, res) => {
   try {
     const db = getDb();
     if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const newLoan = req.body;
-    await db.insert(schema.loans).values(newLoan);
-    res.json({ success: true, data: newLoan });
+
+    const body = req.body || {};
+    const borrowerId = String(body.borrowerId || '').trim();
+    const productId = String(body.productId || '').trim();
+    const requestedAmount = Number(body.principalAmount ?? body.amount);
+
+    if (!borrowerId || !productId) {
+      return res.status(400).json({ error: 'borrowerId and productId are required.' });
+    }
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return res.status(400).json({ error: 'A positive principal amount is required.' });
+    }
+
+    // Derive the terms from the product rather than trusting the payload, so a
+    // crafted request cannot choose its own interest rate.
+    const productRows = await db.select().from(schema.loanProducts).where(eq(schema.loanProducts.id, productId)).limit(1);
+    if (productRows.length === 0) {
+      return res.status(404).json({ error: `Loan product '${productId}' was not found.` });
+    }
+    const product = productRows[0] as any;
+    const annualRate = Number(product.interestRate) || 0;
+    const termMonths = Number(body.termMonths ?? product.maxTermMonths) || 0;
+
+    if (Number(product.minAmount) > 0 && requestedAmount < Number(product.minAmount)) {
+      return res.status(400).json({ error: `Amount is below the ${product.name} minimum of ${product.minAmount}.` });
+    }
+    if (Number(product.maxAmount) > 0 && requestedAmount > Number(product.maxAmount)) {
+      return res.status(400).json({ error: `Amount exceeds the ${product.name} maximum of ${product.maxAmount}.` });
+    }
+    if (Number(product.minTermMonths) > 0 && termMonths < Number(product.minTermMonths)) {
+      return res.status(400).json({ error: `Term is below the ${product.name} minimum of ${product.minTermMonths} months.` });
+    }
+    if (Number(product.maxTermMonths) > 0 && termMonths > Number(product.maxTermMonths)) {
+      return res.status(400).json({ error: `Term exceeds the ${product.name} maximum of ${product.maxTermMonths} months.` });
+    }
+
+    const calc = calculateLoanSchedule({
+      principal: requestedAmount,
+      annualInterestRate: annualRate,
+      termMonths,
+      interestType: (product.interestType || 'Flat Rate') as any,
+      repaymentFrequency: (product.repaymentFrequency || 'Monthly') as any,
+      processingFeePercentage: Number(product.processingFeePercentage) || 0,
+    });
+
+    const borrowerRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+    if (borrowerRows.length === 0) {
+      return res.status(404).json({ error: `Borrower '${borrowerId}' was not found.` });
+    }
+    const borrower = borrowerRows[0] as any;
+
+    // loan_officer_id / loan_officer_name are NOT NULL. Resolve a real,
+    // loan-capable officer and refuse rather than inventing or defaulting one.
+    let loanOfficerId = String(body.loanOfficerId || '').trim();
+    let loanOfficerName = String(body.loanOfficerName || '').trim();
+    if (!loanOfficerId) {
+      const officers = await db
+        .select()
+        .from(schema.staff)
+        .where(eq(schema.staff.assignedBranchId, borrower.branchId || 'br-main'));
+      const OFFICER_ROLES = ['LOAN_OFFICER', 'MANAGER', 'ADMINISTRATOR', 'CREDIT_COMMITTEE', 'BRANCH_MANAGER'];
+      const officer: any = (officers as any[]).find((s: any) => OFFICER_ROLES.includes(normalizeRole(s.role)));
+      if (!officer) {
+        return res.status(409).json({
+          error: `No loan officer is assigned to branch '${borrower.branchId || 'br-main'}'. Assign one before creating loans here.`,
+        });
+      }
+      loanOfficerId = String(officer.id);
+      loanOfficerName = String(officer.name);
+    }
+
+    const now = new Date();
+    const loanId = String(body.id || `LN-${now.getFullYear()}-${String(Date.now()).slice(-6)}`);
+    const lastDue = Array.isArray(calc.schedule) && calc.schedule.length > 0 ? calc.schedule[calc.schedule.length - 1] : null;
+
+    const row = {
+      id: loanId,
+      loanNumber: String(body.loanNumber || loanId),
+      borrowerId,
+      borrowerName: String(borrower.fullName),
+      borrowerPhone: String(borrower.phone || ''),
+      branchId: String(borrower.branchId || 'br-main'),
+      productId,
+      productName: String(product.name),
+      principalAmount: requestedAmount,
+      interestRate: annualRate,
+      interestType: String(product.interestType || 'Flat Rate'),
+      repaymentFrequency: String(product.repaymentFrequency || 'Monthly'),
+      termMonths,
+      totalInstallments: calc.totalInstallments,
+      processingFee: calc.processingFee,
+      totalInterest: Math.round((calc.totalPayable - requestedAmount - (calc.processingFee || 0)) * 100) / 100,
+      totalPayable: calc.totalPayable,
+      totalPaid: 0,
+      remainingBalance: calc.totalPayable,
+      schedule: calc.schedule as any,
+      purpose: String(body.purpose || 'Not specified'),
+      status: 'PENDING',
+      coopStep: 'CREDIT_INVESTIGATION',
+      applicationDate: now.toISOString().slice(0, 10),
+      maturityDate: String(lastDue?.dueDate || new Date(now.getTime() + termMonths * 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)),
+      loanOfficerId,
+      loanOfficerName,
+    };
+
+    await db.insert(schema.loans).values(row);
+
+    res.status(201).json({ success: true, data: row });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
