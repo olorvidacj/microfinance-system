@@ -255,6 +255,51 @@ export function applyPaymentToLoanTotals(
 }
 
 /**
+ * CANONICAL MEMBER SAVINGS TOTAL.
+ *
+ * `borrowers.savings_balance` is a denormalised cache of the member's TOTAL
+ * savings across every savings account they hold. It is NOT a single account's
+ * balance.
+ *
+ * Deriving it as a SUM is what makes multi-account members safe. If a write path
+ * instead copies one account's balance into this column, a member with accounts
+ * A=5,000 and B=5,000 ends up with savings_balance=5,000, and a withdrawal of
+ * 5,000 against account A is validated against the member total but applied to
+ * the account - creating money that was never deposited.
+ *
+ * Always derive the total with this helper (or an equivalent SQL SUM) and never
+ * author the column from a single account row.
+ */
+export function sumSavingsAccountBalances(
+  accounts: Array<{ balance?: number | null }> | null | undefined
+): number {
+  if (!Array.isArray(accounts)) return 0;
+  const total = accounts.reduce((sum, a) => sum + (Number(a?.balance) || 0), 0);
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Guards a savings withdrawal against the account's minimum maintaining balance.
+ * Shared so the client self-service path cannot drive an account below the
+ * threshold that the branch counter path enforces.
+ */
+export function canWithdrawFromSavings(
+  accountBalance: number,
+  amount: number,
+  maintainingBalance: number
+): { allowed: boolean; available: number; balanceAfter: number } {
+  const balance = Number(accountBalance) || 0;
+  const req = Number(amount) || 0;
+  const maintaining = Number(maintainingBalance) || 0;
+  const available = Math.max(0, Math.round((balance - maintaining) * 100) / 100);
+  return {
+    allowed: req > 0 && req <= available + 0.01,
+    available,
+    balanceAfter: Math.max(0, Math.round((balance - req) * 100) / 100),
+  };
+}
+
+/**
  * 3. ADVANCE PAYMENT REBATE:
  * Members may pay loans in advance and receive a rebate on unaccrued future interest
  */

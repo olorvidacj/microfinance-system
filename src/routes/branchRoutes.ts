@@ -6,7 +6,9 @@ import { hasAnyPermission, getRolePermissions, normalizeRole, SystemPermission }
 import {
   allocatePaymentToSchedule,
   calculateLoanSchedule,
+  canWithdrawFromSavings,
   getComputedInstallmentStatus,
+  sumSavingsAccountBalances,
 } from '../utils/loanMath';
 import type { InstallmentStatus } from '../types';
 
@@ -57,6 +59,30 @@ function genId(prefix: string): string {
 
 function genRef(prefix: string): string {
   return `${prefix}-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+}
+
+/**
+ * Re-derives `borrowers.savings_balance` as the SUM of every savings account the
+ * member holds.
+ *
+ * `savings_balance` is a member-wide TOTAL, not a per-account figure. Writing a
+ * single account's balance into it corrupts any member with more than one
+ * account, and because the client self-service withdrawal path validates against
+ * this column, the error becomes withdrawable money. Always call this after
+ * mutating a savings_accounts row instead of assigning the account balance.
+ */
+async function syncMemberSavingsTotal(db: any, memberId: string | null | undefined): Promise<void> {
+  if (!memberId) return;
+  try {
+    const accounts = await db
+      .select({ balance: schema.savingsAccounts.balance })
+      .from(schema.savingsAccounts)
+      .where(eq(schema.savingsAccounts.memberId, memberId));
+    const total = sumSavingsAccountBalances(accounts as any);
+    await db.update(schema.borrowers).set({ savingsBalance: total }).where(eq(schema.borrowers.id, memberId));
+  } catch (err: any) {
+    console.error('[savings] failed to sync member savings total:', err?.message || err);
+  }
 }
 
 // Governance & oversight roles: granted read visibility across the branch, but
@@ -1143,7 +1169,7 @@ branchRouter.post('/savings/deposit', requireBranch(['process_savings_deposits']
   const txNumber = `STX-${nowDate.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`;
 
   await db.update(schema.savingsAccounts).set({ balance: balanceAfter }).where(eq(schema.savingsAccounts.id, accountId));
-  try { await db.update(schema.borrowers).set({ savingsBalance: balanceAfter }).where(eq(schema.borrowers.id, account.memberId)); } catch {}
+  await syncMemberSavingsTotal(db, account.memberId);
   await db.insert(schema.savingsTransactions).values({
     id: txId,
     savingsAccountId: accountId,
@@ -1200,21 +1226,22 @@ branchRouter.post('/savings/withdrawal', requireBranch(['process_savings_withdra
   const account = (data.savingsAccounts as any[]).find((a: any) => a.id === accountId);
   if (!account) return res.status(404).json({ error: 'Savings account not found in this branch.' });
 
-  const maintaining = account.maintainingBalance || 1000;
-  if (amount > account.balance - maintaining + 0.01) {
+  const maintaining = account.maintainingBalance ?? 1000;
+  const check = canWithdrawFromSavings(account.balance, amount, maintaining);
+  if (!check.allowed) {
     return res.status(400).json({
-      error: `Withdrawal exceeds available balance. Balance ₱${account.balance.toLocaleString()} must maintain ₱${maintaining.toLocaleString()}.`,
+      error: `Withdrawal exceeds available balance. Balance ₱${(Number(account.balance) || 0).toLocaleString()} must maintain ₱${Number(maintaining).toLocaleString()}, so ₱${check.available.toLocaleString()} is available.`,
     });
   }
 
   const balanceBefore = account.balance;
-  const balanceAfter = Math.round((balanceBefore - amount) * 100) / 100;
+  const balanceAfter = check.balanceAfter;
   const nowDate = todayStr();
   const txId = genId('stx');
   const txNumber = `STW-${nowDate.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`;
 
   await db.update(schema.savingsAccounts).set({ balance: balanceAfter }).where(eq(schema.savingsAccounts.id, accountId));
-  try { await db.update(schema.borrowers).set({ savingsBalance: balanceAfter }).where(eq(schema.borrowers.id, account.memberId)); } catch {}
+  await syncMemberSavingsTotal(db, account.memberId);
   await db.insert(schema.savingsTransactions).values({
     id: txId,
     savingsAccountId: accountId,

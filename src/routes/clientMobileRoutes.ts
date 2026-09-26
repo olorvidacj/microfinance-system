@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { getDb, schema } from '../db/index';
 import { eq, desc, and } from 'drizzle-orm';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../auth/index';
-import { calculateLoanSchedule, computeLoanRemainingBalance } from '../utils/loanMath';
+import { calculateLoanSchedule, computeLoanRemainingBalance, canWithdrawFromSavings, sumSavingsAccountBalances } from '../utils/loanMath';
 import { getServerSupabase } from '../db/supabaseServer';
 import { supabaseGetUser, supabaseSendEmailOtp, supabaseVerifyEmailOtp } from '../auth/supabaseAuth';
 import { authStore } from '../auth/index';
@@ -458,7 +458,7 @@ clientMobileRouter.get('/dashboard', requireAuth(), async (req: AuthedRequest, r
       })),
     ].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 5);
 
-    const savingsBalance = savingsAccounts.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+    const savingsBalance = sumSavingsAccountBalances(savingsAccounts as any);
 
     res.json({
       success: true,
@@ -1663,27 +1663,49 @@ clientMobileRouter.post('/savings/withdraw', requireAuth(), async (req: AuthedRe
     const db = getDb();
     const today = new Date().toISOString().split('T')[0];
     const requestedAmount = Number(amount);
-    let currentBalance = 0;
     let memberName = req.authUser?.fullName || '';
     let memberBranch = 'br-main';
+    let accountRows: any[] = [];
 
     if (db) {
       const borrowerRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
       if (borrowerRows.length > 0) {
         memberName = borrowerRows[0].fullName;
         memberBranch = borrowerRows[0].branchId || 'br-main';
-        currentBalance = Number(borrowerRows[0].savingsBalance) || 0;
       }
+      accountRows = await db
+        .select()
+        .from(schema.savingsAccounts)
+        .where(eq(schema.savingsAccounts.memberId, borrowerId));
     }
 
-    if (requestedAmount > currentBalance) {
-      return res.status(400).json({ success: false, error: 'Withdrawal amount exceeds your current savings balance.' });
+    if (accountRows.length === 0) {
+      return res.status(400).json({ success: false, error: 'No savings account is linked to your membership yet.' });
     }
+
+    // Withdraw against a SPECIFIC account, and validate against that account's
+    // own balance and minimum maintaining balance - never against the
+    // member-wide total, which is a different number entirely.
+    const accountId = String(req.body?.accountId || accountRows[0].id);
+    const account = accountRows.find((a: any) => String(a.id) === accountId) || accountRows[0];
+    const maintaining = Number(account.maintainingBalance) || 0;
+    const check = canWithdrawFromSavings(account.balance, requestedAmount, maintaining);
+
+    if (!check.allowed) {
+      return res.status(400).json({
+        success: false,
+        error: `Withdrawal exceeds the available balance. This account holds ₱${(Number(account.balance) || 0).toLocaleString()} and must maintain ₱${maintaining.toLocaleString()}, so ₱${check.available.toLocaleString()} is available.`,
+      });
+    }
+
+    const memberTotalBefore = sumSavingsAccountBalances(accountRows);
+    const memberTotalAfter = Math.max(0, Math.round((memberTotalBefore - requestedAmount) * 100) / 100);
 
     const request = {
       id: `WDRQ-${Date.now()}`,
       requestId: `WDR-${Date.now().toString().slice(-6)}`,
       borrowerId,
+      accountId: String(account.id),
       amount: requestedAmount,
       requestDate: today,
       reason,
@@ -1691,26 +1713,64 @@ clientMobileRouter.post('/savings/withdraw', requireAuth(), async (req: AuthedRe
     };
 
     if (db) {
-      const accRows = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId)).limit(1);
       await db.insert(schema.savingsWithdrawalRequests).values({
         id: `swr-${Date.now()}`,
         requestId: request.requestId,
         memberId: borrowerId,
         memberName,
         branchId: memberBranch,
-        currentBalance,
+        currentBalance: memberTotalBefore,
         requestedAmount,
-        remainingBalanceAfter: Math.max(0, currentBalance - requestedAmount),
+        remainingBalanceAfter: memberTotalAfter,
         requestDate: today,
         reason,
         tellerName: req.authUser?.fullName || '',
         tellerRecordedDate: today,
         status: 'Pending Approval',
       });
-      if (accRows.length > 0) {
-        await db.update(schema.savingsAccounts).set({ balance: Math.max(0, currentBalance - requestedAmount) }).where(eq(schema.savingsAccounts.id, accRows[0].id));
-        await db.update(schema.borrowers).set({ savingsBalance: Math.max(0, currentBalance - requestedAmount) }).where(eq(schema.borrowers.id, borrowerId));
-      }
+      // Apply to the single account, then re-derive the member total as the sum
+      // of all accounts so the cached column can never disagree with the ledger.
+      await db
+        .update(schema.savingsAccounts)
+        .set({ balance: check.balanceAfter })
+        .where(eq(schema.savingsAccounts.id, String(account.id)));
+      await db.update(schema.borrowers).set({ savingsBalance: memberTotalAfter }).where(eq(schema.borrowers.id, borrowerId));
+
+      await db.insert(schema.savingsTransactions).values({
+        id: `stx-${Date.now()}`,
+        savingsAccountId: String(account.id),
+        memberId: borrowerId,
+        memberName,
+        transactionNumber: `STW-${today.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`,
+        date: today,
+        type: 'Withdrawal',
+        amount: requestedAmount,
+        balanceBefore: Number(account.balance) || 0,
+        balanceAfter: check.balanceAfter,
+        processedBy: req.authUser?.fullName || memberName,
+        notes: reason,
+        officialReceiptNumber: null,
+      });
+
+      await db.insert(schema.financialTransactions).values({
+        id: `txn-${Date.now()}`,
+        referenceNumber: `TX-WDR-${request.requestId}`,
+        clientId: borrowerId,
+        clientName: memberName,
+        accountOrLoanId: String(account.id),
+        accountOrLoanType: 'Savings',
+        branchId: memberBranch,
+        transactionType: 'Savings Withdrawal',
+        amount: requestedAmount,
+        transactionDate: today,
+        paymentMethod: 'Cash',
+        processedBy: req.authUser?.fullName || memberName,
+        processedByRole: 'CLIENT',
+        status: 'Pending Approval',
+        notes: reason,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
     }
 
     res.json({ success: true, request });
