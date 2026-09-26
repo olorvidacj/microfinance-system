@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { getDb, schema } from '../db/index';
+import { storeDocument } from '../db/documentStorage';
 import { eq, desc, and } from 'drizzle-orm';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../auth/index';
 import { calculateLoanSchedule, computeLoanRemainingBalance, canWithdrawFromSavings, sumSavingsAccountBalances } from '../utils/loanMath';
@@ -1490,41 +1491,157 @@ clientMobileRouter.get('/payments', requireAuth(), async (req: AuthedRequest, re
 clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
+    if (!borrowerId) {
+      return res.status(400).json({ success: false, error: 'Cannot identify your account. Please sign in again.' });
+    }
     const {
       loanId,
       amount,
       paymentMethod,
       referenceNumber,
       receiptProofUrl,
+      receiptProofBase64,
+      receiptProofName,
+      receiptProofMime,
       paymentDate,
       notes,
     } = req.body;
 
-    if (!amount || !referenceNumber || !paymentMethod) {
+    const proofAmount = Number(amount);
+    if (!proofAmount || proofAmount <= 0 || !referenceNumber || !paymentMethod) {
       return res.status(400).json({
         success: false,
         error: 'Amount, payment method, and transaction reference number are required',
       });
     }
 
+    const db = getDb();
+    if (!db) {
+      return res.status(503).json({ success: false, error: 'Database unavailable. Please try again.' });
+    }
+
+    const borrowerRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+    const borrower: any = borrowerRows[0];
+    const branchId = String(borrower?.branchId || 'br-main');
+    const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
+
+    // Resolve the loan and enforce ownership. Previously this endpoint stored
+    // nothing at all, so a submitted proof vanished while the client was told a
+    // cashier would credit their account.
+    let targetLoan: any = null;
+    const requestedLoanId = loanId ? String(loanId) : '';
+    if (requestedLoanId) {
+      const loanRows = await db.select().from(schema.loans).where(eq(schema.loans.id, requestedLoanId)).limit(1);
+      targetLoan = loanRows[0];
+      if (!targetLoan) {
+        return res.status(404).json({ success: false, error: 'That loan could not be found.' });
+      }
+      if (String(targetLoan.borrowerId) !== String(borrowerId)) {
+        return res.status(403).json({ success: false, error: 'That loan does not belong to your account.' });
+      }
+      if (proofAmount > Number(targetLoan.remainingBalance) + 0.01) {
+        return res.status(400).json({
+          success: false,
+          error: `That exceeds your remaining balance of ${Number(targetLoan.remainingBalance).toLocaleString()}.`,
+        });
+      }
+    } else {
+      return res.status(400).json({ success: false, error: 'Select the loan this payment is for.' });
+    }
+
+    const now = new Date().toISOString();
+    const proofId = `proof-${Date.now()}`;
+
+    // Retain the receipt itself. Without this the submission was unrecoverable.
+    let storedPath: string | null = null;
+    if (receiptProofBase64) {
+      try {
+        const stored = await storeDocument({
+          scope: 'payment-proofs',
+          ownerId: borrowerId,
+          folder: targetLoan.loanNumber || targetLoan.id,
+          base64: String(receiptProofBase64),
+          fileName: receiptProofName ? String(receiptProofName) : undefined,
+          mime: receiptProofMime ? String(receiptProofMime) : undefined,
+        });
+        storedPath = stored.path;
+      } catch (storageErr: any) {
+        console.error('[Payment Proof] storage failed:', storageErr?.message || storageErr);
+        return res.status(400).json({ success: false, error: storageErr?.message || 'The receipt could not be stored.' });
+      }
+    } else if (receiptProofUrl) {
+      const candidate = String(receiptProofUrl);
+      if (!/^https?:\/\//i.test(candidate)) {
+        return res.status(400).json({ success: false, error: 'receiptProofUrl must be an http(s) link.' });
+      }
+      storedPath = candidate;
+    } else {
+      return res.status(400).json({ success: false, error: 'Attach the receipt image or bank reference slip.' });
+    }
+
+    // Deliberately NOT written to `payments`: that table is the posted ledger
+    // and requires a teller to verify the payment and compute the
+    // principal/interest/penalty split. Crediting it here would post money that
+    // no one has confirmed.
+    await db.insert(schema.documents).values({
+      id: `doc-${proofId}`,
+      docNumber: `PROOF-${String(targetLoan.loanNumber || targetLoan.id)}-${String(Date.now()).slice(-6)}`,
+      branchId,
+      clientId: borrowerId,
+      clientName: String(borrower?.fullName || req.authUser?.fullName || ''),
+      loanId: String(targetLoan.id),
+      loanNumber: String(targetLoan.loanNumber || targetLoan.id),
+      docName: `Payment proof - ${proofAmount.toLocaleString()} (${String(paymentMethod)})`,
+      docType: 'Payment Proof',
+      fileUrl: storedPath,
+      uploadedBy: String(borrower?.fullName || req.authUser?.fullName || 'Client'),
+      status: 'Pending Verification',
+      notes: [
+        `Amount: ${proofAmount}`,
+        `Method: ${paymentMethod}`,
+        `Reference: ${referenceNumber}`,
+        `Payment date: ${paymentDateValue}`,
+        notes ? `Notes: ${notes}` : '',
+        'Status: PENDING_TELLER_VERIFICATION',
+      ]
+        .filter(Boolean)
+        .join(' | '),
+      createdAt: now,
+    });
+
+    // Surface it to the branch so a teller actually has a queue to work.
+    await db.insert(schema.branchNotifications).values({
+      id: `n-${proofId}`,
+      branchId,
+      targetStaffId: null,
+      type: 'PAYMENT',
+      title: 'Payment proof awaiting verification',
+      message: `${borrower?.fullName || 'A member'} submitted ${proofAmount.toLocaleString()} via ${paymentMethod} (ref ${referenceNumber}) for loan ${targetLoan.loanNumber || targetLoan.id}.`,
+      relatedType: 'Loan',
+      relatedId: String(targetLoan.id),
+      isRead: false,
+      createdAt: now,
+    });
+
     const proofRecord = {
-      id: `proof-${Date.now()}`,
+      id: proofId,
       borrowerId,
-      borrowerName: req.authUser?.fullName || '',
-      loanId: loanId || '',
-      amount: Number(amount),
+      borrowerName: String(borrower?.fullName || req.authUser?.fullName || ''),
+      loanId: String(targetLoan.id),
+      loanNumber: String(targetLoan.loanNumber || targetLoan.id),
+      amount: proofAmount,
       paymentMethod,
       referenceNumber: String(referenceNumber).trim(),
-      receiptProofUrl: receiptProofUrl || '',
-      paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+      receiptProofUrl: storedPath,
+      paymentDate: paymentDateValue,
       notes: notes || '',
       verificationStatus: 'PENDING_TELLER_VERIFICATION',
-      submittedAt: new Date().toISOString(),
+      submittedAt: now,
     };
 
     res.status(201).json({
       success: true,
-      message: 'Payment proof submitted successfully. Cashier will verify and credit your loan account.',
+      message: 'Payment proof submitted successfully. A cashier will verify and credit your loan account.',
       proof: proofRecord,
     });
   } catch (err: any) {

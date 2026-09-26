@@ -240,7 +240,10 @@ export const adminApi = {
   systemSettings: (): Promise<Record<string, any>> => get<{ success: boolean; settings: Record<string, any> }>('/api/admin/system-settings').then((r) => r.settings),
 
   saveSystemSettings: (patch: Record<string, unknown>): Promise<Record<string, any>> =>
-    put<{ success: boolean; settings: Record<string, any> }>('/api/admin/system-settings', patch).then((r) => r.settings),
+    request<{ success: boolean; settings: Record<string, any> }>('/api/admin/system-settings', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }).then((r) => r.settings),
 
   /**
    * Triggers a real password reset link. The endpoint is deliberately

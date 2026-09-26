@@ -2,6 +2,8 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { and, desc, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index';
+import { storeDocument, DOCUMENT_BUCKET } from '../db/documentStorage';
+import { getServerSupabase } from '../db/supabaseServer';
 import { hasAnyPermission, getRolePermissions, normalizeRole, SystemPermission } from '../auth/permissions';
 import {
   allocatePaymentToSchedule,
@@ -1498,6 +1500,44 @@ branchRouter.post('/documents', requireBranch(['register_clients', 'manage_kyc']
     const borrower = (await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, clientId)).limit(1))[0];
     clientName = (borrower as any)?.fullName || null;
   }
+
+  // Persist the real bytes. The console used to store `mock://<filename>`, which
+  // produced document records whose file could never be retrieved again.
+  //
+  // We store the durable storage OBJECT PATH, not the signed url. A signed url
+  // expires in 30 minutes, so persisting one would leave every record with a dead
+  // link the next day. GET /documents/:id/file re-signs the path on demand.
+  const originalName = body.fileName ? String(body.fileName) : null;
+  let fileRef: string;
+  if (body.fileBase64) {
+    try {
+      const stored = await storeDocument({
+        scope: 'branch-documents',
+        ownerId: clientId || ctx.branchId || 'br-main',
+        folder: String(body.docType || 'client-document'),
+        base64: String(body.fileBase64),
+        fileName: originalName || undefined,
+        mime: body.mime ? String(body.mime) : undefined,
+      });
+      fileRef = stored.path;
+    } catch (storageErr: any) {
+      console.error('[Documents] storage failed:', storageErr?.message || storageErr);
+      return res.status(400).json({ error: storageErr?.message || 'The file could not be stored.' });
+    }
+  } else if (body.fileUrl) {
+    // Only honour a caller-supplied url when it is already a real, retrievable
+    // link. Arbitrary strings must not be persisted as if they were documents.
+    const candidate = String(body.fileUrl);
+    if (!/^https?:\/\//i.test(candidate)) {
+      return res.status(400).json({
+        error: 'fileUrl must be an http(s) link, or upload the file content as fileBase64.',
+      });
+    }
+    fileRef = candidate;
+  } else {
+    return res.status(400).json({ error: 'A file is required: send fileBase64 or an http(s) fileUrl.' });
+  }
+
   await db.insert(schema.documents).values({
     id,
     docNumber,
@@ -1506,9 +1546,9 @@ branchRouter.post('/documents', requireBranch(['register_clients', 'manage_kyc']
     clientName,
     loanId: body.loanId ? String(body.loanId) : null,
     loanNumber: body.loanNumber ? String(body.loanNumber) : null,
-    docName: String(body.docName || 'Untitled document'),
+    docName: String(body.docName || originalName || 'Untitled document'),
     docType: String(body.docType || 'Client Document'),
-    fileUrl: body.fileUrl ? String(body.fileUrl) : null,
+    fileUrl: fileRef,
     uploadedBy: ctx.staffName,
     status: 'Active',
     notes: body.notes ? String(body.notes) : null,
@@ -1516,7 +1556,34 @@ branchRouter.post('/documents', requireBranch(['register_clients', 'manage_kyc']
   });
   await audit(ctx, 'DOCUMENT_UPLOADED', `Uploaded document ${docNumber} (${body.docName || 'Untitled'})`, 'BORROWER', { targetType: 'Document', targetId: id });
   await notify(ctx, 'DOCUMENT', 'Document uploaded', `${body.docName || 'A document'} was uploaded to the branch records.`, { relatedType: 'Document', relatedId: id });
-  res.status(201).json({ success: true, data: { id, docNumber } });
+  res.status(201).json({ success: true, data: { id, docNumber, fileUrl: fileRef, fileName: originalName } });
+});
+
+// Re-signs a stored object path on demand so a document stays retrievable long
+// after the upload-time signed url would have expired.
+branchRouter.get('/documents/:id/file', requireBranch(['view_client_info', 'register_clients', 'manage_kyc']), async (req, res) => {
+  const ctx = ctxOf(req);
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+  const rows = await db
+    .select()
+    .from(schema.documents)
+    .where(and(eq(schema.documents.id, req.params.id), scopeCond(ctx, schema.documents.branchId) as any))
+    .limit(1);
+  if (rows.length === 0) return res.status(404).json({ error: 'Document not found in this branch.' });
+
+  const ref = (rows[0] as any).fileUrl as string | null;
+  if (!ref) return res.status(404).json({ error: 'This document has no stored file.' });
+  // Externally hosted links are already retrievable; hand them back as-is.
+  if (/^https?:\/\//i.test(ref)) return res.json({ success: true, url: ref, expiresInSeconds: null });
+
+  const supabase = getServerSupabase();
+  if (!supabase) return res.status(503).json({ error: 'Document storage is unavailable.' });
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(DOCUMENT_BUCKET)
+    .createSignedUrl(ref, 60 * 10);
+  if (signErr) return res.status(500).json({ error: `Could not sign the document: ${signErr.message}` });
+  res.json({ success: true, url: signed.signedUrl, expiresInSeconds: 600 });
 });
 
 branchRouter.patch('/documents/:id', requireBranch(['register_clients', 'manage_kyc']), async (req, res) => {

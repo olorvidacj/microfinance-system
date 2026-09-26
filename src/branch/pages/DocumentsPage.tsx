@@ -135,24 +135,52 @@ const UploadDocumentModal: React.FC<{ open: boolean; onClose: () => void; onDone
     docNumber: '',
     notes: '',
   });
-  const [fileName, setFileName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFileName(e.target.files?.[0]?.name || '');
+    setFile(e.target.files?.[0] || null);
   };
+
+  const MAX_BYTES = 10 * 1024 * 1024;
+  const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 
   const submit = async () => {
     if (!form.docName.trim() || !form.clientName.trim()) {
       toast.error('Document name and client are required.');
       return;
     }
+    if (!file) {
+      toast.error('Choose a file to upload.');
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      toast.error('That file is larger than the 10 MB limit.');
+      return;
+    }
+    if (!ACCEPTED.includes(file.type)) {
+      toast.error('Only JPG, PNG, WEBP, or PDF files are accepted.');
+      return;
+    }
     setLoading(true);
     try {
-      await documentsService.create({ ...form, fileUrl: `mock://${fileName || 'document'}` });
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+        reader.onerror = () => reject(new Error('The file could not be read.'));
+        reader.readAsDataURL(file);
+      });
+      // Send the actual bytes. Storing a placeholder string produced records
+      // whose file could never be opened again.
+      await documentsService.create({
+        ...form,
+        fileName: file.name,
+        mime: file.type,
+        fileBase64,
+      });
       onDone();
     } catch (err: any) {
       toast.error(err?.message || 'Unable to upload document.');
@@ -196,7 +224,7 @@ const UploadDocumentModal: React.FC<{ open: boolean; onClose: () => void; onDone
           <Input value={form.loanNumber} onChange={set('loanNumber')} placeholder="Optional" />
         </Field>
         <Field label="File">
-          <Input type="file" onChange={onFile} />
+            <Input type="file" onChange={onFile} accept={ACCEPTED.join(',')} />
         </Field>
         <div className="sm:col-span-2">
           <Field label="Notes">

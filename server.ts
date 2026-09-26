@@ -1392,6 +1392,31 @@ app.put('/api/admin/system-settings', requirePermission('manage_settings'), (req
   });
 });
 
+// PATCH for partial updates.
+//
+// A PUT that merges req.body accepts an unknown or misspelled key and silently
+// stores it as a new setting, so a typo like 'maxLoanAmount' would persist
+// alongside 'defaultMaxLoanAmount' and quietly stop taking effect. PATCH
+// rejects anything outside the known settings.
+const SYSTEM_SETTING_KEYS = new Set(Object.keys(systemSettingsState));
+
+app.patch('/api/admin/system-settings', requirePermission('manage_settings'), (req: AuthedRequest, res) => {
+  const patch = req.body || {};
+  const unknown = Object.keys(patch).filter((k) => !SYSTEM_SETTING_KEYS.has(k));
+  if (unknown.length > 0) {
+    return res.status(400).json({
+      error: `Unknown setting(s): ${unknown.join(', ')}.`,
+      allowedKeys: Array.from(SYSTEM_SETTING_KEYS),
+    });
+  }
+  systemSettingsState = { ...systemSettingsState, ...patch };
+  res.json({
+    success: true,
+    settings: systemSettingsState,
+    message: 'System settings and institutional credit limits updated successfully',
+  });
+});
+
 // 6. Approve Sensitive Operations [Requires 'approve_sensitive_operations']
 app.post('/api/admin/approve-sensitive', requirePermission('approve_sensitive_operations'), async (req: AuthedRequest, res) => {
   try {
