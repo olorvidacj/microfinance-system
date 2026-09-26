@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { getDb, schema } from '../db/index';
 import { eq, desc, and } from 'drizzle-orm';
 import { hashPassword, verifyPassword, signToken, verifyToken } from '../auth/index';
-import { calculateLoanSchedule } from '../utils/loanMath';
+import { calculateLoanSchedule, computeLoanRemainingBalance } from '../utils/loanMath';
 import { getServerSupabase } from '../db/supabaseServer';
 import { supabaseGetUser, supabaseSendEmailOtp, supabaseVerifyEmailOtp } from '../auth/supabaseAuth';
 import { authStore } from '../auth/index';
@@ -1209,26 +1209,116 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
 
     const principal = Number(amount);
     const term = Number(termMonths);
-    const monthlyRate = 1.5;
-    const r = monthlyRate / 100;
-    const monthlyInstallment = (principal * r * Math.pow(1 + r, term)) / (Math.pow(1 + r, term) - 1);
-    const totalInterest = (monthlyInstallment * term) - principal;
+    if (!Number.isFinite(principal) || principal <= 0) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid loan amount.' });
+    }
+    if (!Number.isFinite(term) || term <= 0) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid loan term.' });
+    }
+
+    // Resolve the real product terms from loan_products so the client's quoted
+    // figures match exactly what the branch and admin views compute.
+    let product: any = null;
+    let resolvedProductId = productId ? String(productId) : '';
+    let resolvedProductName = productName ? String(productName) : '';
+    if (db && resolvedProductId) {
+      try {
+        product = (await db.select().from(schema.loanProducts).where(eq(schema.loanProducts.id, resolvedProductId)).limit(1))[0] || null;
+      } catch {}
+    }
+    if (product) {
+      resolvedProductId = String(product.id);
+      resolvedProductName = String(product.name);
+    }
+
+    const annualRate = Number(product?.interestRate) || 12;
+    const interestType = String(product?.interestType || 'Reducing Balance');
+    const processingFeePct = Number(product?.processingFeePercentage) || 2;
+    const frequency = product?.defaultRepaymentFrequency
+      ? String(product.defaultRepaymentFrequency)
+      : String(repaymentFrequency || 'Monthly');
+
+    if (product?.minAmount != null && principal < Number(product.minAmount)) {
+      return res.status(400).json({ success: false, error: `Minimum amount for this loan is ₱${Number(product.minAmount).toLocaleString()}.` });
+    }
+    if (product?.maxAmount != null && principal > Number(product.maxAmount)) {
+      return res.status(400).json({ success: false, error: `Maximum amount for this loan is ₱${Number(product.maxAmount).toLocaleString()}.` });
+    }
+    if (product?.minTermMonths != null && term < Number(product.minTermMonths)) {
+      return res.status(400).json({ success: false, error: `Minimum term for this loan is ${product.minTermMonths} months.` });
+    }
+    if (product?.maxTermMonths != null && term > Number(product.maxTermMonths)) {
+      return res.status(400).json({ success: false, error: `Maximum term for this loan is ${product.maxTermMonths} months.` });
+    }
+
+    const calc = calculateLoanSchedule({
+      principal,
+      annualInterestRate: annualRate,
+      termMonths: term,
+      interestType: interestType as any,
+      repaymentFrequency: frequency as any,
+      processingFeePercentage: processingFeePct,
+    });
+    const monthlyInstallment = calc.installmentAmount;
+    const totalInterest = calc.totalInterest;
+    const totalPayable = calc.totalPayable;
 
     const applicationId = `LN-APP-${Date.now().toString().slice(-6)}`;
-    const borrowerName = req.authUser?.fullName || '';
-    const borrowerPhone = req.authUser?.phone || '';
+    let borrowerName = req.authUser?.fullName || '';
+    let borrowerPhone = req.authUser?.phone || '';
+
+    // Resolve branch + the responsible loan officer from the borrower's own
+    // record. Never hardcode an officer: a self-serve application has no
+    // assigned officer until credit investigation, and a fabricated one
+    // misattributes the loan in every staff view.
+    let branchId = 'br-main';
+    try {
+      const bRows = await db
+        .select({ branchId: schema.borrowers.branchId, fullName: schema.borrowers.fullName, phone: schema.borrowers.phone })
+        .from(schema.borrowers)
+        .where(eq(schema.borrowers.id, borrowerId))
+        .limit(1);
+      if (bRows.length > 0) {
+        if (bRows[0].branchId) branchId = String(bRows[0].branchId);
+        if (!borrowerName && bRows[0].fullName) borrowerName = String(bRows[0].fullName);
+        if (!borrowerPhone && bRows[0].phone) borrowerPhone = String(bRows[0].phone);
+      }
+    } catch {}
+
+    let loanOfficerId: string | null = null;
+    let loanOfficerName: string | null = null;
+    try {
+      const officers = await db
+        .select()
+        .from(schema.staff)
+        .where(eq(schema.staff.assignedBranchId, branchId))
+        .limit(1);
+      const officer: any = (officers as any[])[0];
+      if (officer) {
+        loanOfficerId = String(officer.id);
+        loanOfficerName = String(officer.name);
+      }
+    } catch {}
+
+    // Canonical invariant: outstanding = total amount due - valid payments.
+    const remainingBalance = computeLoanRemainingBalance(totalPayable, 0);
+
     const newApplication = {
       id: applicationId,
       loanNumber: applicationId,
       borrowerId,
       borrowerName,
-      productId: productId || 'prod-1',
-      productName: productName || 'Micro-Enterprise Working Capital',
+      productId: resolvedProductId || null,
+      productName: resolvedProductName || null,
       principalAmount: principal,
-      remainingBalance: principal,
+      totalPayable,
+      remainingBalance,
       termMonths: term,
-      interestRate: monthlyRate * 12,
-      interestType: 'REDUCING_BALANCE',
+      interestRate: annualRate,
+      interestType,
+      repaymentFrequency: frequency,
+      totalInstallments: calc.totalInstallments,
+      processingFee: calc.processingFee,
       monthlyInstallment: Math.round(monthlyInstallment * 100) / 100,
       totalInterest: Math.round(totalInterest * 100) / 100,
       purpose,
@@ -1244,37 +1334,34 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
 
     if (db) {
       try {
-        let branchId = 'br-main';
-        try {
-          const bRows = await db.select({ branchId: schema.borrowers.branchId }).from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
-          if (bRows.length > 0 && bRows[0].branchId) branchId = bRows[0].branchId;
-        } catch {}
         await db.insert(schema.loans).values({
           id: applicationId,
           loanNumber: applicationId,
           borrowerId,
           borrowerName,
           borrowerPhone,
-          productId: productId || 'prod-1',
-          productName: productName || 'Micro-Enterprise Working Capital',
+          productId: resolvedProductId || null,
+          productName: resolvedProductName || null,
           branchId,
           principalAmount: principal,
-          interestRate: monthlyRate * 12,
-          interestType: 'REDUCING_BALANCE',
-          repaymentFrequency: repaymentFrequency,
+          interestRate: annualRate,
+          interestType,
+          repaymentFrequency: frequency,
           termMonths: term,
-          totalInstallments: term,
-          processingFee: principal * 0.02,
+          totalInstallments: calc.totalInstallments,
+          processingFee: calc.processingFee,
           totalInterest: Math.round(totalInterest * 100) / 100,
-          totalPayable: Math.round((principal + totalInterest) * 100) / 100,
-          remainingBalance: principal,
+          totalPayable,
+          totalPaid: 0,
+          remainingBalance,
+          schedule: calc.schedule as any,
           purpose,
           status: 'PENDING',
           coopStep: 'CREDIT_INVESTIGATION',
           applicationDate: new Date().toISOString().split('T')[0],
           maturityDate: new Date(Date.now() + term * 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
-          loanOfficerId: 'staff-01',
-          loanOfficerName: 'Grace Mendoza',
+          loanOfficerId,
+          loanOfficerName,
         });
       } catch (dbErr) {
         console.log('[Mobile Apply] DB insert:', dbErr);
@@ -1816,15 +1903,15 @@ clientMobileRouter.get('/support/faqs', requireAuth(), async (req: AuthedRequest
     res.json({
       success: true,
       faqs: [
-        { id: 'faq-l1', question: 'How do I know if my loan was approved?', answer: 'You will receive a notification once the Credit Committee makes a decision. You can also track the status on the "Loan Applications" page.' },
-        { id: 'faq-l2', question: 'When will my loan be disbursed?', answer: 'Approved loans are usually disbursed within 1-3 banking days after approval once all requirements are complete.' },
-        { id: 'faq-p1', question: 'What payment methods are accepted?', answer: 'You may pay over the counter at any branch, or via GCash, Maya, and bank transfer through the portal.' },
-        { id: 'faq-p2', question: 'Can I pay my loan in full early?', answer: 'Yes. Early settlement is allowed and may qualify for an interest rebate. Contact your branch for the exact amount.' },
-        { id: 'faq-s1', question: 'How do I make a savings deposit?', answer: 'You can deposit over the counter at any branch. Withdrawal requests can be filed from the Savings page.' },
-        { id: 'faq-s2', question: 'What is the interest rate on savings?', answer: 'Savings earn 1% per annum, credited quarterly.' },
-        { id: 'faq-a1', question: 'How do I reset my password?', answer: 'Use the "Forgot password" option on the login page. A verification code will be sent to your registered email.' },
-        { id: 'faq-a2', question: 'How do I update my contact details?', answer: 'Go to My Profile and click "Update Profile". Changes are reviewed by staff when required.' },
-        { id: 'faq-g1', question: 'What is a solidarity group?', answer: 'A solidarity group is a circle of members who mutually guarantee each other\'s loans. Group members support timely repayments together.' },
+        { id: 'faq-l1', category: 'Loans', question: 'How do I know if my loan was approved?', answer: 'You will receive a notification once the Credit Committee makes a decision. You can also track the status on the "Loan Applications" page.' },
+        { id: 'faq-l2', category: 'Loans', question: 'When will my loan be disbursed?', answer: 'Approved loans are usually disbursed within 1-3 banking days after approval once all requirements are complete.' },
+        { id: 'faq-p1', category: 'Payments', question: 'What payment methods are accepted?', answer: 'You may pay over the counter at any branch, or via GCash, Maya, and bank transfer through the portal.' },
+        { id: 'faq-p2', category: 'Payments', question: 'Can I pay my loan in full early?', answer: 'Yes. Early settlement is allowed and may qualify for an interest rebate. Contact your branch for the exact amount.' },
+        { id: 'faq-s1', category: 'Savings', question: 'How do I make a savings deposit?', answer: 'You can deposit over the counter at any branch. Withdrawal requests can be filed from the Savings page.' },
+        { id: 'faq-s2', category: 'Savings', question: 'What is the interest rate on savings?', answer: 'Savings earn 1% per annum, credited quarterly.' },
+        { id: 'faq-a1', category: 'Account', question: 'How do I reset my password?', answer: 'Use the "Forgot password" option on the login page. A verification code will be sent to your registered email.' },
+        { id: 'faq-a2', category: 'Account', question: 'How do I update my contact details?', answer: 'Go to My Profile and click "Update Profile". Changes are reviewed by staff when required.' },
+        { id: 'faq-g1', category: 'Groups', question: 'What is a solidarity group?', answer: 'A solidarity group is a circle of members who mutually guarantee each other\'s loans. Group members support timely repayments together.' },
       ],
     });
   } catch (err: any) {

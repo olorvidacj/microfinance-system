@@ -216,8 +216,10 @@ export async function supabaseCreateClientUser(input: {
       // If they don't have an account profile in local users, this user was created during Step 1 OTP generation!
       // Update that existing Supabase Auth user with their password, confirmed email, and registration metadata:
       try {
-        const { data: usersData } = await supabase.auth.admin.listUsers();
-        const existingAuthUser = usersData?.users?.find((u) => u.email?.toLowerCase() === input.email.toLowerCase());
+        const listResult = await supabase.auth.admin.listUsers();
+        const authUsers: Array<{ id: string; email?: string; user_metadata?: Record<string, any> }> =
+          listResult.error ? [] : listResult.data.users;
+        const existingAuthUser = authUsers.find((u) => u.email?.toLowerCase() === input.email.toLowerCase());
         if (existingAuthUser) {
           const { data: updatedData, error: updateErr } = await supabase.auth.admin.updateUserById(existingAuthUser.id, {
             password: input.password,
@@ -423,8 +425,9 @@ export async function supabaseVerifyEmailOtp(email: string, token: string): Prom
 
       // Confirm the user natively in Supabase Auth
       try {
-        const { data } = await supabase.auth.admin.listUsers();
-        const user = data?.users?.find((u) => u.email?.toLowerCase() === verifyEmail);
+        const listResult = await supabase.auth.admin.listUsers();
+        const authUsers: Array<{ id: string; email?: string }> = listResult.error ? [] : listResult.data.users;
+        const user = authUsers.find((u) => u.email?.toLowerCase() === verifyEmail);
         if (user) {
           await supabase.auth.admin.updateUserById(user.id, { email_confirm: true });
           return { verified: true, user };

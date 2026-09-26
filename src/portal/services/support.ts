@@ -1,24 +1,30 @@
+import { clientRequest } from './clientApi';
 import { FaqItem, SupportTicket } from '../types';
 
 export const supportService = {
   async faqs(): Promise<{ categories: string[]; byCategory: Record<string, FaqItem[]> }> {
-    return { categories: [], byCategory: {} };
+    const payload = await clientRequest('/api/client/support/faqs');
+    const faqs: FaqItem[] = Array.isArray(payload?.faqs) ? payload.faqs : [];
+    if (faqs.length === 0) return { categories: [], byCategory: {} };
+
+    const byCategory: Record<string, FaqItem[]> = {};
+    for (const faq of faqs) {
+      const bucket = (faq as FaqItem & { category?: string }).category || 'General';
+      (byCategory[bucket] ||= []).push(faq);
+    }
+    return { categories: Object.keys(byCategory), byCategory };
   },
 
   async tickets(): Promise<SupportTicket[]> {
-    return [];
+    const payload = await clientRequest('/api/client/support/tickets');
+    return payload?.tickets || payload || [];
   },
 
   async submit(input: { subject: string; category: string; message: string }): Promise<SupportTicket> {
-    const ticket: SupportTicket = {
-      id: `TKT-2026-${String(Math.floor(Math.random() * 900) + 100)}`,
-      subject: input.subject,
-      category: input.category,
-      message: input.message,
-      createdAt: new Date().toISOString().split('T')[0],
-      status: 'OPEN',
-      lastUpdate: new Date().toISOString().split('T')[0],
-    };
-    return ticket;
+    const payload = await clientRequest('/api/client/support/submit', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return payload?.ticket || payload;
   },
 };

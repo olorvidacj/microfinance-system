@@ -212,6 +212,49 @@ export function calculateMonthlySavingsInterest(savingsBalance: number, annualRa
 }
 
 /**
+ * CANONICAL LOAN BALANCE INVARIANT.
+ *
+ * The single source of truth for outstanding loan balance across every page,
+ * endpoint and report:
+ *
+ *     remainingBalance = totalPayable - totalPaid
+ *
+ * `totalPayable` already includes principal + interest (and any processing fee
+ * folded in by the caller). `totalPaid` is clamped to `totalPayable` so a
+ * loan can never settle below zero, and `remainingBalance` is clamped at zero
+ * so it can never go negative.
+ *
+ * Every write path that touches loans.totalPaid or loans.totalPayable MUST use
+ * this function. Setting remainingBalance to `principal` is incorrect: it
+ * understates the obligation by the full interest amount and lets a client
+ * overpay by that difference.
+ */
+export function computeLoanRemainingBalance(
+  totalPayable: number | null | undefined,
+  totalPaid: number | null | undefined
+): number {
+  const payable = Number(totalPayable) || 0;
+  const paid = Math.min(Math.max(Number(totalPaid) || 0, 0), Math.max(payable, 0));
+  return Math.max(0, Math.round((payable - paid) * 100) / 100);
+}
+
+/**
+ * Applies a payment to a loan and returns the full, consistent set of money
+ * fields. Use this instead of hand-editing totalPaid/remainingBalance so the
+ * invariant cannot drift between endpoints.
+ */
+export function applyPaymentToLoanTotals(
+  loan: { totalPayable?: number | null; totalPaid?: number | null },
+  paymentAmount: number
+): { totalPaid: number; remainingBalance: number } {
+  const payable = Number(loan.totalPayable) || 0;
+  const currentPaid = Number(loan.totalPaid) || 0;
+  const applied = Math.max(0, Math.min(Number(paymentAmount) || 0, Math.max(payable - currentPaid, 0)));
+  const totalPaid = Math.round((currentPaid + applied) * 100) / 100;
+  return { totalPaid, remainingBalance: computeLoanRemainingBalance(payable, totalPaid) };
+}
+
+/**
  * 3. ADVANCE PAYMENT REBATE:
  * Members may pay loans in advance and receive a rebate on unaccrued future interest
  */
