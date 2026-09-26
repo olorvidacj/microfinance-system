@@ -329,10 +329,19 @@ class ApiService {
     amount: number;
     paymentMethod: string;
     referenceNumber: string;
+    /** base64-encoded receipt, e.g. data:image/jpeg;base64,... */
+    receiptProofBase64?: string;
+    receiptProofName?: string;
+    receiptProofMime?: string;
+    /**
+     * Alternative to base64 for a receipt already hosted somewhere. Must be an
+     * http(s) URL - a device-local file:// uri is meaningless to the server and
+     * is rejected.
+     */
     receiptProofUrl?: string;
     paymentDate?: string;
     notes?: string;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{ success: boolean; message: string; proof?: any }> {
     return this.request('/client/submit-payment-proof', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -372,8 +381,10 @@ class ApiService {
     return res.transactions;
   }
 
-  async requestSavingsWithdrawal(payload: { amount: number; reason: string }): Promise<{ success: boolean; message: string }> {
-    return this.request('/client/savings/request-withdrawal', {
+  async requestSavingsWithdrawal(payload: { amount: number; reason: string; accountId?: string }): Promise<{ success: boolean; request?: any }> {
+    // The route is /savings/withdraw; '/savings/request-withdrawal' does not
+    // exist and 404'd.
+    return this.request('/client/savings/withdraw', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -393,13 +404,15 @@ class ApiService {
 
   // 12. Help & Support
   async getFaqs(): Promise<FaqItem[]> {
-    const res = await this.request<{ success: boolean; faqs: FaqItem[] }>('/client/faqs');
-    return res.faqs;
+    // The route is /support/faqs; '/faqs' 404'd.
+    const res = await this.request<{ success: boolean; faqs: FaqItem[] }>('/client/support/faqs');
+    return res.faqs || [];
   }
 
   async getSupportTickets(): Promise<SupportTicket[]> {
-    const res = await this.request<{ success: boolean; tickets: SupportTicket[] }>('/client/support-tickets');
-    return res.tickets;
+    // The route is /support/tickets; '/support-tickets' 404'd.
+    const res = await this.request<{ success: boolean; tickets: SupportTicket[] }>('/client/support/tickets');
+    return res.tickets || [];
   }
 
   async submitSupportTicket(payload: {
@@ -409,7 +422,7 @@ class ApiService {
     priority?: string;
     attachments?: string[];
   }): Promise<{ success: boolean; message: string; ticket: SupportTicket }> {
-    return this.request('/client/support-tickets', {
+    return this.request('/client/support/tickets', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -417,32 +430,50 @@ class ApiService {
 
   // 13. Settings
   async getNotificationPreferences(): Promise<NotificationPreferences> {
-    const res = await this.request<{ success: boolean; preferences: NotificationPreferences }>('/client/settings/notification-preferences');
+    // The route is /settings/notifications; '/settings/notification-preferences' 404'd.
+    const res = await this.request<{ success: boolean; preferences: NotificationPreferences }>('/client/settings/notifications');
     return res.preferences;
   }
 
-  async updateNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<{ success: boolean; message: string }> {
-    return this.request('/client/settings/notification-preferences', {
+  async updateNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<{ success: boolean; message?: string }> {
+    return this.request('/client/settings/notifications', {
       method: 'PATCH',
       body: JSON.stringify(preferences),
     });
   }
 
   async getPrivacyPreferences(): Promise<PrivacyPreferences> {
-    const res = await this.request<{ success: boolean; preferences: PrivacyPreferences }>('/client/settings/privacy-preferences');
+    // The route is /settings/privacy; '/settings/privacy-preferences' 404'd.
+    const res = await this.request<{ success: boolean; preferences: PrivacyPreferences }>('/client/settings/privacy');
     return res.preferences;
   }
 
-  async updatePrivacyPreferences(preferences: Partial<PrivacyPreferences>): Promise<{ success: boolean; message: string }> {
-    return this.request('/client/settings/privacy-preferences', {
+  async updatePrivacyPreferences(preferences: Partial<PrivacyPreferences>): Promise<{ success: boolean; message?: string }> {
+    return this.request('/client/settings/privacy', {
       method: 'PATCH',
       body: JSON.stringify(preferences),
     });
   }
 
   async getLoginActivity(): Promise<LoginActivityItem[]> {
-    const res = await this.request<{ success: boolean; activity: LoginActivityItem[] }>('/client/settings/login-activity');
-    return res.activity;
+    // The route is /settings/sessions and returns `sessions`, not `activity`.
+    // Normalise it here rather than having the screen read a field that is
+    // always undefined.
+    const res = await this.request<{
+      success: boolean;
+      sessions: Array<{ id: string; device?: string; location?: string; time?: string; ip?: string; status?: string }>;
+    }>('/client/settings/sessions');
+    return (res.sessions || []).map((s) => ({
+      id: s.id,
+      device: s.device,
+      deviceName: s.device,
+      location: s.location,
+      ipAddress: s.ip,
+      time: s.time,
+      createdAt: s.time,
+      loggedInAt: s.time || new Date().toISOString(),
+      status: s.status,
+    }));
   }
 }
 

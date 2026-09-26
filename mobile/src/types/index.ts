@@ -392,7 +392,9 @@ export interface BranchContextDataStaffContext {
 // Receipts / payments
 // ---------------------------------------------------------------------------
 
-export interface PaymentReceipt {  amount: number;
+export interface PaymentReceipt {
+  id?: string;
+  amount: number;
   currency?: string;
   referenceNumber?: string;
   paymentDate?: string;

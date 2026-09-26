@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton, AppCard, AppModal, AppTextInput, LoadingView, ScreenHeader } from '../../components';
@@ -39,7 +40,7 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
   const [method, setMethod] = useState<PaymentMethod>('GCASH');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [notes, setNotes] = useState('');
-  const [proof, setProof] = useState<{ uri: string; name: string } | null>(null);
+  const [proof, setProof] = useState<{ uri: string; name: string; mime: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -74,7 +75,12 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
       quality: 0.7,
     });
     if (res.canceled) return;
-    setProof({ uri: res.assets[0].uri, name: res.assets[0].fileName || `proof-${Date.now()}.jpg` });
+    setErrors((e) => ({ ...e, proof: '' }));
+    setProof({
+      uri: res.assets[0].uri,
+      name: res.assets[0].fileName || `proof-${Date.now()}.jpg`,
+      mime: res.assets[0].mimeType || 'image/jpeg',
+    });
   };
 
   const validate = (): boolean => {
@@ -83,6 +89,9 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt <= 0) e.amount = 'Enter a valid payment amount.';
     if (!referenceNumber.trim()) e.referenceNumber = 'Enter the reference number of your payment.';
+    // The backend rejects a submission with no receipt, so require it here rather
+    // than letting the member fill in the form and hit an error at the end.
+    if (!proof) e.proof = 'Attach a photo of your payment receipt.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -91,12 +100,25 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
     if (!loan) return;
     setSubmitting(true);
     try {
+      // Send the receipt bytes, not the local file:// uri. A device-local path
+      // is meaningless to the server, so the proof has to be encoded first.
+      let receiptProofBase64: string | undefined;
+      let receiptProofMime: string | undefined;
+      if (proof?.uri) {
+        const raw = await FileSystem.readAsStringAsync(proof.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        receiptProofMime = proof.mime || 'image/jpeg';
+        receiptProofBase64 = `data:${receiptProofMime};base64,${raw}`;
+      }
       const res = await api.submitPaymentProof({
         loanId: loan.id,
         amount: Number(amount),
         paymentMethod: method,
         referenceNumber: referenceNumber.trim(),
-        receiptProofUrl: proof?.uri,
+        receiptProofBase64,
+        receiptProofName: proof?.name,
+        receiptProofMime,
         paymentDate: new Date().toISOString(),
         notes: notes || undefined,
       });
@@ -186,7 +208,7 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
             hint="Use the transaction reference shown by your payment channel."
           />
 
-          <Text style={styles.sectionLabel}>4. Payment Proof (Optional)</Text>
+          <Text style={styles.sectionLabel}>4. Payment Proof (Required)</Text>
           <TouchableOpacity onPress={pickProof} activeOpacity={0.85}>
             <AppCard style={{ ...styles.fieldCard, ...styles.uploadCard }}>
               {proof ? (
@@ -295,7 +317,7 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
         {!proof ? (
           <Text style={styles.confirmWarn}>
-            <Ionicons name="alert-circle" size={12} color={colors.warning} /> No proof attached — verification may take longer.
+            <Ionicons name="alert-circle" size={12} color={colors.danger} /> A photo of your receipt is required before this payment can be submitted.
           </Text>
         ) : null}
       </AppModal>

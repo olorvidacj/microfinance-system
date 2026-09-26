@@ -25,7 +25,7 @@ export const PaymentsScreen: React.FC = () => {
   const [amount, setAmount] = useState('4850');
   const [paymentMethod, setPaymentMethod] = useState<'GCASH' | 'MAYA' | 'BANK_TRANSFER' | 'OVER_THE_COUNTER'>('GCASH');
   const [referenceNumber, setReferenceNumber] = useState('GCASH-98214981');
-  const [receiptProofUrl, setReceiptProofUrl] = useState('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=300');
+  const [receiptProofUrl, setReceiptProofUrl] = useState('');
   const [notes, setNotes] = useState('Monthly amortization installment');
 
   const fetchData = async () => {
@@ -55,6 +55,12 @@ export const PaymentsScreen: React.FC = () => {
       Alert.alert('Required Fields', 'Please enter payment amount and reference number.');
       return;
     }
+    // A receipt is mandatory. This screen previously defaulted to a stock photo
+    // URL, so it submitted a photograph of a calculator as payment evidence.
+    if (!receiptProofUrl.trim()) {
+      Alert.alert('Receipt Required', 'Attach a link or photo of your payment receipt.');
+      return;
+    }
     setSubmitting(true);
     try {
       await api.submitPaymentProof({
@@ -62,7 +68,7 @@ export const PaymentsScreen: React.FC = () => {
         amount: Number(amount),
         paymentMethod,
         referenceNumber,
-        receiptProofUrl,
+        receiptProofUrl: receiptProofUrl.trim(),
         notes,
       });
       Alert.alert('Payment Proof Submitted', 'The Cashier will verify your submission and credit your loan account.');
