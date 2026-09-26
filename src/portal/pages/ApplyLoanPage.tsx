@@ -124,7 +124,7 @@ const ApplyLoanPage: React.FC = () => {
         <p className="mt-2 text-sm text-slate-500">{c.desc}</p>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row">
           {kycStatus === 'PENDING' || kycStatus === 'UNDER_REVIEW' ? (
-            <Link to="/portal/dashboard">
+            <Link to="/portal">
               <Button variant="outline">Back to dashboard</Button>
             </Link>
           ) : (
@@ -132,7 +132,7 @@ const ApplyLoanPage: React.FC = () => {
               <Link to="/portal/kyc">
                 <Button>{kycStatus === 'CORRECTION_REQUIRED' || kycStatus === 'EXPIRED' ? 'Update KYC' : 'Complete KYC'}</Button>
               </Link>
-              <Link to="/portal/dashboard">
+              <Link to="/portal">
                 <Button variant="outline">Back to dashboard</Button>
               </Link>
             </>

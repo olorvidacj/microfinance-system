@@ -212,7 +212,7 @@ const KycPage: React.FC = () => {
                 notified once it is verified. You can apply for a loan once your KYC is verified.
               </p>
               <div className="mt-2 flex gap-2">
-                <Button onClick={() => navigate('/portal/dashboard')}>Back to dashboard</Button>
+                <Button onClick={() => navigate('/portal')}>Back to dashboard</Button>
               </div>
             </div>
           </CardBody>
