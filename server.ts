@@ -60,6 +60,38 @@ app.use(express.json({ limit: '20mb' }));
 
 // ---------- Auth & RBAC Plumbing ----------
 
+/**
+ * Resolve the branch an actor actually belongs to, for audit attribution.
+ *
+ * Returns null when the branch is genuinely unknown (client accounts, or
+ * staff with no assignment). The distinction matters: writeAuditLog falls
+ * back to 'all' for null, which is honest, whereas hardcoding 'br-main'
+ * files every event against a branch the actor may never have been in.
+ */
+async function resolveActorBranchId(user: {
+  staffId?: string | null;
+  branchId?: string | null;
+}): Promise<string | null> {
+  const db = getDb();
+  if (!db) return user.branchId || null;
+  try {
+    if (user.staffId) {
+      const rows = await db
+        .select({ assignedBranchId: schema.staff.assignedBranchId })
+        .from(schema.staff)
+        .where(eq(schema.staff.id, user.staffId))
+        .limit(1);
+      if (rows[0]?.assignedBranchId) return rows[0].assignedBranchId;
+    }
+    if (user.branchId && user.branchId !== 'all' && user.branchId !== 'unassigned') {
+      return user.branchId;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 interface AuthedRequest extends Request {
   authUser?: {
     id: string;
@@ -397,6 +429,7 @@ app.post('/api/auth/login', async (req, res) => {
     const token = signToken(effectiveUser);
 
     try {
+      const auditBranchId = await resolveActorBranchId(effectiveUser);
       await writeAuditLog({
         action: 'LOGIN',
         type: 'AUTH',
@@ -406,6 +439,7 @@ app.post('/api/auth/login', async (req, res) => {
         userRole: effectiveUser.role || '',
         targetType: 'user',
         targetId: effectiveUser.id,
+        branchId: auditBranchId || undefined,
       });
     } catch {}
 
@@ -1065,13 +1099,15 @@ app.post('/api/admin/staff/assign-branch', requireAuth(['STAFF']), async (req: A
         await db.insert(schema.auditLogs).values({
           id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           timestamp: new Date().toISOString(),
-          userId: caller.id,
-          userName: caller.email,
           action: 'STAFF_BRANCH_ASSIGNMENT',
-          category: 'BRANCH',
           details: `Staff member ${staffId} assigned to ${branchId} (Tacloban Main Branch) by System Administrator.`,
-          severity: 'Low',
-        } as any);
+          performedBy: `${caller.email || caller.id} (${caller.staffRole || 'STAFF'})`,
+          branchId: branchId || 'all',
+          type: 'BRANCH',
+          userName: caller.email,
+          userRole: caller.staffRole,
+          ipAddress: req.ip || '127.0.0.1',
+        });
       } catch {}
     }
 
@@ -1080,15 +1116,16 @@ app.post('/api/admin/staff/assign-branch', requireAuth(['STAFF']), async (req: A
       try {
         await db.insert(schema.branchNotifications).values({
           id: `NOTIF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          branchId,
+          branchId: branchId || 'all',
+          targetStaffId: null,
           type: 'INFO',
-          category: 'ADMIN',
           title: 'Staff Branch Assignment Finalized',
           message: `Staff member (${staffId}) was officially assigned to Tacloban Main Branch.`,
-          timestamp: new Date().toISOString(),
+          relatedType: 'Staff',
+          relatedId: staffId,
           isRead: false,
-          actionLink: '/staff/app/profile',
-        } as any);
+          createdAt: new Date().toISOString(),
+        });
       } catch {}
     }
 
@@ -1115,25 +1152,28 @@ app.post('/api/staff/request-assignment', requireAuth(['STAFF']), async (req: Au
         await db.insert(schema.branchNotifications).values({
           id: `NOTIF-REQ-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           branchId: 'br-main',
+          targetStaffId: null,
           type: 'WARNING',
-          category: 'ADMIN',
           title: 'Cooperative Branch Assignment Request',
           message: `${user?.fullName || caller.email} (${user?.staffId || caller.id}) requested branch assignment to Tacloban Main Branch.`,
-          timestamp: new Date().toISOString(),
+          relatedType: 'Staff',
+          relatedId: user?.staffId || caller.id,
           isRead: false,
-          actionLink: '/staff/app/profile',
-        } as any);
+          createdAt: new Date().toISOString(),
+        });
 
         await db.insert(schema.auditLogs).values({
-          id: `AUD-REQ-${Date.now()}`,
+          id: `AUD-REQ-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           timestamp: new Date().toISOString(),
-          userId: caller.id,
-          userName: user?.fullName || caller.email,
           action: 'BRANCH_ASSIGNMENT_REQUESTED',
-          category: 'BRANCH',
           details: `Staff member requested cooperative branch assignment to Tacloban Main Branch.`,
-          severity: 'Medium',
-        } as any);
+          performedBy: `${user?.fullName || caller.email} (${caller.staffRole || 'STAFF'})`,
+          branchId: 'br-main',
+          type: 'BRANCH',
+          userName: user?.fullName || caller.email,
+          userRole: caller.staffRole,
+          ipAddress: req.ip || '127.0.0.1',
+        });
       } catch (e: any) {
         console.warn('[Request Assignment] DB notice:', e.message);
       }

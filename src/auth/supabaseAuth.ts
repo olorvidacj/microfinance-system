@@ -598,6 +598,14 @@ export async function writeAuditLog(entry: {
   userRole?: string;
   targetType?: string;
   targetId?: string;
+  /**
+   * Branch the event belongs to. Callers that already know the actor's
+   * branch should pass it; auth events that span branches fall back to
+   * 'all' rather than asserting a specific one. Defaults to 'all'
+   * because attributing an event to a branch the actor was never
+   * assigned to is a worse lie than admitting the scope is unknown.
+   */
+  branchId?: string;
 }): Promise<void> {
   const db = getDb();
   if (!db) return;
@@ -608,7 +616,7 @@ export async function writeAuditLog(entry: {
       action: entry.action,
       details: entry.details,
       performedBy: entry.performedBy,
-      branchId: 'br-main',
+      branchId: entry.branchId || 'all',
       type: entry.type || 'SECURITY',
       userName: entry.userName || null,
       userRole: entry.userRole || null,
