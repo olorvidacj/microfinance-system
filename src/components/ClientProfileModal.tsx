@@ -36,6 +36,7 @@ import {
 import { useLoan } from '../context/LoanContext';
 import { formatCurrency, formatDate } from '../utils/loanMath';
 import { Borrower, ClientStatus, KycDocumentType, KycStatus, Loan } from '../types';
+import { KycStatusBadge } from './KycStatusBadge';
 
 interface ClientProfileModalProps {
   client: Borrower | null;
@@ -204,6 +205,7 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusBadge(client.clientStatus || client.memberStatus)}`}>
                   {client.clientStatus || client.memberStatus}
                 </span>
+                <KycStatusBadge status={client.kycStatus} size="sm" />
               </div>
               <p className="text-xs text-slate-300 mt-1">
                 {client.occupation} • {client.employerOrBusiness} • {branch?.name || 'Main Branch'}
@@ -322,10 +324,8 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <span className="text-[10px] uppercase font-bold text-slate-400">KYC Status</span>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className={`px-2 py-0.5 rounded-md font-bold text-xs border ${getKycBadge(client.kycStatus)}`}>
-                      {client.kycStatus}
-                    </span>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <KycStatusBadge status={client.kycStatus} size="sm" />
                   </div>
                 </div>
 

@@ -21,6 +21,7 @@ import {
 import { useLoan } from '../context/LoanContext';
 import { formatCurrency, formatDate } from '../utils/loanMath';
 import { Borrower } from '../types';
+import { KycStatusBadge } from './KycStatusBadge';
 
 interface BorrowersViewProps {
   onSelectBorrower: (borrower: Borrower) => void;
@@ -153,17 +154,20 @@ export const BorrowersView: React.FC<BorrowersViewProps> = ({
                     </div>
                   </div>
 
-                  <span
-                    className={`text-[11px] px-2.5 py-1 rounded-full font-bold border ${
-                      member.memberStatus === 'Active'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : member.memberStatus === 'Inactive'
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}
-                  >
-                    {member.memberStatus || 'Active'}
-                  </span>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span
+                      className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${
+                        member.memberStatus === 'Active'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : member.memberStatus === 'Inactive'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}
+                    >
+                      {member.memberStatus || 'Active'}
+                    </span>
+                    <KycStatusBadge status={member.kycStatus} size="xs" />
+                  </div>
                 </div>
 
                 {/* Cooperative Financial Metrics: CBU & Savings */}
