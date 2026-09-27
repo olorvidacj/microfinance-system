@@ -1689,6 +1689,140 @@ clientMobileRouter.post('/submit-payment-proof', requireAuth(), async (req: Auth
 });
 
 // -------------------------------------------------------------
+// 6b. Payment proof status
+//
+// A member could submit a proof and then never learn what happened to
+// it: a rejection reason was recorded but unreachable, and a verified
+// payment credited their loan without telling them. These close that
+// loop.
+//
+// The database status vocabulary (PENDING_REVIEW / UNDER_REVIEW /
+// VERIFIED / REJECTED) is mapped onto the vocabulary the app already
+// renders, so no new status string is introduced for the client to
+// fail to style. See mobile/src/utils/format.ts, which already colours
+// PENDING_TELLER_VERIFICATION and UNDER_REVIEW as warning, VERIFIED as
+// green, and REJECTED as danger.
+// -------------------------------------------------------------
+
+/** Maps a stored proof status onto the status the client already understands. */
+function proofStatusForClient(status: string): string {
+  switch (String(status || '').toUpperCase()) {
+    case 'PENDING_REVIEW':
+      return 'PENDING_TELLER_VERIFICATION';
+    case 'UNDER_REVIEW':
+      return 'UNDER_REVIEW';
+    case 'VERIFIED':
+      return 'VERIFIED';
+    case 'REJECTED':
+      return 'REJECTED';
+    default:
+      return 'PENDING_TELLER_VERIFICATION';
+  }
+}
+
+clientMobileRouter.get('/payment-proofs', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    if (!borrowerId) {
+      return res.status(401).json({ success: false, error: 'Client authentication required.' });
+    }
+    const db = getDb();
+    if (!db) return res.json({ success: true, proofs: [], counts: {} });
+
+    const rows = await db
+      .select()
+      .from(schema.paymentProofs)
+      .where(eq(schema.paymentProofs.borrowerId, borrowerId))
+      .orderBy(desc(schema.paymentProofs.submittedAt));
+
+    const proofs = (rows as any[]).map((p) => ({
+      id: p.id,
+      loanId: p.loanId,
+      loanNumber: p.loanNumber,
+      amount: p.amount,
+      currency: p.currency,
+      paymentMethod: p.paymentMethod,
+      paymentDate: p.paymentDate,
+      referenceNumber: p.referenceNumber,
+      // `status` stays the raw stored value for anything reading the
+      // database vocabulary; `verificationStatus` is what the UI renders.
+      status: p.status,
+      verificationStatus: proofStatusForClient(p.status),
+      reviewedAt: p.reviewedAt,
+      // Present only once a decision exists. This is the whole point of
+      // the endpoint: the member can see why a proof was declined.
+      rejectionReason: p.status === 'REJECTED' ? p.rejectionReason : null,
+      reviewedByName: p.reviewedByName,
+      fileName: p.fileName,
+      submittedAt: p.submittedAt,
+      // Set once the claim was credited, so the member can tie the
+      // proof to the resulting receipt.
+      paymentId: p.paymentId,
+    }));
+
+    const counts = {
+      total: proofs.length,
+      pending: proofs.filter((p) => p.status === 'PENDING_REVIEW' || p.status === 'UNDER_REVIEW').length,
+      verified: proofs.filter((p) => p.status === 'VERIFIED').length,
+      rejected: proofs.filter((p) => p.status === 'REJECTED').length,
+    };
+
+    res.json({ success: true, proofs, counts });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientMobileRouter.get('/payment-proofs/:id', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    if (!borrowerId) {
+      return res.status(401).json({ success: false, error: 'Client authentication required.' });
+    }
+    const db = getDb();
+    if (!db) return res.status(404).json({ success: false, error: 'Payment proof not found.' });
+
+    // Scoped by borrowerId in the same query, so one member cannot read
+    // another's proof by guessing an id.
+    const rows = await db
+      .select()
+      .from(schema.paymentProofs)
+      .where(and(eq(schema.paymentProofs.id, String(req.params.id || '')), eq(schema.paymentProofs.borrowerId, borrowerId)))
+      .limit(1);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Payment proof not found.' });
+    }
+    const p = rows[0] as any;
+
+    res.json({
+      success: true,
+      proof: {
+        id: p.id,
+        loanId: p.loanId,
+        loanNumber: p.loanNumber,
+        amount: p.amount,
+        currency: p.currency,
+        paymentMethod: p.paymentMethod,
+        paymentDate: p.paymentDate,
+        referenceNumber: p.referenceNumber,
+        notes: p.notes,
+        status: p.status,
+        verificationStatus: proofStatusForClient(p.status),
+        reviewedAt: p.reviewedAt,
+        rejectionReason: p.status === 'REJECTED' ? p.rejectionReason : null,
+        reviewedByName: p.reviewedByName,
+        fileName: p.fileName,
+        submittedAt: p.submittedAt,
+        paymentId: p.paymentId,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
 // 7. Client Notifications
 // -------------------------------------------------------------
 clientMobileRouter.get('/notifications', requireAuth(), async (req: AuthedRequest, res: Response) => {

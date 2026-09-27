@@ -198,6 +198,47 @@ export interface NotificationsData {
   unreadCount: number;
 }
 
+/**
+ * A payment proof the member submitted, and what the branch decided about it.
+ *
+ * `verificationStatus` is the value to render. It deliberately reuses the
+ * strings mobile/src/utils/format.ts already colours, rather than the stored
+ * PENDING_REVIEW, so a status never arrives unstyled:
+ *   PENDING_TELLER_VERIFICATION / UNDER_REVIEW -> warning
+ *   VERIFIED                                   -> green
+ *   REJECTED                                   -> danger
+ * `status` carries the raw stored value for code that needs it.
+ */
+export type MobilePaymentProofStatus =
+  | 'PENDING_TELLER_VERIFICATION'
+  | 'UNDER_REVIEW'
+  | 'VERIFIED'
+  | 'REJECTED';
+
+export interface MobilePaymentProof {
+  id: string;
+  loanId: string;
+  loanNumber?: string;
+  amount: number;
+  currency: string;
+  paymentMethod: string;
+  paymentDate: string;
+  referenceNumber?: string;
+  notes?: string;
+  /** Raw stored status, e.g. PENDING_REVIEW. */
+  status: string;
+  /** Render-ready status. See MobilePaymentProofStatus. */
+  verificationStatus: MobilePaymentProofStatus;
+  reviewedAt?: string;
+  /** Populated only when the proof was REJECTED, so the member can see why. */
+  rejectionReason?: string | null;
+  reviewedByName?: string;
+  fileName?: string;
+  submittedAt: string;
+  /** Set once a verified claim was credited; ties the proof to its receipt. */
+  paymentId?: string;
+}
+
 // ---------------------------------------------------------------------------
 // KYC â€” mirrors the shapes the Express clientMobile router returns and which the
 // backend service layer / mock service / KYC screens consume.

@@ -32,6 +32,7 @@ import {
   BranchKycQueueItem,
   KycSubmission as KycSubmissionAlias,
   BranchContextDataStaffContext,
+  MobilePaymentProof,
 } from '../types';
 
 import Constants from 'expo-constants';
@@ -361,6 +362,25 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  }
+
+  /**
+   * The member's own payment proofs and what became of them.
+   *
+   * `verificationStatus` reuses the vocabulary the app already renders
+   * (PENDING_TELLER_VERIFICATION / UNDER_REVIEW / VERIFIED / REJECTED)
+   * rather than the stored PENDING_REVIEW, so no status arrives unstyled.
+   * `rejectionReason` is populated only once a proof is REJECTED.
+   */
+  async getPaymentProofs(): Promise<{
+    proofs: MobilePaymentProof[];
+    counts: { total: number; pending: number; verified: number; rejected: number };
+  }> {
+    return this.request('/client/payment-proofs');
+  }
+
+  async getPaymentProof(id: string): Promise<{ success: boolean; proof: MobilePaymentProof }> {
+    return this.request(`/client/payment-proofs/${encodeURIComponent(id)}`);
   }
 
   // 7. Notifications
