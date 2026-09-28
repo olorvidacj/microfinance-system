@@ -56,6 +56,13 @@ import { psgcService } from './src/services/psgcService';
 
 dotenv.config();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 

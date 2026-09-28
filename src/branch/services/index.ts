@@ -28,6 +28,25 @@ import {
 const unwrap = (p: any) => p?.data;
 const unwrapReceipt = (p: any) => p?.data?.receipt;
 
+export type QueryFilters = Record<string, string | number | boolean | null | undefined>;
+
+/**
+ * Serializes filters into a query string, dropping empty values.
+ *
+ * `new URLSearchParams({ status: undefined })` stringifies to the literal
+ * text "undefined", which the server then treats as a real filter value and
+ * matches against. Every unset filter must be omitted entirely, so callers
+ * can pass `value || undefined` freely without corrupting the query.
+ */
+function toQuery(filters?: QueryFilters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters || {})) {
+    if (value === undefined || value === null || value === '') continue;
+    params.set(key, String(value));
+  }
+  return params.toString();
+}
+
 export const branchService = {
   context: async (): Promise<BranchContextData> => {
     const payload = await branchRequest('/api/branch/context');
@@ -84,8 +103,8 @@ export const dashboardService = {
 };
 
 export const clientsService = {
-  list: async (filters?: Record<string, string>): Promise<ClientSummary[]> => {
-    const qs = new URLSearchParams(filters || {}).toString();
+  list: async (filters?: QueryFilters): Promise<ClientSummary[]> => {
+    const qs = toQuery(filters);
     const payload = await branchRequest(`/api/branch/clients${qs ? `?${qs}` : ''}`);
     return payload?.data || [];
   },
@@ -153,8 +172,8 @@ export const loansService = {
     return payload?.data || [];
   },
 
-  applications: async (filters?: Record<string, string>): Promise<BranchLoan[]> => {
-    const qs = new URLSearchParams(filters || {}).toString();
+  applications: async (filters?: QueryFilters): Promise<BranchLoan[]> => {
+    const qs = toQuery(filters);
     const payload = await branchRequest(`/api/branch/loan-applications${qs ? `?${qs}` : ''}`);
     return payload?.data || [];
   },
@@ -166,8 +185,8 @@ export const loansService = {
       body: JSON.stringify(data),
     }),
 
-  list: async (filters?: Record<string, string>): Promise<BranchLoan[]> => {
-    const qs = new URLSearchParams(filters || {}).toString();
+  list: async (filters?: QueryFilters): Promise<BranchLoan[]> => {
+    const qs = toQuery(filters);
     const payload = await branchRequest(`/api/branch/loans${qs ? `?${qs}` : ''}`);
     return payload?.data || [];
   },
@@ -282,8 +301,8 @@ export const groupsService = {
 };
 
 export const transactionsService = {
-  list: async (filters?: Record<string, string>): Promise<FinancialTransactionRow[]> => {
-    const qs = new URLSearchParams(filters || {}).toString();
+  list: async (filters?: QueryFilters): Promise<FinancialTransactionRow[]> => {
+    const qs = toQuery(filters);
     const payload = await branchRequest(`/api/branch/transactions${qs ? `?${qs}` : ''}`);
     return payload?.data || [];
   },
@@ -297,8 +316,8 @@ export const transactionsService = {
 };
 
 export const documentsService = {
-  list: async (filters?: Record<string, string>): Promise<BranchDocument[]> => {
-    const qs = new URLSearchParams(filters || {}).toString();
+  list: async (filters?: QueryFilters): Promise<BranchDocument[]> => {
+    const qs = toQuery(filters);
     const payload = await branchRequest(`/api/branch/documents${qs ? `?${qs}` : ''}`);
     return payload?.data || [];
   },
@@ -342,8 +361,8 @@ export const reportsService = {
 };
 
 export const activityService = {
-  log: async (filters?: Record<string, string>) => {
-    const qs = new URLSearchParams(filters || {}).toString();
+  log: async (filters?: QueryFilters) => {
+    const qs = toQuery(filters);
     const payload = await branchRequest(`/api/branch/activity-log${qs ? `?${qs}` : ''}`);
     return payload?.data || [];
   },

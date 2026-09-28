@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { and, desc, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index';
 import { storeDocument, DOCUMENT_BUCKET } from '../db/documentStorage';
 import { getServerSupabase } from '../db/supabaseServer';
@@ -149,8 +149,10 @@ function requireBranch(permissions: SystemPermission[] = []) {
       }
     }
 
-    const branchId = auth.branchId || null;
-    const viewAll = hasAnyPermission(staffRole, ['view_all_records']) && !branchId;
+    const rawBranchId = auth.branchId || null;
+    const isGlobalBranch = !rawBranchId || rawBranchId === 'all' || rawBranchId.toLowerCase() === 'all';
+    const viewAll = hasAnyPermission(staffRole, ['view_all_records', 'manage_users', 'manage_settings']) || isGlobalBranch;
+    const branchId = isGlobalBranch ? null : rawBranchId;
 
     const ctx: BranchCtx = {
       userId: auth.id,
@@ -192,10 +194,30 @@ function ctxOf(req: Request): BranchCtx {
   return (req as any).branchCtx as BranchCtx;
 }
 
+/**
+ * Normalizes a query-string filter value.
+ *
+ * A client that builds its query with `new URLSearchParams({ status })` while
+ * `status` is `undefined` sends the literal text "undefined", which is a
+ * non-empty string and therefore passes the `if (value)` checks below and gets
+ * applied as a real filter — matching zero rows and rendering an empty list
+ * with no error to explain why. Treat those sentinels as "filter not set".
+ */
+function qsStr(value: unknown): string {
+  const s = String(value ?? '').trim();
+  return s === 'undefined' || s === 'null' ? '' : s;
+}
+
 function scopeCond(ctx: BranchCtx, branchColumn: any, branchIdParam?: string) {
-  if (ctx.viewAll) {
-    if (branchIdParam) return eq(branchColumn, branchIdParam);
+  if (ctx.viewAll || !ctx.branchId || ctx.branchId === 'all' || ctx.branchId.toLowerCase() === 'all') {
+    if (branchIdParam && branchIdParam !== 'all' && branchIdParam.toLowerCase() !== 'all') {
+      return eq(branchColumn, branchIdParam);
+    }
     return undefined;
+  }
+  if (branchIdParam && branchIdParam !== ctx.branchId) {
+    // If the staff has a specific branch and passes a different branch parameter, respect their branch
+    return eq(branchColumn, ctx.branchId as string);
   }
   return eq(branchColumn, ctx.branchId as string);
 }
@@ -494,7 +516,7 @@ branchRouter.get('/clients', requireBranch(['view_client_info', 'register_client
   const scope = scopeCond(ctx, schema.borrowers.branchId, req.query.branchId ? String(req.query.branchId) : undefined);
   if (scope) conditions.push(scope);
 
-  const q = String(req.query.search || '').trim().toLowerCase();
+  const q = qsStr(req.query.search).toLowerCase();
   if (q) {
     conditions.push(
       or(
@@ -504,9 +526,9 @@ branchRouter.get('/clients', requireBranch(['view_client_info', 'register_client
       ) as any
     );
   }
-  const status = String(req.query.status || '');
+  const status = qsStr(req.query.status);
   if (status) conditions.push(ilike(schema.borrowers.memberStatus, `%${status}%`) as any);
-  const kyc = String(req.query.kyc || '');
+  const kyc = qsStr(req.query.kyc);
   if (kyc) conditions.push(ilike(schema.borrowers.kycStatus, `%${kyc}%`) as any);
 
   let rows = await db.select().from(schema.borrowers).where(conditions.length ? and(...conditions) : undefined);
@@ -646,8 +668,8 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
   const db = getDb();
   if (!db) return res.json({ success: true, data: [], counts: {} });
 
-  const statusFilter = String(req.query.status || 'ALL').toUpperCase();
-  const search = String(req.query.search || '').trim().toLowerCase();
+  const statusFilter = (qsStr(req.query.status) || 'ALL').toUpperCase();
+  const search = qsStr(req.query.search).toLowerCase();
 
   const rows = await db.select().from(schema.borrowers).where(scopeCond(ctx, schema.borrowers.branchId, req.query.branchId ? String(req.query.branchId) : undefined));
   const subRows = await db.select().from(schema.kycSubmissions);
@@ -1047,11 +1069,11 @@ branchRouter.get('/loan-applications', requireBranch(['process_loan_applications
   const conditions: any[] = [
     scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined),
   ].filter(Boolean);
-  const status = String(req.query.status || '').trim();
+  const status = qsStr(req.query.status);
   if (status) {
     conditions.push(ilike(schema.loans.status, `%${status}%`) as any);
   }
-  const search = String(req.query.search || '').trim();
+  const search = qsStr(req.query.search);
   if (search) {
     conditions.push(
       or(
@@ -1061,13 +1083,13 @@ branchRouter.get('/loan-applications', requireBranch(['process_loan_applications
       ) as any
     );
   }
-  const product = String(req.query.product || '').trim();
+  const product = qsStr(req.query.product);
   if (product) conditions.push(ilike(schema.loans.productName, `%${product}%`) as any);
-  const officer = String(req.query.officer || '').trim();
+  const officer = qsStr(req.query.officer);
   if (officer) conditions.push(ilike(schema.loans.loanOfficerName, `%${officer}%`) as any);
-  const from = String(req.query.from || '').trim();
+  const from = qsStr(req.query.from);
   if (from) conditions.push(gte(schema.loans.applicationDate, from));
-  const to = String(req.query.to || '').trim();
+  const to = qsStr(req.query.to);
   if (to) conditions.push(lte(schema.loans.applicationDate, to));
 
   const rows = await db
@@ -1178,9 +1200,9 @@ branchRouter.get('/loans', requireBranch(['review_client_loan_info', 'process_lo
   const db = getDb();
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const status = String(req.query.status || '');
+  const status = qsStr(req.query.status);
   if (status) conditions.push(ilike(schema.loans.status, `%${status}%`) as any);
-  const search = String(req.query.search || '').trim();
+  const search = qsStr(req.query.search);
   if (search) {
     conditions.push(or(ilike(schema.loans.borrowerName, `%${search}%`), ilike(schema.loans.loanNumber, `%${search}%`)) as any);
   }
@@ -2286,7 +2308,7 @@ branchRouter.get('/groups/:id', requireBranch(['view_client_info', 'manage_loan_
   const members = Array.isArray(group.members) ? group.members : [];
   const memberIds = members.map((m: any) => m.borrowerId).filter(Boolean);
   const loans = memberIds.length
-    ? await db.select().from(schema.loans).where(sql`${schema.loans.borrowerId} = ANY(${memberIds})`)
+    ? await db.select().from(schema.loans).where(inArray(schema.loans.borrowerId, memberIds))
     : [];
   const detail = members.map((m: any) => {
     const memberLoans = loans.filter((l: any) => l.borrowerId === m.borrowerId);
@@ -2386,17 +2408,17 @@ branchRouter.get('/transactions', requireBranch(['view_transaction_records']), a
   const db = getDb();
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.financialTransactions.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const type = String(req.query.type || '');
+  const type = qsStr(req.query.type);
   if (type) conditions.push(eq(schema.financialTransactions.transactionType, type));
-  const status = String(req.query.status || '');
+  const status = qsStr(req.query.status);
   if (status) conditions.push(eq(schema.financialTransactions.status, status));
-  const q = String(req.query.search || '').trim();
+  const q = qsStr(req.query.search);
   if (q) {
     conditions.push(or(ilike(schema.financialTransactions.clientName, `%${q}%`), ilike(schema.financialTransactions.referenceNumber, `%${q}%`)) as any);
   }
-  const from = String(req.query.from || '');
+  const from = qsStr(req.query.from);
   if (from) conditions.push(gte(schema.financialTransactions.transactionDate, from));
-  const to = String(req.query.to || '');
+  const to = qsStr(req.query.to);
   if (to) conditions.push(lte(schema.financialTransactions.transactionDate, to));
   const rows = await db
     .select()
@@ -2446,9 +2468,9 @@ branchRouter.get('/documents', requireBranch(['view_client_info', 'register_clie
   const db = getDb();
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.documents.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const docType = String(req.query.docType || '');
+  const docType = qsStr(req.query.docType);
   if (docType) conditions.push(eq(schema.documents.docType, docType));
-  const status = String(req.query.status || '');
+  const status = qsStr(req.query.status);
   if (status) conditions.push(eq(schema.documents.status, status));
   const rows = await db
     .select()
@@ -2727,9 +2749,9 @@ branchRouter.get('/activity-log', requireBranch([]), async (req, res) => {
   const limit = Math.min(200, Number(req.query.limit) || 100);
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.auditLogs.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const module = String(req.query.module || '');
+  const module = qsStr(req.query.module);
   if (module) conditions.push(eq(schema.auditLogs.type, module));
-  const q = String(req.query.search || '').trim();
+  const q = qsStr(req.query.search);
   if (q) conditions.push(ilike(schema.auditLogs.action, `%${q}%`) as any);
   const rows = await db
     .select()

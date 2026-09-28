@@ -7,3 +7,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# local DB backups (created by scripts; never commit)
+database/backups/
