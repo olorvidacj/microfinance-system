@@ -20,6 +20,9 @@ import {
   SolidarityGroup,
   TodayCollections,
   StaffBranchAssignmentResponse,
+  KycDossier,
+  KycQueueItem,
+  KycQueueResult,
 } from '../types';
 
 const unwrap = (p: any) => p?.data;
@@ -106,16 +109,41 @@ export const clientsService = {
 };
 
 export const kycService = {
-  queue: async (): Promise<(ClientDetail & { submittedDocuments?: number })[]> => {
-    const payload = await branchRequest('/api/branch/kyc-queue');
-    return payload?.data || [];
+  queue: async (params?: { status?: string; search?: string }): Promise<KycQueueResult> => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.search) query.set('search', params.search);
+    const qs = query.toString();
+    const payload = await branchRequest(`/api/branch/kyc-queue${qs ? `?${qs}` : ''}`);
+    return {
+      data: payload?.data || [],
+      counts: payload?.counts || { all: 0, pending: 0, underReview: 0, correctionRequired: 0, approved: 0, rejected: 0, notStarted: 0 },
+    };
   },
 
-  review: async (clientId: string, decision: string, notes?: string) =>
+  get: async (clientId: string): Promise<KycDossier | null> => {
+    const payload = await branchRequest(`/api/branch/kyc/${clientId}`);
+    return payload?.data || null;
+  },
+
+  review: async (
+    clientId: string,
+    decision: string,
+    notes?: string,
+    options?: {
+      correctionDetails?: { section: string; field?: string; reason: string };
+      documentDecisions?: { id: string; status: string; reason?: string }[];
+    }
+  ) =>
     branchRequest(`/api/branch/kyc/${clientId}/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision, notes }),
+      body: JSON.stringify({
+        decision,
+        notes,
+        correctionDetails: options?.correctionDetails,
+        documentDecisions: options?.documentDecisions,
+      }),
     }),
 };
 
@@ -149,11 +177,29 @@ export const loansService = {
     return payload?.data as BranchLoanDetail;
   },
 
-  action: async (id: string, action: string, payload?: { notes?: string; reason?: string }) =>
+  action: async (id: string, action: string, payload?: { notes?: string; reason?: string; approvedAmount?: number; approvedTermMonths?: number; approvedInterestRate?: number }) =>
     branchRequest(`/api/branch/loans/${id}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ...payload }),
+    }),
+
+  disburse: async (
+    id: string,
+    payload: {
+      disbursementMethod: string;
+      disbursementAccount?: string;
+      disbursementDate?: string;
+      referenceNumber?: string;
+      voucherNumber?: string;
+      deductProcessingFee?: boolean;
+      notes?: string;
+    }
+  ) =>
+    branchRequest(`/api/branch/loans/${id}/disburse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     }),
 
   assess: async (id: string, data?: Record<string, any>): Promise<LoanAssessment> => {

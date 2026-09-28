@@ -20,7 +20,18 @@ export type LoanStatus =
   | 'REJECTED'
   | 'CANCELLED';
 
-export type KYCStatus = 'NOT_STARTED' | 'PENDING' | 'UNDER_REVIEW' | 'CORRECTION_REQUIRED' | 'VERIFIED' | 'REJECTED' | 'EXPIRED';
+export type KYCStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'SUBMITTED'
+  | 'PENDING'
+  | 'UNDER_REVIEW'
+  | 'CORRECTION_REQUIRED'
+  | 'VERIFIED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'SUSPENDED'
+  | 'EXPIRED';
 
 export type NotificationCategory =
   | 'loan_update'
@@ -85,6 +96,8 @@ export interface ClientProfile {
   firstName?: string;
   middleName?: string;
   lastName?: string;
+  suffix?: string;
+  hasNoMiddleName?: boolean;
   email: string;
   phone: string;
   secondaryPhone?: string;
@@ -96,14 +109,20 @@ export interface ClientProfile {
   province?: string;
   postalCode?: string;
   dateOfBirth: string;
+  placeOfBirth?: string;
   gender?: string;
   civilStatus: string;
   nationality?: string;
+  citizenship?: string;
   occupation: string;
   employer: string;
+  employmentStatus?: string;
   monthlyIncome: number;
   avatar: string;
   memberNumber: string;
+  borrowerNumber?: string;
+  branchId?: string;
+  memberStatus?: string;
   membershipDate: string;
   kycStatus: KYCStatus;
   creditScore: number;
@@ -253,6 +272,7 @@ export interface LoanCalculation {
   totalRepayable: number;
   processingFee: number;
   estimatedNetProceeds: number;
+  totalInstallments?: number;
 }
 
 export interface LoanApplication {

@@ -545,6 +545,11 @@ export async function initDbSchema(): Promise<boolean> {
       ALTER TABLE savings_accounts ALTER COLUMN balance SET DEFAULT 0;
 
       -- Self-heal pre-existing borrowers table columns
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS first_name TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS middle_name TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS last_name TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS suffix TEXT;
+      ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS has_no_middle_name BOOLEAN DEFAULT FALSE;
       ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS email_verified INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS email_verified_at TEXT;
       ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT FALSE;
@@ -555,6 +560,18 @@ export async function initDbSchema(): Promise<boolean> {
       ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS province TEXT;
       ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS source_of_income TEXT;
       ALTER TABLE borrowers ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+
+      -- Self-heal kyc_submissions columns
+      ALTER TABLE kyc_submissions ADD COLUMN IF NOT EXISTS contact_info JSONB;
+      ALTER TABLE kyc_submissions ADD COLUMN IF NOT EXISTS government_id JSONB;
+      ALTER TABLE kyc_submissions ADD COLUMN IF NOT EXISTS declarations JSONB;
+      ALTER TABLE kyc_submissions ADD COLUMN IF NOT EXISTS current_step INTEGER DEFAULT 0;
+      ALTER TABLE kyc_submissions ADD COLUMN IF NOT EXISTS correction_details JSONB;
+
+      -- Self-heal kyc_documents columns
+      ALTER TABLE kyc_documents ADD COLUMN IF NOT EXISTS storage_path TEXT;
+      ALTER TABLE kyc_documents ADD COLUMN IF NOT EXISTS file_size TEXT;
+      ALTER TABLE kyc_documents ADD COLUMN IF NOT EXISTS mime_type TEXT;
 
       CREATE INDEX IF NOT EXISTS idx_borrowers_email_verified ON borrowers (email_verified);
       CREATE INDEX IF NOT EXISTS idx_borrowers_profile_completed ON borrowers (profile_completed);
@@ -604,6 +621,28 @@ export async function initDbSchema(): Promise<boolean> {
         END IF;
       END
       $func$;
+
+      -- Ensure Supabase Storage buckets & policies exist
+      DO $storage$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'storage' AND table_name = 'buckets') THEN
+          INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+          VALUES 
+            ('kyc-documents', 'kyc-documents', true, 10485760, ARRAY['image/jpeg', 'image/png', 'image/webp', 'application/pdf']),
+            ('documents', 'documents', true, 10485760, ARRAY['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+          ON CONFLICT (id) DO UPDATE SET public = true;
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'storage' AND table_name = 'objects') THEN
+          DROP POLICY IF EXISTS "Public and authenticated can upload to kyc-documents" ON storage.objects;
+          CREATE POLICY "Public and authenticated can upload to kyc-documents" ON storage.objects
+            FOR ALL USING (bucket_id IN ('kyc-documents', 'documents'))
+            WITH CHECK (bucket_id IN ('kyc-documents', 'documents'));
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'Storage bucket/policy setup warning: %', SQLERRM;
+      END
+      $storage$;
     `);
 
     console.log('[Database] Schema verified and all tables ensured.');

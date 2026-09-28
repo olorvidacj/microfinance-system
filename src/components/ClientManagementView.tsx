@@ -92,6 +92,8 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
   const [quickReviewClient, setQuickReviewClient] = useState<Borrower | null>(null);
   const [quickDecision, setQuickDecision] = useState<'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED'>('APPROVED');
   const [quickNotes, setQuickNotes] = useState('');
+  const [quickCorrectionSection, setQuickCorrectionSection] = useState('Personal Information');
+  const [quickCorrectionField, setQuickCorrectionField] = useState('');
 
   // RBAC Privileges
   const canRegister = ['SUPER_ADMIN', 'MANAGER', 'LOAN_PROCESSOR', 'BOOKKEEPER', 'CREDIT_COMMITTEE'].includes(
@@ -178,14 +180,25 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
     e.preventDefault();
     if (!quickReviewClient) return;
 
+    const correctionDetails =
+      quickDecision === 'CORRECTION_REQUESTED'
+        ? {
+            section: quickCorrectionSection,
+            field: quickCorrectionField || undefined,
+            reason: quickNotes,
+          }
+        : undefined;
+
     reviewKyc(
       quickReviewClient.id,
       quickDecision,
       quickNotes || 'Reviewed and updated by authorized officer.',
-      ['Identity Verified', 'Document Authenticity Confirmed']
+      ['Identity Verified', 'Document Authenticity Confirmed'],
+      correctionDetails
     );
     setQuickReviewClient(null);
     setQuickNotes('');
+    setQuickCorrectionField('');
   };
 
   return (
@@ -1009,12 +1022,55 @@ export const ClientManagementView: React.FC<ClientManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* Conditional Correction Details */}
+              {quickDecision === 'CORRECTION_REQUESTED' && (
+                <div className="p-3 bg-orange-50/70 border border-orange-200 rounded-xl space-y-2">
+                  <span className="font-bold text-orange-950 text-[11px] block">Structured Correction Target</span>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block font-semibold text-slate-700 text-[11px] mb-1">Target Section</label>
+                      <select
+                        value={quickCorrectionSection}
+                        onChange={(e) => setQuickCorrectionSection(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium"
+                      >
+                        <option value="Personal Information">Personal Information</option>
+                        <option value="Current Address">Current Address (PSGC)</option>
+                        <option value="Permanent Address">Permanent Address</option>
+                        <option value="Contact Information">Contact Information</option>
+                        <option value="Employment & Financial">Employment & Financial</option>
+                        <option value="Government ID">Government ID</option>
+                        <option value="Document Upload">Document Upload</option>
+                        <option value="Selfie Photo">Selfie Photo</option>
+                        <option value="Declarations & Consent">Declarations & Consent</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 text-[11px] mb-1">Specific Field / Document (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Primary ID (unclear) / Proof of Income"
+                        value={quickCorrectionField}
+                        onChange={(e) => setQuickCorrectionField(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Officer Notes</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  {quickDecision === 'CORRECTION_REQUESTED' ? 'Required Correction Instructions *' : 'Officer Remarks'}
+                </label>
                 <textarea
                   rows={3}
                   required={quickDecision !== 'APPROVED'}
-                  placeholder="Enter remarks or correction instructions..."
+                  placeholder={
+                    quickDecision === 'CORRECTION_REQUESTED'
+                      ? 'Specify what needs to be corrected or re-uploaded...'
+                      : 'Enter remarks or compliance notes...'
+                  }
                   value={quickNotes}
                   onChange={(e) => setQuickNotes(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-slate-900"

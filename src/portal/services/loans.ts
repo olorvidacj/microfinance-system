@@ -79,9 +79,14 @@ export const loanService = {
     termMonths: number;
     repaymentFrequency?: string;
     purpose: string;
+    purposeDetails?: any;
     guarantorName?: string;
     guarantorPhone?: string;
+    guarantorRelationship?: string;
     collateralDescription?: string;
+    collateralValue?: number;
+    documents?: { docName: string; docType: string; fileName: string; base64?: string; fileUrl?: string; mimeType?: string }[];
+    declarations?: boolean;
   }): Promise<{ application: LoanApplication; message: string }> {
     const payload = await clientRequest('/api/client/apply-loan', {
       method: 'POST',

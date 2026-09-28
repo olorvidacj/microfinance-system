@@ -293,17 +293,21 @@ const QuickLink: React.FC<{ to: string; icon: React.ElementType; label: string; 
 
 const KYC_ACTIONS: Record<KYCStatus, { to: string; label: string; disabled?: boolean }> = {
   VERIFIED: { to: '/portal/apply', label: 'Apply for a loan' },
+  APPROVED: { to: '/portal/apply', label: 'Apply for a loan' },
   NOT_STARTED: { to: '/portal/kyc', label: 'Complete KYC First' },
+  IN_PROGRESS: { to: '/portal/kyc', label: 'Continue KYC' },
+  SUBMITTED: { to: '/portal/kyc', label: 'KYC Under Review', disabled: true },
   PENDING: { to: '/portal/kyc', label: 'KYC Under Review', disabled: true },
   UNDER_REVIEW: { to: '/portal/kyc', label: 'KYC Under Review', disabled: true },
   CORRECTION_REQUIRED: { to: '/portal/kyc', label: 'Update KYC' },
   REJECTED: { to: '/portal/kyc', label: 'Review KYC' },
+  SUSPENDED: { to: '/portal/kyc', label: 'KYC Suspended', disabled: true },
   EXPIRED: { to: '/portal/kyc', label: 'Update KYC' },
 };
 
 const KycApplyButton: React.FC<{ status: KYCStatus }> = ({ status }) => {
   const action = KYC_ACTIONS[status] || KYC_ACTIONS.NOT_STARTED;
-  if (status === 'VERIFIED') {
+  if (status === 'VERIFIED' || status === 'APPROVED') {
     return (
       <Link to={action.to}>
         <Button>
@@ -329,7 +333,19 @@ const KycAlertCard: React.FC<{ kyc: KycStatusData | null; status: KYCStatus }> =
       cls: 'border-amber-200 bg-amber-50',
       icon: ShieldCheck,
       title: 'KYC verification required',
-      desc: 'Complete your Know-Your-Customer verification to apply for a loan.',
+      desc: 'Complete your Know-Your-Customer verification to access microfinance services and loans.',
+    },
+    IN_PROGRESS: {
+      cls: 'border-amber-200 bg-amber-50',
+      icon: ShieldCheck,
+      title: 'KYC draft in progress',
+      desc: 'You have a draft KYC submission. Please complete all steps and submit for verification.',
+    },
+    SUBMITTED: {
+      cls: 'border-gold-400/30 bg-gold-500/10',
+      icon: Clock,
+      title: 'KYC submitted for review',
+      desc: 'Your KYC submission has been received and is waiting for compliance review.',
     },
     PENDING: {
       cls: 'border-gold-400/30 bg-gold-500/10',
@@ -341,7 +357,7 @@ const KycAlertCard: React.FC<{ kyc: KycStatusData | null; status: KYCStatus }> =
       cls: 'border-gold-400/30 bg-gold-500/10',
       icon: Eye,
       title: 'KYC under review',
-      desc: 'Your information is being reviewed by our staff.',
+      desc: 'Your information is being reviewed by our compliance staff.',
     },
     CORRECTION_REQUIRED: {
       cls: 'border-amber-200 bg-amber-50',
@@ -355,6 +371,12 @@ const KycAlertCard: React.FC<{ kyc: KycStatusData | null; status: KYCStatus }> =
       title: 'KYC rejected',
       desc: reason ? `Reason: ${reason}` : 'Your KYC application was not approved.',
     },
+    SUSPENDED: {
+      cls: 'border-rose-200 bg-rose-50',
+      icon: XCircle,
+      title: 'KYC suspended',
+      desc: 'Your KYC status has been suspended. Please contact your branch officer.',
+    },
     EXPIRED: {
       cls: 'border-rose-200 bg-rose-50',
       icon: Clock,
@@ -365,6 +387,12 @@ const KycAlertCard: React.FC<{ kyc: KycStatusData | null; status: KYCStatus }> =
       cls: 'border-emerald-200 bg-emerald-50',
       icon: BadgeCheck,
       title: 'KYC verified',
+      desc: 'Your identity has been verified. You are eligible to apply for a loan.',
+    },
+    APPROVED: {
+      cls: 'border-emerald-200 bg-emerald-50',
+      icon: BadgeCheck,
+      title: 'KYC verified & approved',
       desc: 'Your identity has been verified. You are eligible to apply for a loan.',
     },
   };

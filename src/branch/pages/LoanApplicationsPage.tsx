@@ -1,6 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Calculator, FileText, Plus, Search } from 'lucide-react';
+import {
+  Calculator,
+  FileText,
+  Plus,
+  Search,
+  Banknote,
+  CheckCircle2,
+  Clock,
+  CheckCheck,
+  AlertCircle,
+} from 'lucide-react';
 import { PageHeader } from '../../portal/components/ui/PageHeader';
 import { Button } from '../../portal/components/ui/Button';
 import { Card } from '../../portal/components/ui/Card';
@@ -15,13 +25,15 @@ import { useBranchPermission } from '../hooks/useBranchPermission';
 import { clientsService, loansService } from '../services';
 import { BranchLoan, LoanProduct } from '../types';
 import { LoanAssessmentPanel } from '../components/LoanAssessmentPanel';
+import { LoanDisbursementModal } from '../components/LoanDisbursementModal';
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'All statuses' },
-  { value: 'Draft', label: 'Draft' },
-  { value: 'Submitted', label: 'Submitted' },
-  { value: 'Under Review', label: 'Under Review' },
+const STATUS_TABS = [
+  { value: '', label: 'All Applications' },
+  { value: 'Submitted', label: 'Submitted / Review' },
   { value: 'For Assessment', label: 'For Assessment' },
+  { value: 'Approved', label: 'Approved (For Disbursement)' },
+  { value: 'Active', label: 'Disbursed / Active' },
+  { value: 'Completed', label: 'Completed' },
 ];
 
 const LoanApplicationsPage: React.FC = () => {
@@ -35,6 +47,7 @@ const LoanApplicationsPage: React.FC = () => {
   const [status, setStatus] = useState('');
   const [newOpen, setNewOpen] = useState(false);
   const [assessing, setAssessing] = useState<BranchLoan | null>(null);
+  const [disbursing, setDisbursing] = useState<BranchLoan | null>(null);
 
   useEffect(() => {
     if (params.get('new') === '1' && canOriginate) {
@@ -45,7 +58,7 @@ const LoanApplicationsPage: React.FC = () => {
   }, [params, setParams, canOriginate]);
 
   const fetcher = useCallback(
-    async () => loansService.applications({ status: status || undefined, search: search || undefined }),
+    async () => loansService.list({ status: status || undefined, search: search || undefined }),
     [status, search]
   );
   const { data, loading, error, reload } = useBranchData(fetcher);
@@ -55,8 +68,8 @@ const LoanApplicationsPage: React.FC = () => {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Loan applications"
-        subtitle="Applications in the pipeline awaiting processing and assessment"
+        title="Loan Applications & Portfolio"
+        subtitle="Origination pipeline, credit assessments, approvals, and fund disbursements"
         actions={
           canOriginate && (
             <Button variant="brand" onClick={() => setNewOpen(true)}>
@@ -66,38 +79,58 @@ const LoanApplicationsPage: React.FC = () => {
         }
       />
 
+      {/* Filter Tabs & Search */}
       <Card className="p-4">
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+        <div className="space-y-3">
+          {/* Status Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-3">
+            {STATUS_TABS.map((t) => {
+              const active = status === t.value;
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => setStatus(t.value)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    active
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               className="pl-9"
-              placeholder="Search by borrower or loan number…"
+              placeholder="Search by borrower name, phone, or loan application number…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="lg:w-48">
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </Select>
         </div>
       </Card>
 
       {loading ? (
-        <LoadingState label="Loading loan applications…" />
+        <LoadingState label="Loading loan pipeline…" />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : rows.length === 0 ? (
-        <EmptyState icon={<FileText className="h-6 w-6" />} title="No applications" description="No loan applications match your filters." />
+        <EmptyState
+          icon={<FileText className="h-6 w-6" />}
+          title="No applications found"
+          description="No loan applications match your current status filter or search query."
+        />
       ) : (
         <Card>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  {['Application', 'Client', 'Product', 'Amount', 'Term', 'Applied', 'Officer', 'Status', ''].map((h) => (
+                  {['Application', 'Client', 'Product', 'Principal', 'Term', 'Applied', 'Officer', 'Status', 'Actions'].map((h) => (
                     <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       {h}
                     </th>
@@ -105,34 +138,63 @@ const LoanApplicationsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((app) => (
-                  <tr key={app.id} className="hover:bg-slate-50">
-                    <td className="whitespace-nowrap px-4 py-3 text-sm font-semibold text-slate-800">
-                      <Link to={`/staff/app/loans/${app.id}`} className="text-emerald-700 hover:text-emerald-900">
-                        {app.loanNumber}
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-700">{app.borrowerName}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.productName}</td>
-                    <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-800"><Amount value={app.principalAmount} /></td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.termMonths} mo</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.applicationDate}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.loanOfficerName || '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={app.status} /></td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {canManage && ['Draft', 'Submitted'].includes(app.status) && (
-                        <Button size="sm" variant="brandOutline" onClick={() => setAssessing(app)}>
-                          <Calculator className="h-3.5 w-3.5" /> Assess
-                        </Button>
-                      )}
-                      {!['Draft', 'Submitted'].includes(app.status) && (
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/staff/app/loans/${app.id}`)}>
-                          View
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((app) => {
+                  const s = String(app.status || '').toUpperCase();
+                  const isPendingReview = ['DRAFT', 'SUBMITTED', 'PENDING', 'UNDER REVIEW', 'UNDER_REVIEW'].includes(s);
+                  const isForAssessment = ['FOR ASSESSMENT', 'FOR_ASSESSMENT', 'RECOMMENDED'].includes(s);
+                  const isApproved = ['APPROVED', 'FOR_DISBURSEMENT'].includes(s);
+                  const isDisbursed = ['ACTIVE', 'DISBURSED', 'IN ARREARS', 'IN_ARREARS'].includes(s);
+
+                  return (
+                    <tr key={app.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">
+                        <Link to={`/staff/app/loans/${app.id}`} className="text-emerald-700 hover:text-emerald-900 hover:underline">
+                          {app.loanNumber}
+                        </Link>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-800 font-medium">
+                        {app.borrowerName}
+                        {app.borrowerPhone && (
+                          <span className="block text-[11px] text-slate-400">{app.borrowerPhone}</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.productName}</td>
+                      <td className="whitespace-nowrap px-4 py-3 tabular-nums font-bold text-slate-900">
+                        <Amount value={app.principalAmount} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.termMonths} mo</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.applicationDate}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.loanOfficerName || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <StatusBadge status={app.status} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {(isPendingReview || isForAssessment) && canManage && (
+                            <Button size="sm" variant="brandOutline" onClick={() => setAssessing(app)}>
+                              <Calculator className="h-3.5 w-3.5" /> Assess & Review
+                            </Button>
+                          )}
+
+                          {isApproved && canManage && (
+                            <Button
+                              size="sm"
+                              variant="brand"
+                              className="bg-emerald-700 hover:bg-emerald-800 text-white"
+                              onClick={() => setDisbursing(app)}
+                            >
+                              <Banknote className="h-3.5 w-3.5" /> Disburse
+                            </Button>
+                          )}
+
+                          <Button size="sm" variant="outline" onClick={() => navigate(`/staff/app/loans/${app.id}`)}>
+                            View
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -151,64 +213,86 @@ const LoanApplicationsPage: React.FC = () => {
         />
       )}
 
+      {/* Credit Assessment Panel */}
       <LoanAssessmentPanel
         loan={assessing}
         onClose={() => setAssessing(null)}
         onAction={() => reload()}
+        onDisbursePrompt={(l) => {
+          setAssessing(null);
+          setDisbursing(l);
+        }}
+      />
+
+      {/* Atomic Disbursement Modal */}
+      <LoanDisbursementModal
+        loan={disbursing}
+        onClose={() => setDisbursing(null)}
+        onSuccess={() => reload()}
       />
     </div>
   );
 };
 
-const NewApplicationModal: React.FC<{ open: boolean; onClose: () => void; onDone: () => void }> = ({ open, onClose, onDone }) => {
+interface NewApplicationModalProps {
+  open: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}
+
+const NewApplicationModal: React.FC<NewApplicationModalProps> = ({ open, onClose, onDone }) => {
   const toast = useToast();
-  const clients = useBranchData(() => clientsService.list({}));
-  const products = useBranchData(() => loansService.products());
-
-  const [borrowerId, setBorrowerId] = useState('');
-  const [borrowerName, setBorrowerName] = useState('');
-  const [productId, setProductId] = useState('');
-  const [principal, setPrincipal] = useState('30000');
-  const [term, setTerm] = useState('12');
-  const [rate, setRate] = useState('12');
-  const [frequency, setFrequency] = useState('Monthly');
-  const [interestType, setInterestType] = useState('Flat Rate');
-  const [purpose, setPurpose] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const productOptions = products.data || [];
-  const selectedProduct = useMemo<LoanProduct | undefined>(() => productOptions.find((p) => p.id === productId), [productOptions, productId]);
+  const [borrowers, setBorrowers] = useState<any[]>([]);
+  const [products, setProducts] = useState<LoanProduct[]>([]);
+  const [borrowerId, setBorrowerId] = useState('');
+  const [productId, setProductId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [term, setTerm] = useState('');
+  const [frequency, setFrequency] = useState('Monthly');
+  const [purpose, setPurpose] = useState('');
 
   useEffect(() => {
-    if (selectedProduct) {
-      setRate(String(selectedProduct.interestRatePerMonth ? Math.round(selectedProduct.interestRatePerMonth * 100) : 12));
-      if (!principal) setPrincipal(String(selectedProduct.maxAmount || 50000));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProduct]);
+    if (!open) return;
+    const load = async () => {
+      try {
+        const [b, p] = await Promise.all([clientsService.list(), loansService.products()]);
+        setBorrowers(b);
+        setProducts(p);
+        if (b.length > 0) setBorrowerId(b[0].id);
+        if (p.length > 0) {
+          setProductId(p[0].id);
+          setAmount(String(p[0].minAmount || 10000));
+          setTerm(String(p[0].minTermMonths || 6));
+        }
+      } catch {}
+    };
+    load();
+  }, [open]);
 
-  const submit = async () => {
-    if (!borrowerId && !borrowerName) {
-      toast.error('Select or type the client name.');
+  const selProd = products.find((p) => p.id === productId) || products[0];
+
+  const handleSubmit = async () => {
+    if (!borrowerId || !productId || !amount || !term || !purpose) {
+      toast.error('All fields are required.');
       return;
     }
     setLoading(true);
     try {
       await loansService.createApplication({
-        borrowerId: borrowerId || undefined,
-        borrowerName: borrowerId ? undefined : borrowerName,
-        productId: productId || undefined,
-        productName: selectedProduct?.name || 'General Loan',
-        principalAmount: Number(principal) || 0,
-        termMonths: Number(term) || 6,
-        interestRate: Number(rate) || 12,
+        borrowerId,
+        productId,
+        productName: selProd?.name,
+        principalAmount: Number(amount),
+        termMonths: Number(term),
         repaymentFrequency: frequency,
-        interestType,
+        interestRate: selProd?.interestRate || 12,
+        interestType: selProd?.interestType || 'Flat Rate',
         purpose,
       });
       onDone();
     } catch (err: any) {
-      toast.error(err?.message || 'Unable to submit loan application.');
+      toast.error(err?.message || 'Failed to submit loan application.');
     } finally {
       setLoading(false);
     }
@@ -218,67 +302,76 @@ const NewApplicationModal: React.FC<{ open: boolean; onClose: () => void; onDone
     <Modal
       open={open}
       onClose={onClose}
-      title="New loan application"
-      size="xl"
+      title="Originate Staff Loan Application"
+      size="lg"
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button variant="brand" onClick={submit} loading={loading}>
-            <FileText className="h-4 w-4" /> Submit application
+          <Button variant="outline" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button variant="brand" onClick={handleSubmit} loading={loading}>
+            Submit Application
           </Button>
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Client (select)" hint={clients.error ? 'Client list unavailable — type the name instead.' : 'Registered clients in this branch'}>
-          <Select value={borrowerId} onChange={(e) => { setBorrowerId(e.target.value); }}>
-            <option value="">— Select client —</option>
-            {(clients.data || []).map((c) => (
-              <option key={c.id} value={c.id}>{c.fullName} ({c.borrowerNumber})</option>
+      <div className="space-y-4">
+        <Field label="Client / Borrower" required>
+          <Select value={borrowerId} onChange={(e) => setBorrowerId(e.target.value)}>
+            {borrowers.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.fullName} ({b.borrowerNumber}) · KYC: {b.kycStatus}
+              </option>
             ))}
           </Select>
         </Field>
-        <Field label="Or type client name">
-          <Input value={borrowerName} onChange={(e) => setBorrowerName(e.target.value)} placeholder="New / walk-in client name" />
-        </Field>
-        <Field label="Loan product">
-          <Select value={productId} onChange={(e) => setProductId(e.target.value)}>
-            <option value="">— Select product —</option>
-            {productOptions.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+
+        <Field label="Loan Product" required>
+          <Select
+            value={productId}
+            onChange={(e) => {
+              setProductId(e.target.value);
+              const p = products.find((x) => x.id === e.target.value);
+              if (p) {
+                setAmount(String(p.minAmount));
+                setTerm(String(p.minTermMonths));
+              }
+            }}
+          >
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} (₱{Number(p.minAmount).toLocaleString()} - ₱{Number(p.maxAmount).toLocaleString()})
+              </option>
             ))}
           </Select>
         </Field>
-        <Field label="Purpose">
-          <Input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Loan purpose" />
-        </Field>
-        <Field label="Principal amount (₱)">
-          <Input type="number" value={principal} onChange={(e) => setPrincipal(e.target.value)} />
-        </Field>
-        <Field label="Term (months)">
-          <Input type="number" value={term} onChange={(e) => setTerm(e.target.value)} />
-        </Field>
-        <Field label="Interest rate (%)">
-          <Input type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
-        </Field>
-        <Field label="Interest type">
-          <Select value={interestType} onChange={(e) => setInterestType(e.target.value)}>
-            <option>Flat Rate</option>
-            <option>Reducing Balance</option>
-          </Select>
-        </Field>
-        <Field label="Repayment frequency">
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Principal Amount (₱)" required>
+            <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </Field>
+          <Field label="Term (Months)" required>
+            <Input type="number" value={term} onChange={(e) => setTerm(e.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Repayment Frequency" required>
           <Select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-            <option>Monthly</option>
-            <option>Weekly</option>
-            <option>Quarterly</option>
-            <option>Lump-sum</option>
+            <option value="Monthly">Monthly</option>
+            <option value="Semi-Monthly">Semi-Monthly</option>
+            <option value="Weekly">Weekly</option>
+            <option value="Daily">Daily</option>
           </Select>
+        </Field>
+
+        <Field label="Loan Purpose" required>
+          <Input
+            placeholder="e.g. Sari-sari store capital expansion"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+          />
         </Field>
       </div>
-      {selectedProduct && selectedProduct.description && (
-        <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">{selectedProduct.description}</p>
-      )}
     </Modal>
   );
 };

@@ -21,6 +21,7 @@ import {
   DollarSign,
   Receipt,
   Scale,
+  RefreshCw,
 } from 'lucide-react';
 import { useLoan } from '../context/LoanContext';
 import { useAccess } from '../hooks/useAccess';
@@ -58,6 +59,8 @@ export const LoansView: React.FC<LoansViewProps> = ({
     disburseLoan,
     rejectLoan,
     evaluateMultiLoanEligibility,
+    syncWithDatabase,
+    isSyncingDb,
   } = useLoan();
 
   const { hasPermission } = useAccess();
@@ -96,18 +99,46 @@ export const LoansView: React.FC<LoansViewProps> = ({
     checkNumberOrRef: 'BNK-TX-984210',
   });
 
-  // Filtered loans list
+  // Filtered loans list with comprehensive status and search coverage
   const displayLoans = useMemo(() => {
     return filteredLoans.filter((loan) => {
+      const q = searchTerm.toLowerCase().trim();
       const matchesSearch =
-        loan.loanNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        loan.borrowerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        loan.borrowerPhone.toLowerCase().includes(searchTerm.toLowerCase());
+        !q ||
+        (loan.loanNumber || '').toLowerCase().includes(q) ||
+        (loan.borrowerName || '').toLowerCase().includes(q) ||
+        (loan.borrowerPhone || '').toLowerCase().includes(q) ||
+        (loan.productName || '').toLowerCase().includes(q);
 
-      const matchesStatus =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'ACTIVE' && (loan.status === 'Disbursed' || loan.status === 'In Arrears')) ||
-        loan.status === statusFilter;
+      const s = String(loan.status || '').toUpperCase();
+      const sf = statusFilter.toUpperCase();
+
+      let matchesStatus = false;
+      if (sf === 'ALL') {
+        matchesStatus = true;
+      } else if (sf === 'ACTIVE') {
+        matchesStatus = ['DISBURSED', 'ACTIVE', 'IN ARREARS', 'IN_ARREARS'].includes(s);
+      } else if (sf === 'SUBMITTED' || sf === 'PENDING') {
+        matchesStatus = ['SUBMITTED', 'PENDING', 'UNDER REVIEW', 'UNDER_REVIEW', 'FOR ASSESSMENT', 'FOR_ASSESSMENT'].includes(s);
+      } else if (sf === 'DRAFT') {
+        matchesStatus = s === 'DRAFT';
+      } else if (sf === 'APPROVED') {
+        matchesStatus = ['APPROVED', 'FOR_DISBURSEMENT'].includes(s);
+      } else if (sf === 'UNDER REVIEW') {
+        matchesStatus = ['UNDER REVIEW', 'UNDER_REVIEW', 'FOR ASSESSMENT', 'FOR_ASSESSMENT'].includes(s);
+      } else if (sf === 'DISBURSED') {
+        matchesStatus = ['DISBURSED', 'ACTIVE'].includes(s);
+      } else if (sf === 'IN ARREARS') {
+        matchesStatus = ['IN ARREARS', 'IN_ARREARS'].includes(s);
+      } else if (sf === 'COMPLETED') {
+        matchesStatus = ['COMPLETED', 'PAID', 'SETTLED'].includes(s);
+      } else if (sf === 'DEFAULTED') {
+        matchesStatus = ['DEFAULTED', 'WRITTEN OFF', 'WRITTEN_OFF'].includes(s);
+      } else if (sf === 'REJECTED') {
+        matchesStatus = ['REJECTED', 'CANCELLED', 'CANCELED'].includes(s);
+      } else {
+        matchesStatus = s === sf;
+      }
 
       const matchesProduct = productFilter === 'ALL' || loan.productId === productFilter;
       const matchesStep = stepFilter === 'ALL' || loan.coopStep === stepFilter;
@@ -116,27 +147,38 @@ export const LoansView: React.FC<LoansViewProps> = ({
     });
   }, [filteredLoans, searchTerm, statusFilter, productFilter, stepFilter]);
 
-  const getCoopStepBadge = (step?: CoopLoanStep) => {
-    switch (step) {
-      case 'SUBMITTED':
-        return { label: 'Step 1: Submitted', color: 'bg-gold-500/10 text-gold-700 border-gold-400/30' };
-      case 'PROCESSOR_VERIFIED':
-        return { label: 'Step 2: Processor Verified', color: 'bg-gold-500/10 text-gold-700 border-gold-400/30' };
-      case 'BOOKKEEPER_VERIFIED':
-        return { label: 'Step 3: Bookkeeper Checked', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
-      case 'CREDIT_COMM_INTERVIEW':
-        return { label: 'Step 4: Credit Comm. Approved', color: 'bg-purple-50 text-purple-700 border-purple-200' };
-      case 'VOUCHER_PREPARED':
-        return { label: 'Step 5: Voucher Ready', color: 'bg-amber-50 text-amber-800 border-amber-200' };
-      case 'MANAGER_APPROVED':
-        return { label: 'Step 6: Manager Approved', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-      case 'DISBURSED':
-        return { label: 'Disbursed & Active', color: 'bg-emerald-100 text-emerald-900 border-emerald-300' };
-      case 'REJECTED':
-        return { label: 'Rejected', color: 'bg-rose-50 text-rose-700 border-rose-200' };
-      default:
-        return { label: 'In Review', color: 'bg-slate-50 text-slate-700 border-slate-200' };
+  const getCoopStepBadge = (step?: CoopLoanStep | string, status?: string) => {
+    const s = String(status || '').toUpperCase();
+    const st = String(step || '').toUpperCase();
+
+    if (s === 'APPROVED' || st === 'FOR_DISBURSEMENT' || st === 'MANAGER_APPROVED') {
+      return { label: 'Approved (For Disbursement)', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
     }
+    if (s === 'REJECTED' || st === 'REJECTED') {
+      return { label: 'Rejected', color: 'bg-rose-50 text-rose-700 border-rose-200' };
+    }
+    if (['ACTIVE', 'DISBURSED', 'IN ARREARS', 'IN_ARREARS'].includes(s) || st === 'ACTIVE_DISBURSED' || st === 'DISBURSED') {
+      return { label: 'Disbursed & Active', color: 'bg-emerald-100 text-emerald-900 border-emerald-300' };
+    }
+    if (s === 'COMPLETED' || s === 'PAID') {
+      return { label: 'Fully Completed', color: 'bg-slate-100 text-slate-800 border-slate-300' };
+    }
+    if (st === 'PROCESSOR_VERIFIED') {
+      return { label: 'Step 2: Processor Verified', color: 'bg-gold-500/10 text-gold-700 border-gold-400/30' };
+    }
+    if (st === 'BOOKKEEPER_VERIFIED') {
+      return { label: 'Step 3: Bookkeeper Checked', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+    }
+    if (st === 'CREDIT_COMM_INTERVIEW') {
+      return { label: 'Step 4: Credit Comm. Approved', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+    }
+    if (st === 'VOUCHER_PREPARED') {
+      return { label: 'Step 5: Voucher Ready', color: 'bg-amber-50 text-amber-800 border-amber-200' };
+    }
+    if (s === 'SUBMITTED' || st === 'SUBMITTED' || st === 'CREDIT_INVESTIGATION') {
+      return { label: 'Submitted · Pending Review', color: 'bg-blue-50 text-blue-700 border-blue-200' };
+    }
+    return { label: status || 'Under Review', color: 'bg-slate-50 text-slate-700 border-slate-200' };
   };
 
   const handleOpenCreditCommModal = (loan: Loan) => {
@@ -302,6 +344,16 @@ export const LoansView: React.FC<LoansViewProps> = ({
               <option value="DISBURSED">Disbursed & Active</option>
             </select>
           </div>
+
+          <button
+            onClick={() => syncWithDatabase()}
+            disabled={isSyncingDb}
+            title="Refresh database records"
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin text-emerald-600' : ''}`} />
+            <span>{isSyncingDb ? 'Syncing…' : 'Refresh'}</span>
+          </button>
         </div>
 
         {/* Status Pill Tabs */}
@@ -309,14 +361,11 @@ export const LoansView: React.FC<LoansViewProps> = ({
           {[
             { id: 'ALL', label: 'All Contracts' },
             { id: 'Draft', label: 'Drafts' },
-            { id: 'Submitted', label: 'Submitted' },
-            { id: 'Under Review', label: 'Under Review' },
+            { id: 'Submitted', label: 'Submitted / Review' },
             { id: 'Approved', label: 'Approved (Ready to Disburse)' },
-            { id: 'Disbursed', label: 'Disbursed' },
-            { id: 'Active', label: 'Active & Current' },
+            { id: 'Disbursed', label: 'Disbursed / Active' },
             { id: 'In Arrears', label: 'In Arrears' },
             { id: 'Completed', label: 'Completed' },
-            { id: 'Defaulted', label: 'Defaulted' },
             { id: 'Rejected', label: 'Rejected' },
           ].map((tab) => (
             <button
@@ -337,8 +386,12 @@ export const LoansView: React.FC<LoansViewProps> = ({
       {/* Loans Grid / Cards */}
       <div className="space-y-4">
         {displayLoans.map((loan) => {
-          const stepInfo = getCoopStepBadge(loan.coopStep);
+          const stepInfo = getCoopStepBadge(loan.coopStep, loan.status);
           const percentPaid = Math.min(100, Math.round((loan.totalPaid / (loan.totalPayable || 1)) * 100));
+          const s = String(loan.status || '').toUpperCase();
+          const isPendingReview = ['DRAFT', 'SUBMITTED', 'PENDING', 'UNDER REVIEW', 'UNDER_REVIEW', 'FOR ASSESSMENT', 'FOR_ASSESSMENT'].includes(s);
+          const isApproved = ['APPROVED', 'FOR_DISBURSEMENT'].includes(s);
+          const isActive = ['ACTIVE', 'DISBURSED', 'IN ARREARS', 'IN_ARREARS'].includes(s);
 
           return (
             <div
@@ -446,7 +499,7 @@ export const LoansView: React.FC<LoansViewProps> = ({
 
                 {/* Pipeline Step Actions */}
                 <div className="flex items-center gap-2">
-                  {loan.status === 'Draft' && (
+                  {s === 'DRAFT' && (
                     <button
                       onClick={() => onSelectLoan(loan)}
                       className="px-3.5 py-1.5 bg-navy-900 hover:bg-navy-800 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
@@ -456,9 +509,9 @@ export const LoansView: React.FC<LoansViewProps> = ({
                     </button>
                   )}
 
-                  {(loan.status === 'Submitted' || loan.status === 'Under Review') && onOpenApprovalDesk && (
+                  {isPendingReview && (
                     <button
-                      onClick={() => onOpenApprovalDesk(loan)}
+                      onClick={() => onOpenApprovalDesk ? onOpenApprovalDesk(loan) : onSelectLoan(loan)}
                       className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
@@ -466,9 +519,9 @@ export const LoansView: React.FC<LoansViewProps> = ({
                     </button>
                   )}
 
-                  {loan.status === 'Approved' && onOpenDisbursementDesk && (
+                  {isApproved && (
                     <button
-                      onClick={() => onOpenDisbursementDesk(loan)}
+                      onClick={() => onOpenDisbursementDesk ? onOpenDisbursementDesk(loan) : onSelectLoan(loan)}
                       className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
                     >
                       <Receipt className="w-3.5 h-3.5" />
@@ -476,17 +529,17 @@ export const LoansView: React.FC<LoansViewProps> = ({
                     </button>
                   )}
 
-                  {(loan.status === 'Disbursed' || loan.status === 'In Arrears' || loan.status === 'Active') && (
+                  {isActive && (
                     <button
                       onClick={() => onOpenRecordPaymentForLoan(loan)}
                       className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
                     >
-                      <Receipt className="w-3.5 h-3.5" />
+                      <DollarSign className="w-3.5 h-3.5" />
                       Collect Payment (OR)
                     </button>
                   )}
 
-                  {loan.status !== 'Disbursed' && loan.status !== 'Active' && loan.status !== 'Completed' && loan.status !== 'Rejected' && onOpenApprovalDesk && (
+                  {!isActive && s !== 'COMPLETED' && s !== 'REJECTED' && onOpenApprovalDesk && (
                     <button
                       onClick={() => onOpenApprovalDesk(loan)}
                       className="px-2.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-medium transition"

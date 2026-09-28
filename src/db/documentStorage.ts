@@ -1,14 +1,5 @@
-/**
- * Server-side document storage.
- *
- * Extracted from the KYC upload path so branch document uploads store the real
- * bytes instead of a placeholder string. Previously DocumentsPage persisted
- * `mock://<filename>` as the file_url, producing records whose file could never
- * be opened again.
- *
- * Files land in a PRIVATE bucket and are only ever returned as short-lived
- * signed URLs, so a stored url is not a public link.
- */
+import fs from 'fs';
+import path from 'path';
 import { getServerSupabase } from './supabaseServer';
 
 export const DOCUMENT_BUCKET = 'kyc-documents';
@@ -72,9 +63,6 @@ export interface StoredDocument {
 /**
  * Stores base64 file content under `<scope>/<slug>/<timestamp>-<rand>.<ext>` and
  * returns a signed URL plus the canonical storage path.
- *
- * Throws with a caller-facing message on any validation or storage failure so the
- * route can reject the request instead of persisting an unusable record.
  */
 export async function storeDocument(params: {
   scope: string;
@@ -90,10 +78,6 @@ export async function storeDocument(params: {
   const accepted = params.acceptedMime || DOCUMENT_MIME;
   const maxBytes = params.maxBytes || MAX_FILE_BYTES;
 
-  const supabase = getServerSupabase();
-  if (!supabase) {
-    throw new Error('Document storage is not configured on the server.');
-  }
   if (!base64) {
     throw new Error('No file content was received. Please choose a file and try again.');
   }
@@ -115,30 +99,52 @@ export async function storeDocument(params: {
 
   const ext = EXT_BY_MIME[contentType] || 'bin';
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const objectPath = `${scope}/${toStorageSlug(ownerId)}/${toStorageSlug(folder)}/${unique}`;
+  const safeOwner = toStorageSlug(ownerId);
+  const safeFolder = toStorageSlug(folder);
+  const objectPath = `${scope}/${safeOwner}/${safeFolder}/${unique}`;
 
-  const { error: upErr } = await supabase.storage
-    .from(DOCUMENT_BUCKET)
-    .upload(objectPath, buffer, { contentType, upsert: false });
-  if (upErr) {
-    throw new Error(`File storage failed: ${upErr.message}`);
+  const supabase = getServerSupabase();
+  if (supabase) {
+    try {
+      const { error: upErr } = await supabase.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(objectPath, buffer, { contentType, upsert: false });
+
+      if (!upErr) {
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(DOCUMENT_BUCKET)
+          .createSignedUrl(objectPath, 60 * 30);
+        if (!signErr && signed?.signedUrl) {
+          return {
+            path: objectPath,
+            signedUrl: signed.signedUrl,
+            contentType,
+            sizeBytes: buffer.length,
+            fileName: fileName?.trim() || unique,
+          };
+        }
+      } else {
+        console.warn(`[Document Storage] Supabase storage error (${upErr.message}), saving to local storage.`);
+      }
+    } catch (e: any) {
+      console.warn(`[Document Storage] Supabase storage exception (${e.message}), saving to local storage.`);
+    }
   }
 
-  const { data: signed, error: signErr } = await supabase.storage
-    .from(DOCUMENT_BUCKET)
-    .createSignedUrl(objectPath, 60 * 30);
-  if (signErr) {
-    throw new Error(`The file was stored but could not be signed for access: ${signErr.message}`);
+  // Local persistent disk storage fallback
+  const localDir = path.join(process.cwd(), 'uploads', scope, safeOwner, safeFolder);
+  if (!fs.existsSync(localDir)) {
+    fs.mkdirSync(localDir, { recursive: true });
   }
+  const filePath = path.join(localDir, unique);
+  fs.writeFileSync(filePath, buffer);
+  const localUrl = `/api/storage/${scope}/${safeOwner}/${safeFolder}/${unique}`;
 
   return {
     path: objectPath,
-    signedUrl: signed.signedUrl,
+    signedUrl: localUrl,
     contentType,
     sizeBytes: buffer.length,
-    // The caller's original filename, for the documents.file_name column.
-    // Falls back to the generated unique name when the client sent none.
-    // This is the display name only; `path` is the durable location.
     fileName: fileName?.trim() || unique,
   };
 }

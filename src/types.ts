@@ -130,6 +130,11 @@ export interface KycReviewLog {
   decision: 'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED';
   notes: string;
   itemsChecked?: string[];
+  correctionDetails?: {
+    section?: string;
+    field?: string;
+    reason?: string;
+  };
 }
 
 export interface Borrower {
@@ -174,6 +179,21 @@ export interface Borrower {
   kycStatus: KycStatus;
   memberStatus: MemberStatus;
   clientStatus?: ClientStatus;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  suffix?: string;
+  hasNoMiddleName?: boolean;
+  currentAddress?: any;
+  permanentAddress?: any;
+  contactInfo?: any;
+  governmentId?: any;
+  declarations?: any;
+  correctionDetails?: {
+    section?: string;
+    field?: string;
+    reason?: string;
+  };
   kycDocuments?: KycDocument[];
   kycReviewLogs?: KycReviewLog[];
   kycCorrectionNotes?: string;

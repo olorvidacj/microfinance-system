@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { LoanProvider } from './context/LoanContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useLoan } from './context/LoanContext';
@@ -20,8 +20,9 @@ import { SavingsView } from './components/SavingsView';
 import { GroupLendingView } from './components/GroupLendingView';
 import { ClientPortalView } from './components/ClientPortalView';
 import { RolesAdminView } from './components/RolesAdminView';
-import { LoginView } from './components/LoginView';
 import { LandingView } from './components/LandingView';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
 import { Building2, Loader2 } from 'lucide-react';
 import {
   LayoutDashboard,
@@ -419,8 +420,7 @@ const ShieldInfoIcon: React.FC = () => (
 // Root gate: restores session, shows public landing, blocks app until authenticated, routes by role
 const AuthGate: React.FC = () => {
   const { user, isRestoring } = useAuth();
-  const [showAuth, setShowAuth] = useState(false);
-  const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'register'>('signin');
+  const navigate = useNavigate();
 
   if (isRestoring) {
     return (
@@ -442,20 +442,29 @@ const AuthGate: React.FC = () => {
         <Route
           path="/"
           element={
-            showAuth ? (
-              <LoginView
-                initialMode={authInitialMode}
-                onBack={() => setShowAuth(false)}
-                onAuthenticated={() => setShowAuth(false)}
-              />
-            ) : (
-              <LandingView
-                onSignIn={(mode = 'signin') => {
-                  setAuthInitialMode(mode);
-                  setShowAuth(true);
-                }}
-              />
-            )
+            <LandingView
+              onSignIn={(mode = 'signin') => navigate(mode === 'register' ? '/register' : '/login')}
+            />
+          }
+        />
+        <Route
+          path="/login"
+          element={
+            <LoginPage
+              onBack={() => navigate('/')}
+              onSwitchToRegister={() => navigate('/register')}
+              onSuccess={() => navigate('/')}
+            />
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <RegisterPage
+              onBack={() => navigate('/')}
+              onSwitchToLogin={() => navigate('/login')}
+              onSuccess={() => navigate('/')}
+            />
           }
         />
         <Route path="/portal" element={<Navigate to="/portal/login" replace />} />

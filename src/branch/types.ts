@@ -142,6 +142,12 @@ export interface BranchLoan {
   purpose?: string;
   daysInArrears?: number;
   underwritingReport?: any;
+  approvalDate?: string;
+  approvedBy?: string;
+  disbursedDate?: string;
+  disbursementMethod?: string;
+  disbursementAccount?: string;
+  disbursementVoucher?: any;
   schedule?: any[];
 }
 
@@ -365,6 +371,7 @@ export interface LoanProduct {
   minTermMonths?: number;
   maxTermMonths?: number;
   interestRatePerMonth?: number;
+  interestRate?: number;
   interestType?: string;
   processingFeePercentage?: number;
   description?: string;
@@ -398,4 +405,104 @@ export interface ReportRow {
   generatedAt: string;
   summary: Record<string, any>;
   rows: Record<string, any>[];
+}
+
+export interface KycStructuredDocument {
+  type: string;
+  name: string;
+  description: string;
+  isUploaded: boolean;
+  documentId: string | null;
+  fileName: string | null;
+  fileUrl: string | null;
+  status: string;
+  rejectionReason: string | null;
+  verifiedBy: string | null;
+  uploadedAt: string | null;
+}
+
+export interface KycAuditLogEntry {
+  id: string;
+  borrowerId: string;
+  kycSubmissionId?: string | null;
+  staffUserId?: string | null;
+  staffName?: string | null;
+  action: string;
+  previousStatus?: string | null;
+  newStatus?: string | null;
+  reason?: string | null;
+  createdAt: string;
+}
+
+export interface KycDossier {
+  client: ClientDetail & {
+    firstName?: string | null;
+    middleName?: string | null;
+    lastName?: string | null;
+    suffix?: string | null;
+    hasNoMiddleName?: boolean;
+    barangay?: string | null;
+    cityMunicipality?: string | null;
+    province?: string | null;
+  };
+  submission: {
+    id: string;
+    status: string;
+    personalInfo?: Record<string, any> | null;
+    address?: Record<string, any> | null;
+    contactInfo?: Record<string, any> | null;
+    employment?: Record<string, any> | null;
+    governmentId?: Record<string, any> | null;
+    declarations?: Record<string, any> | null;
+    currentStep?: number;
+    correctionReason?: string | null;
+    correctionDetails?: any | null;
+    rejectionReason?: string | null;
+    submittedAt?: string | null;
+    reviewedAt?: string | null;
+    reviewedByName?: string | null;
+    verifiedAt?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  documents: KycStructuredDocument[];
+  rawDocuments: any[];
+  auditTrail: KycAuditLogEntry[];
+}
+
+export interface KycQueueItem extends ClientDetail {
+  applicationNumber?: string;
+  effectiveKycStatus?: string;
+  lastUpdated?: string;
+  kycDocumentsList?: any[];
+  kycSubmission?: {
+    id: string;
+    status: string;
+    submittedAt?: string;
+    reviewedAt?: string;
+    reviewedByName?: string;
+    correctionReason?: string;
+    correctionDetails?: any;
+    rejectionReason?: string;
+    personalInfo?: Record<string, any>;
+    address?: Record<string, any>;
+    contactInfo?: Record<string, any>;
+    employment?: Record<string, any>;
+    governmentId?: Record<string, any>;
+    declarations?: Record<string, any>;
+    currentStep?: number;
+  } | null;
+}
+
+export interface KycQueueResult {
+  data: KycQueueItem[];
+  counts: {
+    all: number;
+    pending: number;
+    underReview: number;
+    correctionRequired: number;
+    approved: number;
+    rejected: number;
+    notStarted: number;
+  };
 }

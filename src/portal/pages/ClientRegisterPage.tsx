@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowRight,
-  BadgeCheck,
   CheckCircle2,
   Eye,
   EyeOff,
@@ -14,12 +13,17 @@ import {
   ShieldCheck,
   Smartphone,
   User,
+  FileCheck2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../components/ui';
 
 interface RegistrationFormState {
-  fullName: string;
+  firstName: string;
+  middleName: string;
+  hasNoMiddleName: boolean;
+  lastName: string;
+  suffix: string;
   phone: string;
   email: string;
   password: string;
@@ -28,13 +32,19 @@ interface RegistrationFormState {
 }
 
 const initialForm: RegistrationFormState = {
-  fullName: '',
+  firstName: '',
+  middleName: '',
+  hasNoMiddleName: false,
+  lastName: '',
+  suffix: '',
   phone: '',
   email: '',
   password: '',
   confirmPassword: '',
   agreeTerms: false,
 };
+
+const SUFFIX_OPTIONS = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 
 export const ClientRegisterPage: React.FC = () => {
   const { register } = useAuth();
@@ -59,13 +69,27 @@ export const ClientRegisterPage: React.FC = () => {
   };
 
   const validate = (): string | null => {
-    const cleanName = form.fullName.trim();
-    if (!cleanName || cleanName.length < 2) {
-      return 'Please enter your full legal name (as shown on a government ID).';
+    const fName = form.firstName.trim();
+    if (!fName || fName.length < 2) {
+      return 'Please enter your legal First Name as shown on your government ID.';
     }
 
+    const lName = form.lastName.trim();
+    if (!lName || lName.length < 2) {
+      return 'Please enter your legal Last Name.';
+    }
+
+    if (!form.hasNoMiddleName && form.middleName.trim()) {
+      const invalidMiddlePlaceholders = ['n/a', 'na', 'none', '-', '.'];
+      if (invalidMiddlePlaceholders.includes(form.middleName.trim().toLowerCase())) {
+        return 'Please check "I don\'t have a middle name" instead of typing N/A or None.';
+      }
+    }
+
+    // Philippine mobile number validation
     const cleanPhone = form.phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
+    const isPhMobile = /^(09\d{9}|639\d{9}|9\d{9})$/.test(cleanPhone);
+    if (!isPhMobile) {
       return 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567 or +63 917 123 4567).';
     }
 
@@ -85,7 +109,7 @@ export const ClientRegisterPage: React.FC = () => {
     }
 
     if (!form.agreeTerms) {
-      return 'You must agree to the Terms of Service and Data Privacy Policy to create an account.';
+      return 'You must agree to the Terms of Service and Data Privacy Policy (RA 10173) to create an account.';
     }
 
     return null;
@@ -103,23 +127,35 @@ export const ClientRegisterPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const cleanPhone = form.phone.replace(/\D/g, '');
+      let cleanPhone = form.phone.replace(/\D/g, '');
+      if (cleanPhone.startsWith('63')) cleanPhone = '0' + cleanPhone.slice(2);
+      if (cleanPhone.startsWith('9') && cleanPhone.length === 10) cleanPhone = '0' + cleanPhone;
+
+      const composedFullName = [
+        form.firstName.trim(),
+        (!form.hasNoMiddleName && form.middleName.trim()) ? form.middleName.trim() : null,
+        form.lastName.trim(),
+        form.suffix.trim() ? form.suffix.trim() : null,
+      ].filter(Boolean).join(' ');
+
       const user = await register({
-        fullName: form.fullName.trim(),
+        fullName: composedFullName,
+        firstName: form.firstName.trim(),
+        middleName: (!form.hasNoMiddleName && form.middleName.trim()) ? form.middleName.trim() : undefined,
+        lastName: form.lastName.trim(),
+        suffix: form.suffix.trim() || undefined,
+        hasNoMiddleName: form.hasNoMiddleName,
         phone: cleanPhone,
         email: form.email.trim().toLowerCase() || undefined,
         password: form.password,
+        confirmPassword: form.confirmPassword,
+        agreeTerms: form.agreeTerms,
       });
 
       setRegisteredUser({
-        fullName: user.fullName || form.fullName.trim(),
+        fullName: user.fullName || composedFullName,
         email: user.email || form.email.trim(),
       });
-
-      // Redirect into portal to show dashboard with Pending KYC status
-      setTimeout(() => {
-        navigate('/portal', { replace: true });
-      }, 1500);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check your information and try again.');
     } finally {
@@ -129,36 +165,47 @@ export const ClientRegisterPage: React.FC = () => {
 
   if (registeredUser) {
     return (
-      <div id="register-success-view" className="py-6 text-center animate-fade-in">
+      <div id="register-success-view" className="py-6 text-center animate-fade-in space-y-6">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/50">
           <CheckCircle2 className="h-8 w-8" />
         </div>
-        <h2 className="mt-4 text-2xl font-bold tracking-tight text-slate-900">
-          Welcome to HOSCOMCO!
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Your client account for <strong className="text-slate-800">{registeredUser.fullName}</strong> has been created.
-        </p>
 
-        <div className="mx-auto mt-5 max-w-sm rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-left text-xs text-amber-900">
-          <div className="flex items-center gap-2 font-semibold text-amber-950">
-            <Shield className="h-4 w-4 text-amber-700 shrink-0" />
-            <span>Account Status: Pending KYC / Incomplete Profile</span>
-          </div>
-          <p className="mt-1 leading-relaxed text-amber-800">
-            All financial balances start at ₱0.00. You can complete your profile and KYC verification directly in your member portal to unlock loan applications.
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+            Account created successfully.
+          </h2>
+          <p className="mt-1.5 text-sm text-slate-600 max-w-md mx-auto">
+            Your client account for <strong className="text-slate-800">{registeredUser.fullName}</strong> has been created.
           </p>
         </div>
 
-        <div className="mt-6 flex flex-col items-center justify-center gap-2">
+        <div className="mx-auto max-w-md rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-left text-xs text-amber-900 shadow-xs">
+          <div className="flex items-center gap-2 font-bold text-amber-950">
+            <Shield className="h-4 w-4 text-amber-700 shrink-0" />
+            <span>Complete Your KYC</span>
+          </div>
+          <p className="mt-1.5 leading-relaxed text-amber-800">
+            Your account has been created. Please complete your KYC verification to access HOSCOMO services such as loan applications and savings withdrawals.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 max-w-md mx-auto">
           <Button
-            id="btn-go-to-portal"
-            onClick={() => navigate('/portal', { replace: true })}
-            className="w-full max-w-xs"
+            id="btn-complete-kyc"
+            onClick={() => navigate('/portal/kyc', { replace: true })}
+            className="w-full sm:flex-1 py-3 text-sm font-semibold shadow-md shadow-emerald-600/10"
           >
-            Go to Member Portal <ArrowRight className="h-4 w-4 ml-1.5" />
+            <FileCheck2 className="h-4 w-4 mr-2" /> Complete KYC
           </Button>
-          <span className="text-[11px] text-slate-400">Redirecting automatically…</span>
+
+          <Button
+            id="btn-continue-dashboard"
+            variant="outline"
+            onClick={() => navigate('/portal', { replace: true })}
+            className="w-full sm:flex-1 py-3 text-sm font-semibold border-slate-300 hover:bg-slate-50"
+          >
+            Continue to Dashboard <ArrowRight className="h-4 w-4 ml-1.5" />
+          </Button>
         </div>
       </div>
     );
@@ -173,10 +220,10 @@ export const ClientRegisterPage: React.FC = () => {
           <span>Quick Client Registration</span>
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-          Create Member Account
+          Create Client Account
         </h2>
         <p className="mt-1 text-xs sm:text-sm text-slate-500">
-          Register in seconds with just your basic contact details. Complete your profile and KYC documents later.
+          Sign up with your basic details. Full KYC verification will follow before applying for loans.
         </p>
       </div>
 
@@ -194,27 +241,94 @@ export const ClientRegisterPage: React.FC = () => {
 
       {/* Simplified Registration Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Full Name */}
-        <div>
-          <label htmlFor="reg-fullname" className="block text-xs font-semibold text-slate-700 mb-1">
-            Full Legal Name <span className="text-rose-500">*</span>
-          </label>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        {/* Legal First & Middle Name */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="reg-firstname" className="block text-xs font-semibold text-slate-700 mb-1">
+              Legal First Name <span className="text-rose-500">*</span>
+            </label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                id="reg-firstname"
+                type="text"
+                required
+                autoComplete="given-name"
+                placeholder="e.g. Maria Teresa"
+                value={form.firstName}
+                onChange={(e) => update('firstName', e.target.value)}
+                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="reg-middlename" className="block text-xs font-semibold text-slate-700">
+                Middle Name
+              </label>
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.hasNoMiddleName}
+                  onChange={(e) => {
+                    update('hasNoMiddleName', e.target.checked);
+                    if (e.target.checked) update('middleName', '');
+                  }}
+                  className="h-3 w-3 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
+                />
+                <span>I don't have a middle name</span>
+              </label>
+            </div>
             <input
-              id="reg-fullname"
+              id="reg-middlename"
               type="text"
-              required
-              autoComplete="name"
-              placeholder="e.g. Maria Teresa Santos"
-              value={form.fullName}
-              onChange={(e) => update('fullName', e.target.value)}
-              className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
+              disabled={form.hasNoMiddleName}
+              autoComplete="additional-name"
+              placeholder={form.hasNoMiddleName ? 'No middle name' : 'e.g. Reyes'}
+              value={form.middleName}
+              onChange={(e) => update('middleName', e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed"
             />
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
-            As shown on your government-issued ID.
-          </p>
+        </div>
+
+        {/* Legal Last Name & Suffix */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="sm:col-span-2">
+            <label htmlFor="reg-lastname" className="block text-xs font-semibold text-slate-700 mb-1">
+              Legal Last Name <span className="text-rose-500">*</span>
+            </label>
+            <input
+              id="reg-lastname"
+              type="text"
+              required
+              autoComplete="family-name"
+              placeholder="e.g. Santos"
+              value={form.lastName}
+              onChange={(e) => update('lastName', e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="reg-suffix" className="block text-xs font-semibold text-slate-700 mb-1">
+              Suffix <span className="text-[10px] text-slate-400 font-normal">(Optional)</span>
+            </label>
+            <select
+              id="reg-suffix"
+              value={form.suffix}
+              onChange={(e) => update('suffix', e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
+            >
+              <option value="">None</option>
+              {SUFFIX_OPTIONS.filter(Boolean).map((sfx) => (
+                <option key={sfx} value={sfx}>
+                  {sfx}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Mobile Number */}
@@ -237,7 +351,7 @@ export const ClientRegisterPage: React.FC = () => {
             />
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
-            Used for account sign in, notifications, and security notices.
+            Accepts format: 09XXXXXXXXX or +639XXXXXXXXX.
           </p>
         </div>
 
@@ -263,9 +377,6 @@ export const ClientRegisterPage: React.FC = () => {
               className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
             />
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
-            If provided, you can also use your email to sign in and receive statements.
-          </p>
         </div>
 
         {/* Password and Confirm Password */}
@@ -339,7 +450,7 @@ export const ClientRegisterPage: React.FC = () => {
               className="mt-0.5 h-4 w-4 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
             />
             <span className="text-xs text-slate-600 leading-relaxed">
-              I agree to the HOSCOMCO <span className="font-semibold text-slate-800">Terms of Service</span> and consent to data processing under the <span className="font-semibold text-slate-800">Data Privacy Act (RA 10173)</span>.
+              I agree to the HOSCOMO <span className="font-semibold text-slate-800">Terms of Service</span> and consent to data processing under the <span className="font-semibold text-slate-800">Data Privacy Act (RA 10173)</span>.
             </span>
           </label>
         </div>
@@ -353,7 +464,7 @@ export const ClientRegisterPage: React.FC = () => {
             loading={loading}
             className="py-3 text-sm font-semibold"
           >
-            <ShieldCheck className="h-4 w-4 mr-1" /> Create Account
+            <ShieldCheck className="h-4 w-4 mr-1" /> Create Client Account
           </Button>
         </div>
       </form>

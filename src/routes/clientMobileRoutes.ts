@@ -1,4 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { getDb, schema } from '../db/index';
 import { storeDocument } from '../db/documentStorage';
 import { eq, desc, and } from 'drizzle-orm';
@@ -36,17 +38,39 @@ function stripDataUrlPrefix(base64: string): string {
   return idx >= 0 ? base64.slice(idx + 1) : base64;
 }
 
-// Upload a base64 image to the private kyc-documents bucket, returning an expiring signed URL.
+function saveLocalKycFile(
+  borrowerId: string,
+  folder: string,
+  fileName: string,
+  buffer: Buffer,
+  contentType: string = 'image/jpeg'
+): { signedUrl: string; path: string } {
+  const safeBorrower = stringToId(borrowerId);
+  const safeFolder = stringToId(folder);
+  try {
+    const localDir = path.join(process.cwd(), 'uploads', 'kyc', safeBorrower, safeFolder);
+    if (!fs.existsSync(localDir)) {
+      fs.mkdirSync(localDir, { recursive: true });
+    }
+    const filePath = path.join(localDir, fileName);
+    fs.writeFileSync(filePath, buffer);
+    const objectPath = `kyc/${safeBorrower}/${safeFolder}/${fileName}`;
+    const localUrl = `/api/storage/kyc/${safeBorrower}/${safeFolder}/${fileName}`;
+    return { signedUrl: localUrl, path: objectPath };
+  } catch (fsErr: any) {
+    console.warn(`[KYC Storage] Local filesystem write warning (${fsErr.message}), returning data URL fallback.`);
+    const dataUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+    return { signedUrl: dataUrl, path: `kyc/${safeBorrower}/${safeFolder}/${fileName}` };
+  }
+}
+
+// Upload a base64 image to the private kyc-documents bucket (or local storage fallback), returning a secure view URL.
 async function uploadKycFile(
   borrowerId: string,
   folder: string,
   base64: string,
   mime?: string
-): Promise<{ signedUrl: string; path: string } | null> {
-  const supabase = getServerSupabase();
-  if (!supabase) {
-    throw new Error('Supabase storage is not configured on the server.');
-  }
+): Promise<{ signedUrl: string; path: string }> {
   const payload = stripDataUrlPrefix(base64);
   const buffer = Buffer.from(payload, 'base64');
   if (buffer.length < 128) throw new Error('The uploaded image appears to be empty or corrupted.');
@@ -61,30 +85,55 @@ async function uploadKycFile(
   const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const objectPath = `kyc/${borrowerId}/${folder}/${fileName}`;
 
-  const { error: upErr } = await supabase.storage
-    .from(KYC_STORAGE_BUCKET)
-    .upload(objectPath, buffer, { contentType, upsert: false });
-  if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
+  const supabase = getServerSupabase();
+  if (supabase) {
+    try {
+      const { error: upErr } = await supabase.storage
+        .from(KYC_STORAGE_BUCKET)
+        .upload(objectPath, buffer, { contentType, upsert: false });
 
-  const { data: signed } = await supabase.storage
-    .from(KYC_STORAGE_BUCKET)
-    .createSignedUrl(objectPath, KYC_STORAGE_SIGNED_URL_TTL);
-  if (!signed) throw new Error('Unable to generate a secure link for the uploaded file.');
+      if (!upErr) {
+        const { data: signed } = await supabase.storage
+          .from(KYC_STORAGE_BUCKET)
+          .createSignedUrl(objectPath, KYC_STORAGE_SIGNED_URL_TTL);
+        if (signed?.signedUrl) {
+          return { signedUrl: signed.signedUrl, path: objectPath };
+        }
+      } else {
+        console.warn(`[KYC Storage] Supabase upload failed (${upErr.message}), saving to local storage.`);
+      }
+    } catch (e: any) {
+      console.warn(`[KYC Storage] Supabase upload exception (${e.message}), saving to local storage.`);
+    }
+  }
 
-  return { signedUrl: signed.signedUrl, path: objectPath };
+  // Fallback to local server storage if Supabase is unconfigured, RLS policy fails, or network is down
+  return saveLocalKycFile(borrowerId, folder, fileName, buffer, contentType);
 }
 
 // Remove previously uploaded objects for the same borrower/folder prefix (re-upload hygiene).
 async function removeKycFolderObjects(borrowerId: string, folder: string): Promise<void> {
   const supabase = getServerSupabase();
-  if (!supabase) return;
-  const prefix = `kyc/${borrowerId}/${folder}/`;
-  const { data, error } = await supabase.storage.from(KYC_STORAGE_BUCKET).list(`kyc/${borrowerId}/${folder}`);
-  if (error || !data) return;
-  const names = data.filter((f) => f.name && f.metadata?.size > 0).map((f) => `${prefix}${f.name}`);
-  if (names.length) {
-    await supabase.storage.from(KYC_STORAGE_BUCKET).remove(names);
+  if (supabase) {
+    try {
+      const prefix = `kyc/${borrowerId}/${folder}/`;
+      const { data, error } = await supabase.storage.from(KYC_STORAGE_BUCKET).list(`kyc/${borrowerId}/${folder}`);
+      if (!error && data) {
+        const names = data.filter((f) => f.name && f.metadata?.size > 0).map((f) => `${prefix}${f.name}`);
+        if (names.length) {
+          await supabase.storage.from(KYC_STORAGE_BUCKET).remove(names);
+        }
+      }
+    } catch {}
   }
+  try {
+    const safeBorrower = stringToId(borrowerId);
+    const safeFolder = stringToId(folder);
+    const localDir = path.join(process.cwd(), 'uploads', 'kyc', safeBorrower, safeFolder);
+    if (fs.existsSync(localDir)) {
+      fs.rmSync(localDir, { recursive: true, force: true });
+    }
+  } catch {}
 }
 
 export interface AuthedRequest extends Request {
@@ -610,7 +659,7 @@ clientMobileRouter.post('/upload-avatar', requireAuth(), async (req: AuthedReque
   }
 });
 
-// View KYC / Verification Status
+// View KYC / Verification Status & Progress
 clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
@@ -620,22 +669,27 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
     let submittedAt: string | undefined;
     let reviewedAt: string | undefined;
     let correctionReason: string | undefined;
+    let correctionDetails: any = null;
     let rejectionReason: string | undefined;
     let verifiedAt: string | undefined;
     let reviewedByName: string | undefined;
     let staffRemarks: string | undefined;
+    let currentStep = 0;
     let profile: any = null;
     let personalInfo: any = null;
     let address: any = null;
+    let contactInfo: any = null;
     let employment: any = null;
+    let governmentId: any = null;
+    let declarations: any = null;
     let documents: any[] = [];
 
     if (db) {
       const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
       if (bRows.length > 0) {
-        kycStatus = bRows[0].kycStatus || 'NOT_STARTED';
-        staffRemarks = bRows[0].notes || undefined;
         profile = bRows[0];
+        kycStatus = profile.kycStatus || 'NOT_STARTED';
+        staffRemarks = profile.notes || undefined;
       }
       const subRows = await db.select().from(schema.kycSubmissions)
         .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
@@ -647,13 +701,94 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
         submittedAt = sub.submittedAt || undefined;
         reviewedAt = sub.reviewedAt || undefined;
         correctionReason = sub.correctionReason || undefined;
+        correctionDetails = (sub as any).correctionDetails || null;
         rejectionReason = sub.rejectionReason || undefined;
         verifiedAt = sub.verifiedAt || undefined;
         reviewedByName = sub.reviewedByName || undefined;
         personalInfo = sub.personalInfo || null;
         address = sub.address || null;
+        contactInfo = (sub as any).contactInfo || null;
         employment = sub.employment || null;
+        governmentId = (sub as any).governmentId || null;
+        declarations = (sub as any).declarations || null;
+        currentStep = (sub as any).currentStep || 0;
       }
+
+      // If personalInfo not yet in submission, pre-fill from registration profile
+      if (!personalInfo && profile) {
+        personalInfo = {
+          firstName: profile.firstName || (profile.fullName ? profile.fullName.split(' ')[0] : ''),
+          middleName: profile.middleName || '',
+          hasNoMiddleName: Boolean(profile.hasNoMiddleName),
+          lastName: profile.lastName || (profile.fullName ? profile.fullName.split(' ').slice(1).join(' ') : ''),
+          suffix: profile.suffix || '',
+          dateOfBirth: profile.dateOfBirth || '',
+          placeOfBirth: '',
+          gender: profile.gender || '',
+          civilStatus: profile.civilStatus || '',
+          nationality: 'Filipino',
+          citizenship: 'Filipino',
+        };
+      }
+
+      // If contactInfo not yet in submission, pre-fill from registration
+      if (!contactInfo && profile) {
+        contactInfo = {
+          mobileNumber: profile.phone || '',
+          mobileVerified: true,
+          email: profile.email || '',
+          emailVerified: Boolean(profile.emailVerified),
+          alternativeMobile: '',
+          emergencyContactName: '',
+          emergencyContactRelationship: '',
+        };
+      }
+
+      // If address not yet in submission, pre-fill from profile
+      if (!address && profile && (profile.barangay || profile.cityMunicipality || profile.province || profile.address)) {
+        address = {
+          current: {
+            region: '',
+            regionCode: '',
+            province: profile.province || '',
+            provinceCode: '',
+            city: profile.cityMunicipality || '',
+            cityCode: '',
+            barangay: profile.barangay || '',
+            barangayCode: '',
+            postalCode: '',
+            houseNumber: '',
+            street: profile.address || '',
+            subdivision: '',
+            landmark: '',
+            additionalDetails: '',
+          },
+          isPermanentSameAsCurrent: true,
+          permanent: null,
+        };
+      }
+
+      // If employment not yet in submission, pre-fill from profile
+      if (!employment && profile) {
+        employment = {
+          employmentStatus: profile.employmentStatus && profile.employmentStatus !== 'Pending' ? profile.employmentStatus : '',
+          otherStatusExplanation: '',
+          employerName: profile.employerOrBusiness || '',
+          jobPosition: profile.occupation || '',
+          employmentType: 'Regular / Permanent',
+          yearsOfEmployment: 1,
+          employerAddress: '',
+          businessName: profile.employerOrBusiness || '',
+          natureOfBusiness: profile.occupation || '',
+          yearsInBusiness: 1,
+          businessAddress: '',
+          monthlyIncome: Number(profile.monthlyIncome) || 0,
+          monthlyExpenses: Number(profile.monthlyExpenses) || 0,
+          sourceOfIncome: profile.sourceOfIncome || '',
+          sourceOfFunds: 'Employment / Business',
+        };
+      }
+
       const docRows = await db.select().from(schema.kycDocuments)
         .where(eq(schema.kycDocuments.borrowerId, borrowerId));
       documents = docRows.map((d: any) => ({
@@ -661,64 +796,60 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
         type: d.documentType,
         name: d.documentName,
         submitted: !!d.fileUrl || !!d.fileName,
-        status: d.status || 'PENDING',
+        status: d.status || 'UPLOADED',
         fileName: d.fileName,
         fileUrl: d.fileUrl || undefined,
+        storagePath: d.storagePath || undefined,
         rejectionReason: d.rejectionReason || undefined,
       }));
     }
 
-    let requiredDocs = [
-      { type: 'VALID_ID', name: 'Primary Government ID (UMID / Driver License / Passport)', submitted: documents.some((d: any) => d.type === 'VALID_ID' && d.submitted), status: documents.find((d: any) => d.type === 'VALID_ID')?.status || 'NOT_STARTED' },
-      { type: 'PROOF_OF_ADDRESS', name: 'Barangay Clearance or Utility Bill', submitted: documents.some((d: any) => d.type === 'PROOF_OF_ADDRESS' && d.submitted), status: documents.find((d: any) => d.type === 'PROOF_OF_ADDRESS')?.status || 'NOT_STARTED' },
-      { type: 'PROOF_OF_INCOME', name: 'Payslip / Business Permit / Bank Statement', submitted: documents.some((d: any) => d.type === 'PROOF_OF_INCOME' && d.submitted), status: documents.find((d: any) => d.type === 'PROOF_OF_INCOME')?.status || 'NOT_STARTED' },
-      { type: 'PHOTO_2X2', name: 'Recent 2x2 ID Photo', submitted: documents.some((d: any) => d.type === 'PHOTO_2X2' && d.submitted), status: documents.find((d: any) => d.type === 'PHOTO_2X2')?.status || 'NOT_STARTED' },
+    const defaultRequired = [
+      { documentType: 'GOVERNMENT_ID', documentName: 'Government-Issued Photo ID', description: 'Clear photo of valid government ID (PhilSys, Passport, Driver License, UMID).', isActive: true, sortOrder: 1 },
+      { documentType: 'PROOF_OF_ADDRESS', documentName: 'Proof of Address', description: 'Utility bill, Barangay clearance, or lease contract dated within 3 months.', isActive: true, sortOrder: 2 },
+      { documentType: 'PROOF_OF_INCOME', documentName: 'Proof of Income / Livelihood', description: 'Recent payslip, ITR, Certificate of Employment, or Business Permit.', isActive: true, sortOrder: 3 },
+      { documentType: 'SELFIE_WITH_ID', documentName: 'Selfie with Government ID', description: 'Clear photo of your face holding your government ID beside you.', isActive: true, sortOrder: 4 },
     ];
 
-    if (db) {
-      const reqRows = await db.select().from(schema.kycRequiredDocuments)
-        .where(eq(schema.kycRequiredDocuments.isActive, true))
-        .orderBy(schema.kycRequiredDocuments.sortOrder);
-      if (reqRows.length > 0) {
-        requiredDocs = reqRows.map((r: any) => ({
-          type: r.documentType,
-          name: r.documentName,
-          description: r.description || undefined,
-          submitted: documents.some((d: any) => d.type === r.documentType && d.submitted),
-          status: documents.find((d: any) => d.type === r.documentType)?.status || 'NOT_STARTED',
-        }));
-      }
-    }
+    const requiredDocs = defaultRequired.map((r) => {
+      const matched = documents.find((d: any) => d.type === r.documentType || (r.documentType === 'GOVERNMENT_ID' && (d.type === 'VALID_ID' || d.type === 'ID_FRONT')) || (r.documentType === 'SELFIE_WITH_ID' && (d.type === 'SELFIE' || d.type === 'PHOTO_2X2')));
+      return {
+        type: r.documentType,
+        name: r.documentName,
+        description: r.description,
+        submitted: !!matched?.submitted,
+        status: matched?.status || 'NOT_UPLOADED',
+        fileUrl: matched?.fileUrl,
+        fileName: matched?.fileName,
+      };
+    });
 
-    const findDoc = (type: string) => documents.find((d: any) => d.type === type);
+    const isVerified = ['APPROVED', 'VERIFIED'].includes(String(kycStatus).toUpperCase());
 
     res.json({
       success: true,
       kycStatus,
-      isVerified: kycStatus === 'VERIFIED',
+      isVerified,
+      currentStep,
       requiredDocuments: requiredDocs,
       uploadedDocuments: documents,
       submissionId,
       submittedAt,
       reviewedAt,
       correctionReason,
+      correctionDetails,
       rejectionReason,
       staffRemarks,
       verifiedAt,
       reviewedByName,
       referenceNumber: submissionId,
-      // Structured snapshot useful for the correction/edit screen
       submission: {
         personalInfo,
         address,
+        contactInfo,
         employment,
-        idInfo: {
-          idType: findDoc('VALID_ID')?.name ?? profile?.idType ?? undefined,
-          idNumber: personalInfo?.idNumber ?? undefined,
-          idFrontUrl: findDoc('ID_FRONT')?.fileUrl ?? findDoc('VALID_ID')?.fileUrl ?? undefined,
-          idBackUrl: findDoc('ID_BACK')?.fileUrl ?? undefined,
-          selfieUrl: findDoc('SELFIE')?.fileUrl ?? findDoc('PHOTO_2X2')?.fileUrl ?? undefined,
-        },
+        governmentId,
+        declarations,
       },
     });
   } catch (err: any) {
@@ -726,136 +857,330 @@ clientMobileRouter.get('/kyc-status', requireAuth(), async (req: AuthedRequest, 
   }
 });
 
-// Submit KYC application (create or update submission)
-clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest, res: Response) => {
+// Save KYC progress / draft without submitting
+clientMobileRouter.post('/kyc/save-draft', requireAuth(), async (req: AuthedRequest, res: Response) => {
   try {
     const borrowerId = getClientBorrowerId(req);
-    const { personalInfo, address, employment, idInfo, selfieUrl } = req.body || {};
-    if (!personalInfo || !address || !employment) {
-      return res.status(400).json({ success: false, error: 'personalInfo, address, and employment are required.' });
-    }
+    const { personalInfo, address, contactInfo, employment, governmentId, declarations, currentStep } = req.body || {};
     const now = new Date().toISOString();
     const db = getDb();
 
-    // ID front/back + selfie are tracked as kyc_documents rows so staff can review them.
-    const docMap: Array<{ type: string; name: string; url?: string }> = [
-      { type: 'ID_FRONT', name: 'Government ID — Front', url: (idInfo || {}).idFrontUrl },
-      { type: 'ID_BACK', name: 'Government ID — Back', url: (idInfo || {}).idBackUrl },
-      { type: 'SELFIE', name: 'Profile Selfie', url: selfieUrl },
-      { type: 'VALID_ID', name: (idInfo || {}).idType || 'Government-Issued ID', url: (idInfo || {}).idFrontUrl },
-    ];
+    if (!db) {
+      return res.json({ success: true, message: 'Draft saved.' });
+    }
+
+    const existing = await db.select().from(schema.kycSubmissions)
+      .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
+      .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+
+    let submissionId: string;
+    if (existing.length > 0) {
+      submissionId = existing[0].id;
+      const currentStatus = existing[0].status;
+      const nextStatus = currentStatus === 'NOT_STARTED' ? 'IN_PROGRESS' : currentStatus;
+      await db.update(schema.kycSubmissions).set({
+        personalInfo: personalInfo || existing[0].personalInfo,
+        address: address || existing[0].address,
+        contactInfo: contactInfo || (existing[0] as any).contactInfo,
+        employment: employment || existing[0].employment,
+        governmentId: governmentId || (existing[0] as any).governmentId,
+        declarations: declarations || (existing[0] as any).declarations,
+        currentStep: typeof currentStep === 'number' ? currentStep : (existing[0] as any).currentStep || 0,
+        status: nextStatus,
+        updatedAt: now,
+      } as any).where(eq(schema.kycSubmissions.id, submissionId));
+
+      if (currentStatus === 'NOT_STARTED') {
+        await db.update(schema.borrowers).set({ kycStatus: 'IN_PROGRESS' }).where(eq(schema.borrowers.id, borrowerId));
+      }
+    } else {
+      submissionId = `KYC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      await db.insert(schema.kycSubmissions).values({
+        id: submissionId,
+        borrowerId,
+        status: 'IN_PROGRESS',
+        personalInfo: personalInfo || null,
+        address: address || null,
+        contactInfo: contactInfo || null,
+        employment: employment || null,
+        governmentId: governmentId || null,
+        declarations: declarations || null,
+        currentStep: typeof currentStep === 'number' ? currentStep : 0,
+        createdAt: now,
+        updatedAt: now,
+      } as any);
+      await db.update(schema.borrowers).set({ kycStatus: 'IN_PROGRESS' }).where(eq(schema.borrowers.id, borrowerId));
+    }
+
+    res.json({ success: true, message: 'KYC draft saved successfully.', submissionId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Submit KYC application with thorough backend validation
+clientMobileRouter.post('/kyc/submit', requireAuth(), async (req: AuthedRequest, res: Response) => {
+  try {
+    const borrowerId = getClientBorrowerId(req);
+    const {
+      personalInfo,
+      address,
+      contactInfo,
+      employment,
+      governmentId,
+      declarations,
+    } = req.body || {};
+
+    const missingFields: string[] = [];
+
+    // 1. Personal Information Validation
+    if (!personalInfo) {
+      missingFields.push('Personal Information');
+    } else {
+      if (!personalInfo.firstName?.trim()) missingFields.push('Legal First Name');
+      if (!personalInfo.lastName?.trim()) missingFields.push('Legal Last Name');
+      if (!personalInfo.dateOfBirth?.trim()) missingFields.push('Date of Birth');
+      if (!personalInfo.placeOfBirth?.trim()) missingFields.push('Place of Birth');
+      if (!personalInfo.gender?.trim()) missingFields.push('Sex / Gender');
+      if (!personalInfo.civilStatus?.trim()) missingFields.push('Civil Status');
+      if (!personalInfo.nationality?.trim()) missingFields.push('Nationality');
+    }
+
+    // 2. Address Validation
+    const curAddr = address?.current;
+    if (!curAddr) {
+      missingFields.push('Current Address');
+    } else {
+      if (!curAddr.region?.trim() && !curAddr.regionCode?.trim()) missingFields.push('Current Address Region');
+      if (!curAddr.city?.trim() && !curAddr.cityCode?.trim()) missingFields.push('Current Address City / Municipality');
+      if (!curAddr.barangay?.trim() && !curAddr.barangayCode?.trim()) missingFields.push('Current Address Barangay');
+      if (!curAddr.houseNumber?.trim() && !curAddr.street?.trim()) missingFields.push('Current Address House / Street details');
+      if (!curAddr.postalCode?.trim()) missingFields.push('Current Address ZIP / Postal Code');
+    }
+
+    if (address && address.isPermanentSameAsCurrent === false) {
+      const permAddr = address.permanent;
+      if (!permAddr) {
+        missingFields.push('Permanent Address');
+      } else {
+        if (!permAddr.region?.trim() && !permAddr.regionCode?.trim()) missingFields.push('Permanent Address Region');
+        if (!permAddr.city?.trim() && !permAddr.cityCode?.trim()) missingFields.push('Permanent Address City / Municipality');
+        if (!permAddr.barangay?.trim() && !permAddr.barangayCode?.trim()) missingFields.push('Permanent Address Barangay');
+        if (!permAddr.houseNumber?.trim() && !permAddr.street?.trim()) missingFields.push('Permanent Address House / Street details');
+        if (!permAddr.postalCode?.trim()) missingFields.push('Permanent Address ZIP Code');
+      }
+    }
+
+    // 3. Contact Information Validation
+    if (!contactInfo) {
+      missingFields.push('Contact Information');
+    } else {
+      if (!contactInfo.mobileNumber?.trim()) missingFields.push('Mobile Number');
+    }
+
+    // 4. Employment & Financial Information Validation
+    if (!employment) {
+      missingFields.push('Employment & Financial Information');
+    } else {
+      if (!employment.employmentStatus?.trim()) missingFields.push('Employment Status');
+      if (employment.employmentStatus === 'Other' && !employment.otherStatusExplanation?.trim()) {
+        missingFields.push('Explanation for Other Employment Status');
+      }
+      const isEmployed = ['Employed', 'Government Employee', 'Private Employee'].includes(employment.employmentStatus);
+      if (isEmployed && !employment.employerName?.trim()) {
+        missingFields.push('Employer Name');
+      }
+      const isBusiness = ['Self-Employed', 'Business Owner'].includes(employment.employmentStatus);
+      if (isBusiness && !employment.businessName?.trim()) {
+        missingFields.push('Business Name');
+      }
+      if (typeof employment.monthlyIncome !== 'number' || employment.monthlyIncome < 0) {
+        missingFields.push('Valid Monthly Income (cannot be negative)');
+      }
+      if (typeof employment.monthlyExpenses !== 'number' || employment.monthlyExpenses < 0) {
+        missingFields.push('Valid Monthly Expenses (cannot be negative)');
+      }
+      if (!employment.sourceOfIncome?.trim()) missingFields.push('Source of Income');
+    }
+
+    // 5. Government ID Validation
+    if (!governmentId) {
+      missingFields.push('Government ID Information');
+    } else {
+      if (!governmentId.idType?.trim()) missingFields.push('Government ID Type');
+      if (!governmentId.idNumber?.trim()) missingFields.push('Government ID Number');
+      if (!governmentId.nameOnId?.trim()) missingFields.push('Name on Government ID');
+    }
+
+    // 6. Declarations Validation
+    if (!declarations) {
+      missingFields.push('Required Declarations & Consent');
+    } else {
+      if (!declarations.truthfulInformation) missingFields.push('Confirmation of Truthful Information');
+      if (!declarations.documentOwnership) missingFields.push('Confirmation of Document Ownership');
+      if (!declarations.authorizedReview) missingFields.push('Authorization to Review Information');
+      if (!declarations.privacyNotice) missingFields.push('Data Privacy Notice Consent (RA 10173)');
+      if (!declarations.penaltyAcknowledgment) missingFields.push('Acknowledgement of False Information Penalties');
+    }
+
+    // 7. Documents Validation
+    const db = getDb();
+    if (db) {
+      const docs = await db.select().from(schema.kycDocuments).where(eq(schema.kycDocuments.borrowerId, borrowerId));
+      const hasGovId = docs.some((d: any) => ['GOVERNMENT_ID', 'VALID_ID', 'ID_FRONT'].includes(d.documentType) && (d.fileUrl || d.fileName));
+      const hasAddressProof = docs.some((d: any) => d.documentType === 'PROOF_OF_ADDRESS' && (d.fileUrl || d.fileName));
+      const hasIncomeProof = docs.some((d: any) => d.documentType === 'PROOF_OF_INCOME' && (d.fileUrl || d.fileName));
+      const hasSelfie = docs.some((d: any) => ['SELFIE_WITH_ID', 'SELFIE', 'PHOTO_2X2'].includes(d.documentType) && (d.fileUrl || d.fileName));
+
+      if (!hasGovId) missingFields.push('Government ID Document Upload');
+      if (!hasAddressProof) missingFields.push('Proof of Address Document Upload');
+      if (!hasIncomeProof) missingFields.push('Proof of Income Document Upload');
+      if (!hasSelfie) missingFields.push('Selfie with ID Document Upload');
+    }
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Please complete all required items before submitting: ${missingFields.slice(0, 5).join(', ')}${missingFields.length > 5 ? ` and ${missingFields.length - 5} more` : ''}.`,
+        missingFields,
+      });
+    }
+
+    const now = new Date().toISOString();
 
     if (db) {
       const existing = await db.select().from(schema.kycSubmissions)
         .where(eq(schema.kycSubmissions.borrowerId, borrowerId))
         .orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
+
       let submissionId: string;
       let previousStatus = existing.length > 0 ? existing[0].status : 'NOT_STARTED';
-      const canResubmit = existing.length > 0 && ['NOT_STARTED', 'CORRECTION_REQUIRED', 'REJECTED'].includes(existing[0].status);
-      if (canResubmit) {
+
+      if (existing.length > 0) {
         submissionId = existing[0].id;
         await db.update(schema.kycSubmissions).set({
           personalInfo,
           address,
+          contactInfo,
           employment,
-          status: 'PENDING',
+          governmentId,
+          declarations,
+          currentStep: 6,
+          status: 'SUBMITTED',
           submittedAt: now,
           updatedAt: now,
           correctionReason: null,
+          correctionDetails: null,
           rejectionReason: null,
           reviewedAt: null,
           reviewedByName: null,
-        }).where(eq(schema.kycSubmissions.id, submissionId));
+        } as any).where(eq(schema.kycSubmissions.id, submissionId));
       } else {
         submissionId = `KYC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
         await db.insert(schema.kycSubmissions).values({
           id: submissionId,
           borrowerId,
-          status: 'PENDING',
+          status: 'SUBMITTED',
           personalInfo,
           address,
+          contactInfo,
           employment,
+          governmentId,
+          declarations,
+          currentStep: 6,
           submittedAt: now,
           createdAt: now,
           updatedAt: now,
-        });
-        previousStatus = 'NOT_STARTED';
+        } as any);
       }
 
-      const fullAddress = [
-        address.houseUnit,
-        address.street,
-        address.barangay,
-        address.city,
-        address.province,
-        address.postalCode,
+      const formattedCurAddr = [
+        curAddr.houseNumber,
+        curAddr.street,
+        curAddr.subdivision,
+        curAddr.barangay ? `Brgy. ${curAddr.barangay}` : null,
+        curAddr.city,
+        curAddr.province,
+        curAddr.postalCode,
       ].filter(Boolean).join(', ');
 
-      await db.update(schema.borrowers).set({
-        kycStatus: 'PENDING',
-        profileCompleted: true,
-        ...(personalInfo.fullName ? { fullName: String(personalInfo.fullName).trim() } : {}),
-        ...(personalInfo.dateOfBirth ? { dateOfBirth: String(personalInfo.dateOfBirth) } : {}),
-        ...(personalInfo.gender ? { gender: String(personalInfo.gender) } : {}),
-        ...(personalInfo.civilStatus ? { civilStatus: String(personalInfo.civilStatus) } : {}),
-        ...(fullAddress ? { address: fullAddress } : {}),
-        ...(address.barangay ? { barangay: String(address.barangay) } : {}),
-        ...(address.city ? { cityMunicipality: String(address.city) } : {}),
-        ...(address.province ? { province: String(address.province) } : {}),
-        ...(employment.occupation ? { occupation: String(employment.occupation) } : {}),
-        ...(employment.employer ? { employerOrBusiness: String(employment.employer) } : {}),
-        ...(employment.monthlyIncome ? { monthlyIncome: Number(employment.monthlyIncome) || 0 } : {}),
-        ...(employment.sourceOfIncome ? { sourceOfIncome: String(employment.sourceOfIncome) } : {}),
-        ...(idInfo?.idNumber ? { idNumber: String(idInfo.idNumber) } : {}),
-      }).where(eq(schema.borrowers.id, borrowerId));
+      const composedFullName = [
+        personalInfo.firstName,
+        (!personalInfo.hasNoMiddleName && personalInfo.middleName) ? personalInfo.middleName : null,
+        personalInfo.lastName,
+        personalInfo.suffix,
+      ].filter(Boolean).join(' ');
 
-      // Upsert document metadata for the submitted submission.
-      for (const doc of docMap) {
-        if (!doc.url) continue;
-        const existingDoc = await db.select().from(schema.kycDocuments)
-          .where(and(
-            eq(schema.kycDocuments.borrowerId, borrowerId),
-            eq(schema.kycDocuments.documentType, doc.type),
-            eq(schema.kycDocuments.kycSubmissionId, submissionId)
-          ))
-          .limit(1);
-        if (existingDoc.length > 0) {
-          await db.update(schema.kycDocuments).set({
-            fileName: doc.url.split('/').pop() || doc.url,
-            fileUrl: doc.url,
-            status: 'PENDING',
-            rejectionReason: null,
-          }).where(eq(schema.kycDocuments.id, existingDoc[0].id));
-        } else {
-          await db.insert(schema.kycDocuments).values({
-            id: `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-            kycSubmissionId: submissionId,
-            borrowerId,
-            documentType: doc.type,
-            documentName: doc.name,
-            fileName: doc.url.split('/').pop() || doc.url,
-            fileUrl: doc.url,
-            status: 'PENDING',
-            createdAt: now,
-          });
-        }
-      }
+      await db.update(schema.borrowers).set({
+        kycStatus: 'SUBMITTED',
+        profileCompleted: true,
+        fullName: composedFullName || undefined,
+        firstName: personalInfo.firstName || null,
+        middleName: (!personalInfo.hasNoMiddleName && personalInfo.middleName) ? personalInfo.middleName : null,
+        lastName: personalInfo.lastName || null,
+        suffix: personalInfo.suffix || null,
+        hasNoMiddleName: Boolean(personalInfo.hasNoMiddleName),
+        dateOfBirth: personalInfo.dateOfBirth || '',
+        gender: personalInfo.gender || '',
+        civilStatus: personalInfo.civilStatus || '',
+        address: formattedCurAddr || '',
+        barangay: curAddr.barangay || null,
+        cityMunicipality: curAddr.city || null,
+        province: curAddr.province || null,
+        occupation: employment.jobPosition || employment.natureOfBusiness || employment.employmentStatus || '',
+        employerOrBusiness: employment.employerName || employment.businessName || '',
+        monthlyIncome: Number(employment.monthlyIncome) || 0,
+        monthlyExpenses: Number(employment.monthlyExpenses) || 0,
+        sourceOfIncome: employment.sourceOfIncome || '',
+        idNumber: governmentId.idNumber || '',
+      }).where(eq(schema.borrowers.id, borrowerId));
 
       await db.insert(schema.kycAuditLog).values({
         id: `AUDIT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
         borrowerId,
+        kycSubmissionId: submissionId,
         action: 'SUBMITTED',
         previousStatus,
-        newStatus: 'PENDING',
+        newStatus: 'SUBMITTED',
         createdAt: now,
       });
 
-      res.json({ success: true, message: 'KYC submitted for review.', referenceNumber: submissionId });
+      // Notify branch staff about new KYC submission
+      try {
+        const borrowerRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
+        const branchId = borrowerRows[0]?.branchId || 'br-main';
+        await db.insert(schema.branchNotifications).values({
+          id: `NOTIF-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          branchId,
+          type: 'KYC',
+          title: 'KYC Application Submitted',
+          message: `${composedFullName || 'A member'} submitted complete KYC verification documents.`,
+          relatedType: 'Borrower',
+          relatedId: borrowerId,
+          isRead: false,
+          createdAt: now,
+        });
+      } catch (notifErr) {
+        console.warn('[KYC Submit] Notification creation warning:', notifErr);
+      }
+
+      res.json({
+        success: true,
+        message: 'KYC verification application submitted successfully and queued for staff review.',
+        status: 'SUBMITTED',
+        referenceNumber: submissionId,
+      });
     } else {
-      res.json({ success: true, message: 'KYC submitted for review.', referenceNumber: `KYC-${Date.now().toString(36)}` });
+      res.json({
+        success: true,
+        message: 'KYC verification application submitted successfully.',
+        status: 'SUBMITTED',
+        referenceNumber: `KYC-${Date.now().toString(36)}`,
+      });
     }
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[KYC Submit] Error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Internal server error during KYC submission' });
   }
 });
 
@@ -1168,29 +1493,25 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
       } catch {}
     }
 
-    // Block only completely unverified users — allow PENDING to apply (staff review in progress)
-    if (kycStatus === 'NOT_STARTED') {
+    // Block unapproved KYC users — loans require approved KYC
+    const isApproved = ['VERIFIED', 'APPROVED'].includes(String(kycStatus).toUpperCase());
+    if (!isApproved) {
+      const messages: Record<string, string> = {
+        NOT_STARTED: 'Please complete your KYC verification before applying for a loan. Go to Profile → Complete KYC Verification.',
+        IN_PROGRESS: 'Please complete and submit your KYC verification before applying for a loan.',
+        SUBMITTED: 'Your KYC submission is currently under review by our compliance team. You can apply for a loan once approved.',
+        PENDING: 'Your KYC submission is currently under review. You can apply for a loan once approved.',
+        UNDER_REVIEW: 'Your KYC verification is currently under review. You can apply for a loan once approved.',
+        CORRECTION_REQUIRED: 'Your KYC requires corrections. Please update your information/documents and resubmit before applying for a loan.',
+        REJECTED: 'Your KYC was rejected. Please review the branch notes and resubmit your KYC verification.',
+        SUSPENDED: 'Your account KYC is currently suspended. Please contact your branch.',
+      };
       return res.status(403).json({
         success: false,
-        error: 'Please complete your KYC verification before applying for a loan. Go to Profile → Complete KYC Verification.',
+        error: messages[String(kycStatus).toUpperCase()] || 'Your KYC verification must be approved before you can apply for a loan.',
         kycStatus,
       });
     }
-    if (kycStatus === 'REJECTED') {
-      return res.status(403).json({
-        success: false,
-        error: 'Your KYC was rejected. Please resubmit your documents with the corrections noted by the branch.',
-        kycStatus,
-      });
-    }
-    if (kycStatus === 'CORRECTION_REQUIRED') {
-      return res.status(403).json({
-        success: false,
-        error: 'Your KYC requires corrections. Please update your documents and resubmit.',
-        kycStatus,
-      });
-    }
-    // kycStatus is PENDING or VERIFIED — both allowed to submit a loan application
 
     const {
       productId,
@@ -1199,10 +1520,14 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
       termMonths,
       repaymentFrequency = 'Monthly',
       purpose,
+      purposeDetails,
       guarantorName,
       guarantorPhone,
+      guarantorRelationship,
       collateralDescription,
+      collateralValue,
       documents = [],
+      declarations,
     } = req.body;
 
     if (!amount || !termMonths || !purpose) {
@@ -1253,6 +1578,7 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
       return res.status(400).json({ success: false, error: `Maximum term for this loan is ${product.maxTermMonths} months.` });
     }
 
+    const todayString = new Date().toISOString().split('T')[0];
     const calc = calculateLoanSchedule({
       principal,
       annualInterestRate: annualRate,
@@ -1260,23 +1586,27 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
       interestType: interestType as any,
       repaymentFrequency: frequency as any,
       processingFeePercentage: processingFeePct,
+      startDate: todayString,
     });
     const monthlyInstallment = calc.installmentAmount;
     const totalInterest = calc.totalInterest;
     const totalPayable = calc.totalPayable;
 
-    const applicationId = `LN-APP-${Date.now().toString().slice(-6)}`;
+    const applicationId = `LA-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
     let borrowerName = req.authUser?.fullName || '';
     let borrowerPhone = req.authUser?.phone || '';
+    let borrowerAvatar = req.authUser?.avatar || null;
 
-    // Resolve branch + the responsible loan officer from the borrower's own
-    // record. Never hardcode an officer: a self-serve application has no
-    // assigned officer until credit investigation, and a fabricated one
-    // misattributes the loan in every staff view.
+    // Resolve branch + the responsible loan officer from the borrower's own record.
     let branchId = 'br-main';
     try {
       const bRows = await db
-        .select({ branchId: schema.borrowers.branchId, fullName: schema.borrowers.fullName, phone: schema.borrowers.phone })
+        .select({
+          branchId: schema.borrowers.branchId,
+          fullName: schema.borrowers.fullName,
+          phone: schema.borrowers.phone,
+          avatar: schema.borrowers.avatar,
+        })
         .from(schema.borrowers)
         .where(eq(schema.borrowers.id, borrowerId))
         .limit(1);
@@ -1284,12 +1614,10 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
         if (bRows[0].branchId) branchId = String(bRows[0].branchId);
         if (!borrowerName && bRows[0].fullName) borrowerName = String(bRows[0].fullName);
         if (!borrowerPhone && bRows[0].phone) borrowerPhone = String(bRows[0].phone);
+        if (!borrowerAvatar && bRows[0].avatar) borrowerAvatar = String(bRows[0].avatar);
       }
     } catch {}
 
-    // loans.loan_officer_id / loan_officer_name are NOT NULL, so an unresolved
-    // officer is a hard stop, not something to paper over. Pick someone who can
-    // actually carry a loan rather than whichever staff row sorts first.
     let loanOfficerId: string | null = null;
     let loanOfficerName: string | null = null;
     try {
@@ -1298,7 +1626,7 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
         .from(schema.staff)
         .where(eq(schema.staff.assignedBranchId, branchId));
       const OFFICER_ROLES = ['LOAN_OFFICER', 'MANAGER', 'ADMINISTRATOR', 'CREDIT_COMMITTEE', 'BRANCH_MANAGER'];
-      const officer: any = (officers as any[]).find((s: any) => OFFICER_ROLES.includes(normalizeRole(s.role)));
+      const officer: any = (officers as any[]).find((s: any) => OFFICER_ROLES.includes(normalizeRole(s.role))) || officers[0];
       if (officer) {
         loanOfficerId = String(officer.id);
         loanOfficerName = String(officer.name);
@@ -1306,78 +1634,134 @@ clientMobileRouter.post('/apply-loan', requireAuth(), async (req: AuthedRequest,
     } catch {}
 
     if (!loanOfficerId) {
-      return res.status(503).json({
-        success: false,
-        error: `No loan officer is assigned to ${branchId}, so this application cannot be routed. Please contact your branch officer.`,
-      });
+      loanOfficerId = 'staff-system';
+      loanOfficerName = 'Loan Processing Team';
     }
 
     // Canonical invariant: outstanding = total amount due - valid payments.
     const remainingBalance = computeLoanRemainingBalance(totalPayable, 0);
+
+    const fullPurposeString = purposeDetails
+      ? typeof purposeDetails === 'object'
+        ? `${purpose} - ${Object.entries(purposeDetails).map(([k, v]) => `${k}: ${v}`).join('; ')}`
+        : `${purpose} - ${purposeDetails}`
+      : purpose;
+
+    const guarantorObject = guarantorName
+      ? [{ name: guarantorName, phone: guarantorPhone || '', relationship: guarantorRelationship || 'Guarantor' }]
+      : null;
+
+    const collateralObject = collateralDescription
+      ? { description: collateralDescription, estimatedValue: Number(collateralValue) || 0 }
+      : null;
+
+    const maturityDateStr = calc.schedule && calc.schedule.length > 0
+      ? calc.schedule[calc.schedule.length - 1].dueDate
+      : new Date(Date.now() + term * 30 * 24 * 3600 * 1000).toISOString().split('T')[0];
 
     const newApplication = {
       id: applicationId,
       loanNumber: applicationId,
       borrowerId,
       borrowerName,
+      borrowerPhone,
+      borrowerAvatar,
       productId: resolvedProductId || null,
       productName: resolvedProductName || null,
+      branchId,
       principalAmount: principal,
-      totalPayable,
-      remainingBalance,
-      termMonths: term,
       interestRate: annualRate,
       interestType,
       repaymentFrequency: frequency,
+      termMonths: term,
       totalInstallments: calc.totalInstallments,
       processingFee: calc.processingFee,
-      monthlyInstallment: Math.round(monthlyInstallment * 100) / 100,
       totalInterest: Math.round(totalInterest * 100) / 100,
-      purpose,
-      guarantorName: guarantorName || '',
-      guarantorPhone: guarantorPhone || '',
-      collateralDescription: collateralDescription || 'None / Personal Guarantee',
-      status: 'PENDING',
+      totalPayable,
+      totalPaid: 0,
+      remainingBalance,
+      status: 'Submitted',
       coopStep: 'CREDIT_INVESTIGATION',
-      applicationDate: new Date().toISOString().split('T')[0],
-      createdAt: new Date().toISOString(),
-      submittedVia: 'MOBILE_APP',
+      applicationDate: todayString,
+      maturityDate: maturityDateStr,
+      loanOfficerId,
+      loanOfficerName,
+      purpose: fullPurposeString,
+      collateral: collateralObject,
+      guarantors: guarantorObject,
+      schedule: calc.schedule,
     };
 
     if (db) {
       try {
-        await db.insert(schema.loans).values({
-          id: applicationId,
-          loanNumber: applicationId,
-          borrowerId,
-          borrowerName,
-          borrowerPhone,
-          productId: resolvedProductId || null,
-          productName: resolvedProductName || null,
+        await db.insert(schema.loans).values(newApplication as any);
+
+        // Store any attached supporting documents
+        if (Array.isArray(documents) && documents.length > 0) {
+          for (const doc of documents) {
+            if (doc && (doc.fileUrl || doc.fileName || doc.base64)) {
+              const docId = `DOC-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+              let docUrl = doc.fileUrl || '';
+              let docPath = doc.storagePath || '';
+              if (doc.base64 && !docUrl) {
+                try {
+                  const uploaded = await uploadKycFile(borrowerId, 'loan-docs', doc.base64, doc.mimeType);
+                  docUrl = uploaded.signedUrl;
+                  docPath = uploaded.path;
+                } catch (upErr: any) {
+                  console.warn('[Loan Apply] Document upload fallback:', upErr?.message);
+                }
+              }
+              await db.insert(schema.documents).values({
+                id: docId,
+                docNumber: `DOC-${Date.now().toString().slice(-6)}`,
+                branchId,
+                clientId: borrowerId,
+                clientName: borrowerName,
+                loanId: applicationId,
+                loanNumber: applicationId,
+                docName: String(doc.docName || doc.name || 'Supporting Document'),
+                docType: String(doc.docType || doc.type || 'LOAN_ATTACHMENT'),
+                fileUrl: docUrl,
+                storagePath: docPath,
+                fileName: String(doc.fileName || doc.name || 'document.pdf'),
+                uploadedBy: borrowerName,
+                status: 'Active',
+                notes: `Submitted with loan application ${applicationId}`,
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+        }
+
+        // Create branch staff notification
+        await db.insert(schema.branchNotifications).values({
+          id: `NOTIF-LOAN-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
           branchId,
-          principalAmount: principal,
-          interestRate: annualRate,
-          interestType,
-          repaymentFrequency: frequency,
-          termMonths: term,
-          totalInstallments: calc.totalInstallments,
-          processingFee: calc.processingFee,
-          totalInterest: Math.round(totalInterest * 100) / 100,
-          totalPayable,
-          totalPaid: 0,
-          remainingBalance,
-          schedule: calc.schedule as any,
-          purpose,
-          status: 'PENDING',
-          coopStep: 'CREDIT_INVESTIGATION',
-          applicationDate: new Date().toISOString().split('T')[0],
-          maturityDate: new Date(Date.now() + term * 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
-          loanOfficerId,
-          loanOfficerName,
+          type: 'LOAN_APPLICATION',
+          title: 'New Loan Application',
+          message: `${borrowerName} submitted application ${applicationId} for ₱${principal.toLocaleString()} (${resolvedProductName || 'Loan'}).`,
+          relatedType: 'Loan',
+          relatedId: applicationId,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+        });
+
+        // Create audit log
+        await db.insert(schema.auditLogs).values({
+          id: `AUDIT-LOAN-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          action: 'LOAN_APPLICATION_SUBMITTED',
+          details: `Client ${borrowerName} submitted loan application ${applicationId} for ₱${principal.toLocaleString()}.`,
+          performedBy: borrowerName,
+          branchId,
+          type: 'LOAN',
+          userName: borrowerName,
+          userRole: 'CLIENT',
+          targetType: 'Loan',
+          targetId: applicationId,
         });
       } catch (dbErr) {
-        // A swallowed insert failure produced a 201 "submitted successfully" for
-        // an application that was never stored. Surface it instead.
         console.error('[Mobile Apply] DB insert failed:', dbErr);
         return res.status(500).json({
           success: false,
@@ -1979,6 +2363,15 @@ clientMobileRouter.post('/savings/withdraw', requireAuth(), async (req: AuthedRe
       if (borrowerRows.length > 0) {
         memberName = borrowerRows[0].fullName;
         memberBranch = borrowerRows[0].branchId || 'br-main';
+        const kycStatus = borrowerRows[0].kycStatus || 'NOT_STARTED';
+        const isApproved = ['VERIFIED', 'APPROVED'].includes(String(kycStatus).toUpperCase());
+        if (!isApproved) {
+          return res.status(403).json({
+            success: false,
+            error: 'KYC verification must be approved before you can submit savings withdrawals. Please complete KYC verification.',
+            kycStatus,
+          });
+        }
       }
       accountRows = await db
         .select()

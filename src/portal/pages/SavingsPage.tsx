@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowDownToLine, ArrowUpFromLine, PiggyBank, Target, TrendingUp } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, PiggyBank, Target, TrendingUp, ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { savingsService } from '../services/savings';
-import { SavingsAccount, SavingsTransaction, WithdrawalRequest } from '../types';
+import { profileService } from '../services/profile';
+import { SavingsAccount, SavingsTransaction, WithdrawalRequest, KycStatusData } from '../types';
 import { formatCurrency, formatDate } from '../../utils/loanMath';
 import {
   Amount,
@@ -28,8 +30,10 @@ import { useToast } from '../components/ui/Toast';
 
 const SavingsPage: React.FC = () => {
   const toast = useToast();
+  const navigate = useNavigate();
   const [account, setAccount] = useState<SavingsAccount | null>(null);
   const [transactions, setTransactions] = useState<SavingsTransaction[]>([]);
+  const [kyc, setKyc] = useState<KycStatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -41,14 +45,29 @@ const SavingsPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [acc, tx] = await Promise.all([savingsService.account(), savingsService.transactions()]);
+      const [acc, tx, k] = await Promise.all([
+        savingsService.account(),
+        savingsService.transactions(),
+        profileService.kycStatus().catch(() => null),
+      ]);
       setAccount(acc);
       setTransactions(tx);
+      setKyc(k);
     } catch (err: any) {
       setError(err.message || 'Unable to load savings.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenWithdrawal = () => {
+    const kycStatus = kyc?.kycStatus || 'NOT_STARTED';
+    if (kycStatus !== 'VERIFIED') {
+      toast.error('KYC verification must be approved before you can request withdrawals.');
+      navigate('/portal/kyc');
+      return;
+    }
+    setWithdrawOpen(true);
   };
 
   useEffect(() => {
@@ -92,7 +111,7 @@ const SavingsPage: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Savings</h1>
           <p className="text-sm text-slate-500">Build your emergency fund and track your deposits.</p>
         </div>
-        <Button variant="outline" onClick={() => setWithdrawOpen(true)}>
+        <Button variant="outline" onClick={handleOpenWithdrawal}>
           <ArrowUpFromLine className="h-4 w-4" /> Request withdrawal
         </Button>
       </div>

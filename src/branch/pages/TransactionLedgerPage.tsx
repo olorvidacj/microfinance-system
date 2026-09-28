@@ -62,8 +62,8 @@ const TransactionLedgerPage: React.FC = () => {
   const rows = data || [];
 
   const summary = useMemo(() => {
-    const inflows = rows.filter((r) => ['Loan Repayment', 'Savings Deposit', 'Loan Disbursement', 'Other Income'].includes(r.transactionType));
-    const outflows = rows.filter((r) => ['Savings Withdrawal', 'Other Expense'].includes(r.transactionType));
+    const inflows = rows.filter((r) => ['Loan Repayment', 'Savings Deposit', 'Other Income'].includes(r.transactionType));
+    const outflows = rows.filter((r) => ['Savings Withdrawal', 'Loan Disbursement', 'Other Expense'].includes(r.transactionType));
     return {
       totalIn: inflows.reduce((s, r) => s + r.amount, 0),
       totalOut: outflows.reduce((s, r) => s + r.amount, 0),

@@ -1,4 +1,6 @@
 import express from 'express';
+import http from 'http';
+import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
@@ -50,6 +52,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { calculateLoanSchedule } from './src/utils/loanMath';
 import { clientMobileRouter } from './src/routes/clientMobileRoutes';
 import { branchRouter } from './src/routes/branchRoutes';
+import { psgcService } from './src/services/psgcService';
 
 dotenv.config();
 
@@ -57,6 +60,48 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '20mb' }));
+
+// ---------------------------------------------------------------------------
+// Philippine Standard Geographic Code (PSGC) Endpoints
+// ---------------------------------------------------------------------------
+app.get('/api/geography/regions', (_req, res) => {
+  res.json({ success: true, data: psgcService.getRegions() });
+});
+
+app.get('/api/geography/provinces', (req, res) => {
+  const regionCode = req.query.regionCode ? String(req.query.regionCode) : undefined;
+  res.json({ success: true, data: psgcService.getProvinces(regionCode) });
+});
+
+app.get('/api/geography/cities', (req, res) => {
+  const regionCode = req.query.regionCode ? String(req.query.regionCode) : undefined;
+  const provinceCode = req.query.provinceCode ? String(req.query.provinceCode) : undefined;
+  res.json({ success: true, data: psgcService.getCities(regionCode, provinceCode) });
+});
+
+app.get('/api/geography/barangays', (req, res) => {
+  const cityCode = req.query.cityCode ? String(req.query.cityCode) : '';
+  res.json({ success: true, data: psgcService.getBarangays(cityCode) });
+});
+
+app.get('/api/geography/postal-code', (req, res) => {
+  const cityCode = req.query.cityCode ? String(req.query.cityCode) : undefined;
+  const barangayCode = req.query.barangayCode ? String(req.query.barangayCode) : undefined;
+  res.json({ success: true, postalCode: psgcService.getPostalCode(cityCode, barangayCode) });
+});
+
+// ---------------------------------------------------------------------------
+// Resilient Local Document Storage File Serving
+// ---------------------------------------------------------------------------
+app.use('/api/storage', (req, res) => {
+  const safePath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
+  const filePath = path.join(process.cwd(), 'uploads', safePath);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  res.sendFile(filePath);
+});
+
 
 // ---------- Auth & RBAC Plumbing ----------
 
@@ -647,19 +692,20 @@ app.post('/api/auth/register', async (req, res) => {
       phone,
       email,
       password,
+      confirmPassword,
       fullName,
       firstName,
       middleName,
       lastName,
+      suffix,
+      hasNoMiddleName,
+      agreeTerms,
       gender,
       dateOfBirth,
       civilStatus,
       address,
       barangay,
       cityMunicipality,
-      // The mobile client sends `city`; the DB column is city_municipality and
-      // every other caller sends `cityMunicipality`. Accept both so the mobile
-      // registration form does not silently drop the field.
       city,
       province,
       occupation,
@@ -673,27 +719,55 @@ app.post('/api/auth/register', async (req, res) => {
       borrowerNumber,
     } = body;
 
-    const rawName = String(fullName || '').trim();
-    const composedName = [firstName, middleName, lastName].filter(Boolean).map(String).map((s) => s.trim()).join(' ');
-    const finalName = rawName.length >= 2 ? rawName : composedName.trim();
+    const fName = String(firstName || '').trim();
+    const mName = String(middleName || '').trim();
+    const lName = String(lastName || '').trim();
+    const sfx = String(suffix || '').trim();
+    const noMiddle = Boolean(hasNoMiddleName);
 
-    // ---- Validate: Full Name + Email OR valid PH phone + Password ----
-    if (finalName.length < 2) {
-      return res.status(400).json({ error: 'Please enter your full name (as shown on a government ID).' });
+    let finalName = '';
+    if (fName && lName) {
+      const parts = [fName, (!noMiddle && mName) ? mName : null, lName, sfx || null].filter(Boolean);
+      finalName = parts.join(' ');
+    } else {
+      finalName = String(fullName || '').trim();
     }
+
+    // ---- Validate: Legal Name ----
+    if (!finalName || finalName.length < 2) {
+      return res.status(400).json({ error: 'Please enter your legal first and last name.' });
+    }
+    if (firstName !== undefined && !fName) {
+      return res.status(400).json({ error: 'First name is required.' });
+    }
+    if (lastName !== undefined && !lName) {
+      return res.status(400).json({ error: 'Last name is required.' });
+    }
+
     const rawEmail = String(email || '').trim();
     const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail);
     const rawPhone = String(phone || '').trim();
     const finalPhone = isValidPhilippinePhone(rawPhone) ? normalizePhilippinePhone(rawPhone) : null;
 
-    if (!hasValidEmail && !finalPhone) {
+    if (!finalPhone) {
       return res.status(400).json({
-        error: 'Please enter a valid email address or a Philippine mobile number (e.g. 0917 123 4567 or +63 917 123 4567).',
+        error: 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567 or +63 917 123 4567).',
       });
     }
+
+    if (rawEmail && !hasValidEmail) {
+      return res.status(400).json({
+        error: 'Please enter a valid email address or leave it blank.',
+      });
+    }
+
     const userPass = String(password || '');
     if (userPass.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    if (confirmPassword && userPass !== String(confirmPassword)) {
+      return res.status(400).json({ error: 'Passwords do not match. Please verify.' });
     }
 
     const loginEmail = hasValidEmail
@@ -703,6 +777,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     const profileInput = {
       fullName: finalName,
+      firstName: fName || null,
+      middleName: (!noMiddle && mName) ? mName : null,
+      lastName: lName || null,
+      suffix: sfx || null,
+      hasNoMiddleName: noMiddle,
       phone: displayPhone,
       email: loginEmail,
       dateOfBirth: dateOfBirth ? String(dateOfBirth) : null,
@@ -3502,9 +3581,14 @@ async function initServer() {
     console.log('[Server Startup] DB init/seed:', err.message);
   }
 
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -3516,7 +3600,7 @@ async function initServer() {
     });
   }
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
+  const server = httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Cooperative Loan & Savings Management server running on http://localhost:${PORT}`);
   });
 

@@ -3,6 +3,11 @@ import { getDb, getPool, schema } from './index';
 
 export interface ClientProfileInput {
   fullName: string;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  suffix?: string | null;
+  hasNoMiddleName?: boolean;
   phone?: string | null;
   email?: string | null;
   dateOfBirth?: string | null;
@@ -83,7 +88,7 @@ function genId(prefix: string): string {
 
 /**
  * Creates a COMPLETE client profile: a `borrowers` row with the real submitted
- * information, all financials explicitly zeroed, KYC/member status Pending, and
+ * information, all financials explicitly zeroed, KYC status NOT_STARTED, and
  * a linked zero-balance savings account. Never fabricates balances or history.
  *
  * Returns null when no database is configured.
@@ -103,6 +108,11 @@ export async function createClientProfile(
     id,
     borrowerNumber,
     fullName,
+    firstName: input.firstName ? String(input.firstName).trim() : null,
+    middleName: input.middleName ? String(input.middleName).trim() : null,
+    lastName: input.lastName ? String(input.lastName).trim() : null,
+    suffix: input.suffix ? String(input.suffix).trim() : null,
+    hasNoMiddleName: Boolean(input.hasNoMiddleName),
     idNumber: String(input.idNumber || ''),
     phone: input.phone ? String(input.phone) : '',
     email: input.email ? String(input.email) : '',
@@ -119,8 +129,8 @@ export async function createClientProfile(
     monthlyExpenses: Number(input.monthlyExpenses) || 0,
     creditScore: 0,
     creditTier: 'PENDING',
-    kycStatus: 'PENDING',
-    memberStatus: 'Pending',
+    kycStatus: 'NOT_STARTED',
+    memberStatus: 'Active',
     membershipDate: today,
     profileCompleted: false,
     barangay: input.barangay ? String(input.barangay) : null,
@@ -139,7 +149,7 @@ export async function createClientProfile(
     joinedDate: today,
     lastActivityDate: today,
     notes:
-      'Account created via client registration — profile pending KYC verification.',
+      'Account created via client registration — KYC verification not yet started.',
   });
 
   await db.insert(schema.savingsAccounts).values({
@@ -151,6 +161,34 @@ export async function createClientProfile(
     maintainingBalance: 1000,
     interestRate: 1.0,
   });
+
+  // Create initial kyc_submissions draft entry
+  try {
+    await db.insert(schema.kycSubmissions).values({
+      id: genId('kyc'),
+      borrowerId: id,
+      status: 'NOT_STARTED',
+      personalInfo: {
+        firstName: input.firstName || '',
+        middleName: input.middleName || '',
+        hasNoMiddleName: Boolean(input.hasNoMiddleName),
+        lastName: input.lastName || '',
+        suffix: input.suffix || '',
+        phone: input.phone || '',
+        email: input.email || '',
+        dateOfBirth: input.dateOfBirth || '',
+        gender: input.gender || '',
+        civilStatus: input.civilStatus || '',
+        nationality: 'Filipino',
+        citizenship: 'Filipino',
+      },
+      currentStep: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (kycErr) {
+    console.warn('[Provisioning] Initial KYC submission creation warning:', kycErr);
+  }
 
   return { id, borrowerNumber, fullName };
 }

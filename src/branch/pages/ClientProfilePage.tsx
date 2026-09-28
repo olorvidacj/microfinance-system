@@ -13,6 +13,7 @@ import { Field, Input, Select, Textarea } from '../../portal/components/ui/Field
 import { useToast } from '../../portal/components/ui/Toast';
 import { useBranchData } from '../hooks/useBranchData';
 import { clientsService } from '../services';
+import { KycReviewPanel } from '../components/KycReviewPanel';
 
 const ClientProfilePage: React.FC = () => {
   const { id = '' } = useParams();
@@ -20,6 +21,7 @@ const ClientProfilePage: React.FC = () => {
   const fetcher = useCallback(() => clientsService.get(id), [id]);
   const { data, loading, error, reload } = useBranchData(fetcher);
   const [editOpen, setEditOpen] = React.useState(false);
+  const [kycReviewOpen, setKycReviewOpen] = React.useState(false);
 
   if (loading) return <LoadingState label="Loading client profile…" />;
   if (error || !data) return <ErrorState message={error} onRetry={reload} />;
@@ -33,9 +35,14 @@ const ClientProfilePage: React.FC = () => {
         title={client.fullName}
         subtitle={`${client.borrowerNumber} · Member since ${client.membershipDate}`}
         actions={
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            <PencilLine className="h-4 w-4" /> Edit profile
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="brand" size="sm" onClick={() => setKycReviewOpen(true)}>
+              <ShieldCheck className="h-4 w-4" /> Review KYC Application
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <PencilLine className="h-4 w-4" /> Edit profile
+            </Button>
+          </div>
         }
       />
 
@@ -196,6 +203,18 @@ const ClientProfilePage: React.FC = () => {
           toast.success('Profile updated');
         }}
       />
+
+      {kycReviewOpen && (
+        <KycReviewPanel
+          clientId={client.id}
+          onClose={() => setKycReviewOpen(false)}
+          onDone={(status) => {
+            setKycReviewOpen(false);
+            reload();
+            toast.success(`KYC review submitted (${status})`);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -106,7 +106,7 @@ export const DashboardPage: React.FC = () => {
 
   const s = data.summary;
   const totalGroupsCount = groupsData.data?.length ?? 6;
-  const pendingKycCount = kycQueue.data?.length ?? s.pendingVerification;
+  const pendingKycCount = kycQueue.data?.counts?.pending ?? kycQueue.data?.data?.length ?? s.pendingVerification;
 
   // Daily target calculation
   const dailyTarget = 150000;
@@ -416,18 +416,18 @@ export const DashboardPage: React.FC = () => {
               to="/staff/app/kyc"
               className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
             >
-              View Queue ({kycQueue.data?.length ?? 0}) <ChevronRight className="h-3.5 w-3.5" />
+              View Queue ({kycQueue.data?.counts?.pending ?? kycQueue.data?.data?.length ?? 0}) <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
           <div className="flex-1 divide-y divide-slate-100 overflow-x-auto">
-            {!kycQueue.data || kycQueue.data.length === 0 ? (
+            {!kycQueue.data?.data || kycQueue.data.data.length === 0 ? (
               <div className="py-12 text-center text-sm text-slate-400">
                 <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500 mb-2" />
                 No pending KYC reviews. All client records are up to date!
               </div>
             ) : (
-              kycQueue.data.slice(0, 4).map((client) => (
+              kycQueue.data.data.slice(0, 4).map((client) => (
                 <div key={client.id} className="p-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">
@@ -696,7 +696,7 @@ export const DashboardPage: React.FC = () => {
       {/* KYC Quick Review Modal */}
       {kycReviewTarget && (
         <KycReviewPanel
-          client={kycReviewTarget}
+          clientId={kycReviewTarget.id}
           onClose={() => setKycReviewTarget(null)}
           onDone={() => {
             setKycReviewTarget(null);

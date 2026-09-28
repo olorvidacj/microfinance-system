@@ -343,7 +343,12 @@ interface LoanContextType {
     clientId: string,
     decision: 'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED',
     notes: string,
-    itemsChecked?: string[]
+    itemsChecked?: string[],
+    correctionDetails?: {
+      section?: string;
+      field?: string;
+      reason?: string;
+    }
   ) => void;
   deleteKycDocument: (clientId: string, documentId: string) => void;
   addBorrower: (borrower: Partial<Borrower>) => Borrower;
@@ -2455,7 +2460,12 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
     clientId: string,
     decision: 'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED',
     notes: string,
-    itemsChecked?: string[]
+    itemsChecked?: string[],
+    correctionDetails?: {
+      section?: string;
+      field?: string;
+      reason?: string;
+    }
   ) => {
     const today = new Date().toISOString().split('T')[0];
     const client = borrowers.find((b) => b.id === clientId);
@@ -2482,6 +2492,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       decision,
       notes,
       itemsChecked,
+      correctionDetails,
     };
 
     setBorrowers((prev) =>
@@ -2501,6 +2512,7 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
             kycReviewedBy: `${currentUser.name} (${currentUser.title})`,
             kycReviewedAt: today,
             kycCorrectionNotes: decision === 'CORRECTION_REQUESTED' ? notes : b.kycCorrectionNotes,
+            correctionDetails: decision === 'CORRECTION_REQUESTED' ? correctionDetails : undefined,
             kycRejectionReason: decision === 'REJECTED' ? notes : undefined,
             kycDocuments: updatedDocs,
             kycReviewLogs: [reviewLog, ...(b.kycReviewLogs || [])],
@@ -2510,6 +2522,18 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         return b;
       })
     );
+
+    // Sync with backend branch API
+    authFetch(`/api/branch/kyc/${clientId}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        decision,
+        notes,
+        itemsChecked,
+        correctionDetails,
+      }),
+    }).catch((e) => console.log('KYC review API sync:', e.message));
 
     logAudit('KYC_DECISION_RECORDED', `Recorded KYC ${decision} for client ${client.fullName} (${client.borrowerNumber}): ${notes}`, 'BORROWER');
   };
@@ -2779,6 +2803,19 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
+    // Persist to backend database
+    authFetch(`/api/branch/loans/${loanId}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'approve',
+        notes: approvalData.notes,
+        approvedAmount: approvalData.approvedAmount,
+        approvedTermMonths: approvalData.approvedTermMonths,
+        approvedInterestRate: approvalData.approvedInterestRate,
+      }),
+    }).catch((err) => console.warn('[LoanContext] Backend approval error:', err));
+
     logAudit(
       'LOAN_APPLICATION_APPROVED',
       `Approved loan ${loanId} for ₱${approvalData.approvedAmount.toLocaleString()} at ${approvalData.approvedInterestRate}% by ${approvalData.approvedBy} (${approvalData.approvedByRole})`,
@@ -2802,6 +2839,17 @@ export function LoanProvider({ children }: { children: React.ReactNode }) {
         return l;
       })
     );
+
+    // Persist to backend database
+    authFetch(`/api/branch/loans/${loanId}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'reject',
+        reason: rejectionData.rejectionReason,
+        notes: rejectionData.remarks,
+      }),
+    }).catch((err) => console.warn('[LoanContext] Backend rejection error:', err));
 
     logAudit(
       'LOAN_APPLICATION_REJECTED',

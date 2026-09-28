@@ -76,6 +76,8 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
   const [showKycDecisionModal, setShowKycDecisionModal] = useState(false);
   const [kycDecision, setKycDecision] = useState<'APPROVED' | 'CORRECTION_REQUESTED' | 'REJECTED'>('APPROVED');
   const [kycNotes, setKycNotes] = useState('');
+  const [correctionSection, setCorrectionSection] = useState('Personal Information');
+  const [correctionField, setCorrectionField] = useState('');
   const [checkedChecklist, setCheckedChecklist] = useState<string[]>([
     'Valid Government ID matches identity',
     'Proof of Income verified with employer / business records',
@@ -148,14 +150,25 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
       alert('Please provide detailed notes explaining the decision.');
       return;
     }
+    const correctionDetails =
+      kycDecision === 'CORRECTION_REQUESTED'
+        ? {
+            section: correctionSection,
+            field: correctionField || undefined,
+            reason: kycNotes,
+          }
+        : undefined;
+
     reviewKyc(
       client.id,
       kycDecision,
       kycNotes || 'Approved by authorized officer following compliance check.',
-      checkedChecklist
+      checkedChecklist,
+      correctionDetails
     );
     setShowKycDecisionModal(false);
     setKycNotes('');
+    setCorrectionField('');
   };
 
   const handleUploadDocSubmit = (e: React.FormEvent) => {
@@ -914,9 +927,46 @@ export const ClientProfileModal: React.FC<ClientProfileModalProps> = ({
                 ))}
               </div>
 
+              {/* Conditional Correction Details */}
+              {kycDecision === 'CORRECTION_REQUESTED' && (
+                <div className="p-3 bg-orange-50/70 border border-orange-200 rounded-xl space-y-2.5">
+                  <span className="font-bold text-orange-950 text-[11px] block">Structured Correction Details</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-semibold text-slate-700 text-[11px] mb-1">Target Section</label>
+                      <select
+                        value={correctionSection}
+                        onChange={(e) => setCorrectionSection(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900 font-medium"
+                      >
+                        <option value="Personal Information">Personal Information</option>
+                        <option value="Current Address">Current Address (PSGC)</option>
+                        <option value="Permanent Address">Permanent Address</option>
+                        <option value="Contact Information">Contact Information</option>
+                        <option value="Employment & Financial">Employment & Financial</option>
+                        <option value="Government ID">Government ID</option>
+                        <option value="Document Upload">Document Upload</option>
+                        <option value="Selfie Photo">Selfie Photo</option>
+                        <option value="Declarations & Consent">Declarations & Consent</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 text-[11px] mb-1">Specific Field / Document (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Valid ID photo (blurry) / Payslip"
+                        value={correctionField}
+                        onChange={(e) => setCorrectionField(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  {kycDecision === 'CORRECTION_REQUESTED' ? 'Required Correction Notes *' : 'Officer Remarks / Justification'}
+                  {kycDecision === 'CORRECTION_REQUESTED' ? 'Required Correction Notes / Instructions *' : 'Officer Remarks / Justification'}
                 </label>
                 <textarea
                   rows={3}

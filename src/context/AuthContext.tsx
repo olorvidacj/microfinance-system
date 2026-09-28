@@ -13,10 +13,17 @@ export interface AuthUser {
 }
 
 export interface RegisterData {
-  fullName: string;
+  fullName?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  suffix?: string;
+  hasNoMiddleName?: boolean;
   email?: string;
   phone?: string;
   password?: string;
+  confirmPassword?: string;
+  agreeTerms?: boolean;
   borrowerNumber?: string;
   address?: string;
   occupation?: string;
