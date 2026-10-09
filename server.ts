@@ -21,6 +21,7 @@ import {
   ensureDefaultUsers,
   DEFAULT_ADMIN_PASS_HASH,
 } from './src/auth/index';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from './src/utils/passwordValidator';
 import {
   supabaseSignIn,
   supabaseGetUser,
@@ -48,7 +49,7 @@ import {
   SystemPermission,
   normalizeRole,
 } from './src/auth/permissions';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { calculateLoanSchedule } from './src/utils/loanMath';
 import { clientMobileRouter } from './src/routes/clientMobileRoutes';
 import { branchRouter } from './src/routes/branchRoutes';
@@ -769,8 +770,8 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const userPass = String(password || '');
-    if (userPass.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    if (!isPasswordStrong(userPass)) {
+      return res.status(400).json({ error: STRONG_PASSWORD_ERROR_MESSAGE });
     }
 
     if (confirmPassword && userPass !== String(confirmPassword)) {
@@ -966,9 +967,29 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-    app.get('/api/auth/me', requireAuth(), async (req: AuthedRequest, res) => {
+app.get('/api/auth/me', requireAuth(), async (req: AuthedRequest, res) => {
   try {
-    const user = await authStore.findById(req.authUser!.id);
+    let user = await authStore.findById(req.authUser!.id);
+    if (!user && req.authUser?.email) {
+      try {
+        user = await authStore.findByEmail(req.authUser.email);
+      } catch {}
+    }
+    if (!user && req.authUser) {
+      user = {
+        id: req.authUser.id,
+        email: req.authUser.email,
+        passwordHash: '',
+        fullName: req.authUser.fullName || req.authUser.email.split('@')[0],
+        role: req.authUser.role,
+        staffRole: req.authUser.staffRole || null,
+        staffId: req.authUser.staffId || null,
+        borrowerId: req.authUser.borrowerId || null,
+        phone: req.authUser.phone || null,
+        branchId: req.authUser.branchId || null,
+        isActive: true,
+      };
+    }
     if (!user) return res.status(404).json({ error: 'User not found' });
     const freshToken = signToken(user);
     const publicProfile = await enrichProfileFlags(publicUser(user));
@@ -1431,6 +1452,9 @@ app.post('/api/admin/users', requirePermission('manage_users'), async (req: Auth
     const { email, password, fullName, role, staffRole, staffId, borrowerId, phone } = req.body || {};
     if (!email || !password || !fullName || !role) {
       return res.status(400).json({ error: 'Email, password, fullName, and role are required' });
+    }
+    if (!isPasswordStrong(String(password))) {
+      return res.status(400).json({ error: STRONG_PASSWORD_ERROR_MESSAGE });
     }
 
     // A staff account MUST be created with an explicit staff role. Defaulting to
@@ -2046,8 +2070,8 @@ app.get('/api/admin/groups/:id', requirePermission(ADMIN_READ_ANY), async (req: 
     const members = Array.isArray(g.members) ? g.members : [];
     const memberIds = members.map((m: any) => m.borrowerId).filter(Boolean);
     const [loans, payments] = await Promise.all([
-      memberIds.length ? db.select().from(schema.loans).where(sql`${schema.loans.borrowerId} = ANY(${memberIds})`) : Promise.resolve([]),
-      memberIds.length ? db.select().from(schema.payments).where(sql`${schema.payments.borrowerId} = ANY(${memberIds})`) : Promise.resolve([]),
+      memberIds.length ? db.select().from(schema.loans).where(inArray(schema.loans.borrowerId, memberIds)) : Promise.resolve([]),
+      memberIds.length ? db.select().from(schema.payments).where(inArray(schema.payments.borrowerId, memberIds)) : Promise.resolve([]),
     ]);
     const detail = members.map((m: any) => {
       const memberLoans = loans.filter((l: any) => l.borrowerId === m.borrowerId);
@@ -2849,7 +2873,14 @@ app.use(
   },
   branchRouter
 );
-app.use('/api/client', clientMobileRouter);
+app.use(
+  '/api/client',
+  async (req: AuthedRequest, _res, next) => {
+    await authenticate(req);
+    next();
+  },
+  clientMobileRouter
+);
 
 // NOTE: clientMobileRouter is deliberately NOT also mounted at a bare '/api'.
 //

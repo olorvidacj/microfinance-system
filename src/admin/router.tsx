@@ -16,18 +16,35 @@ import { AuditLogsPage } from './pages/AuditLogsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { SystemSettingsPage } from './pages/SystemSettingsPage';
 
+import { useAuth } from '../context/AuthContext';
+
 const ADMIN_SESSION_KEY = 'HOSCOMCO_admin_session';
 
 export const AdminRouteGate: React.FC = () => {
-  const hasSession = () => {
+  const { user, isRestoring } = useAuth();
+
+  if (isRestoring) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900" />
+      </div>
+    );
+  }
+
+  const hasAdminSession = () => {
     try {
-      return sessionStorage.getItem(ADMIN_SESSION_KEY) === '1';
-    } catch {
+      if (sessionStorage.getItem(ADMIN_SESSION_KEY) === '1') return true;
+      if (user && user.role === 'STAFF') {
+        sessionStorage.setItem(ADMIN_SESSION_KEY, '1');
+        return true;
+      }
       return false;
+    } catch {
+      return Boolean(user && user.role === 'STAFF');
     }
   };
 
-  if (!hasSession()) {
+  if (!hasAdminSession()) {
     return <Navigate to="/admin/login" replace />;
   }
 

@@ -24,7 +24,7 @@ export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (
 );
 
 export const Field: React.FC<{
-  label: string;
+  label: React.ReactNode;
   required?: boolean;
   hint?: string;
   error?: string;

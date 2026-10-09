@@ -78,20 +78,22 @@ const methodIcons: Record<string, React.ElementType> = {
   DEFAULT: Wallet,
 };
 
-export const PaymentMethodBadge: React.FC<{ method: string; className?: string }> = ({ method, className = '' }) => {
-  const Icon = methodIcons[method] || methodIcons.DEFAULT;
+export const PaymentMethodBadge: React.FC<{ method?: string; className?: string }> = ({ method = 'CASH', className = '' }) => {
+  const norm = String(method || 'DEFAULT').toUpperCase();
+  const Icon = methodIcons[norm] || methodIcons.DEFAULT;
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 ${className}`}
     >
       <Icon className="h-3.5 w-3.5" />
-      {method.replace(/_/g, ' ')}
+      {String(method || 'Cash').replace(/_/g, ' ')}
     </span>
   );
 };
 
-export const transactionIcon = (type: TransactionType, className = 'h-4 w-4') => {
-  switch (type) {
+export const transactionIcon = (type?: TransactionType | string, className = 'h-4 w-4') => {
+  const norm = String(type || '').toUpperCase();
+  switch (norm) {
     case 'REPAYMENT':
       return <Repeat className={`${className} text-emerald-600`} />;
     case 'LOAN_DISBURSEMENT':
@@ -111,8 +113,9 @@ export const transactionIcon = (type: TransactionType, className = 'h-4 w-4') =>
   }
 };
 
-export const transactionTone = (type: TransactionType): 'positive' | 'negative' | 'neutral' => {
-  switch (type) {
+export const transactionTone = (type?: TransactionType | string): 'positive' | 'negative' | 'neutral' => {
+  const norm = String(type || '').toUpperCase();
+  switch (norm) {
     case 'REPAYMENT':
     case 'SAVINGS_DEPOSIT':
       return 'positive';
@@ -128,12 +131,15 @@ export const transactionTone = (type: TransactionType): 'positive' | 'negative' 
 export const transactionDirection = (tone: 'positive' | 'negative') =>
   tone === 'positive' ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />;
 
-export const typeLabel = (type: string): string =>
-  type
+export const typeLabel = (type?: string): string => {
+  if (!type) return 'General';
+  return String(type)
     .toLowerCase()
     .split('_')
+    .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+    .join(' ') || 'General';
+};
 
 export const typeColor: Record<string, string> = {
   REPAYMENT: 'text-emerald-600',
@@ -145,7 +151,8 @@ export const typeColor: Record<string, string> = {
   ADJUSTMENT: 'text-slate-400',
 };
 
-export const savingsTypeLabel = (t: string) => {
+export const savingsTypeLabel = (t?: string) => {
+  if (!t) return 'Savings';
   const map: Record<string, string> = { DEPOSIT: 'Deposit', WITHDRAWAL: 'Withdrawal', INTEREST: 'Interest' };
-  return map[t] || t.toLowerCase();
+  return map[t] || String(t).toLowerCase();
 };

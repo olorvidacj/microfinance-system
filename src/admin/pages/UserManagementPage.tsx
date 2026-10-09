@@ -8,6 +8,8 @@ import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AdminUser, formatDate } from '../data/mockData';
 import { adminApi } from '../services/adminApi';
+import { PasswordStrengthIndicator } from '../../components/common/PasswordStrengthIndicator';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
 
 const ROLES = ['Administrator', 'Manager', 'Loan Officer', 'Teller', 'Client Services Staff', 'Bookkeeper', 'Auditor'];
 const STATUSES = ['Active', 'Inactive', 'Pending', 'Suspended'];
@@ -84,8 +86,8 @@ export const UserManagementPage: React.FC = () => {
       showToast('Full name and email are required.');
       return;
     }
-    if (!form.password || form.password.length < 8) {
-      showToast('A temporary password of at least 8 characters is required for a new account.');
+    if (!form.password || !isPasswordStrong(form.password)) {
+      showToast(STRONG_PASSWORD_ERROR_MESSAGE);
       return;
     }
     try {
@@ -300,15 +302,19 @@ export const UserManagementPage: React.FC = () => {
             </select>
           </div>
           {!editUser && (
-            <div className="md:col-span-2">
-              <label className={labelCls}>Temporary Password (required, min 8 characters)</label>
+            <div className="md:col-span-2 space-y-2">
+              <label className={labelCls}>Temporary Password (required strong password)</label>
               <input
                 type="password"
                 className={inputCls}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="Set an initial password the user can change on first sign-in"
+                placeholder="Set a strong initial password (min. 8 chars, uppercase, lowercase, number, symbol)"
                 autoComplete="new-password"
+              />
+              <PasswordStrengthIndicator
+                password={form.password}
+                showConfirmMatch={false}
               />
             </div>
           )}

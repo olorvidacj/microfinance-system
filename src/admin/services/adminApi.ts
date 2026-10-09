@@ -42,6 +42,7 @@ export interface AdminOverview {
 
 export interface ReportsData {
   charts: {
+    [key: string]: any;
     client: { month: string; value: number }[];
     kyc: { name: string; value: number; color: string }[];
     loan: { month: string; value: number }[];

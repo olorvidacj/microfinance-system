@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { AuthHeader } from './AuthHeader';
 import { useAuth } from '../../context/AuthContext';
+import { PasswordStrengthIndicator } from '../common/PasswordStrengthIndicator';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
 
 interface RegisterFormProps {
   onSuccess?: () => void;
@@ -72,8 +74,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return 'Please enter a valid email address or leave it blank.';
     }
-    if (!password || password.length < 6) {
-      return 'Password must be at least 6 characters.';
+    if (!password || !isPasswordStrong(password)) {
+      return STRONG_PASSWORD_ERROR_MESSAGE;
     }
     if (password !== confirmPassword) {
       return 'Passwords do not match. Please verify.';
@@ -350,7 +352,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                placeholder="Min. 6 chars"
+                placeholder="Min. 8 characters"
                 className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-gold-400 focus:ring-2 focus:ring-gold-500/20 outline-none text-xs transition"
               />
               <button
@@ -392,6 +394,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           </div>
         </div>
 
+        {/* Real-time Password Strength Indicator & Checklist */}
+        <PasswordStrengthIndicator
+          password={password}
+          confirmPassword={confirmPassword}
+        />
+
         {/* Consent checkbox */}
         <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
           <input
@@ -427,12 +435,12 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Creating Account…</span>
+                <span>Registering…</span>
               </>
             ) : (
               <>
                 <ShieldCheck className="w-4 h-4" />
-                <span>Create Client Account</span>
+                <span>Register</span>
               </>
             )}
           </button>

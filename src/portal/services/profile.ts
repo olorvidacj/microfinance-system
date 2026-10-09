@@ -1,5 +1,12 @@
 import { ApiError, clientRequest } from './clientApi';
-import { ClientProfile, KycStatusData, KycSubmissionFull, KycRequiredDocumentItem } from '../types';
+import {
+  ClientProfile,
+  KycStatusData,
+  KycSubmissionFull,
+  KycRequiredDocumentItem,
+  ExtractedIdData,
+  FaceMatchResult,
+} from '../types';
 
 export const profileService = {
   async get(): Promise<ClientProfile> {
@@ -87,6 +94,40 @@ export const profileService = {
       body: JSON.stringify({ imageBase64, mime }),
     });
     if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Selfie upload failed');
+    return payload;
+  },
+
+  async processId(data: {
+    frontImageBase64: string;
+    backImageBase64?: string;
+    documentType?: string;
+    fileName?: string;
+  }): Promise<{
+    validation: { isReadable: boolean; confidenceScore: number; detectedType: string; validationWarnings: string[] };
+    extractedData: ExtractedIdData;
+    document: { id: string; frontFileUrl?: string; backFileUrl?: string };
+  }> {
+    const payload = await clientRequest('/api/client/kyc/process-id', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'ID verification failed');
+    return payload;
+  },
+
+  async matchFace(data: {
+    selfieImageBase64: string;
+    idImageBase64?: string;
+    livenessAction?: string;
+  }): Promise<{
+    matchResult: FaceMatchResult;
+    selfie: { id: string; fileUrl?: string };
+  }> {
+    const payload = await clientRequest('/api/client/kyc/match-face', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Face matching failed');
     return payload;
   },
 

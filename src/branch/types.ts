@@ -461,7 +461,8 @@ export interface KycDossier {
     submittedAt?: string | null;
     reviewedAt?: string | null;
     reviewedByName?: string | null;
-    verifiedAt?: string | null;
+    faceMatchResult?: any | null;
+    extractedIdData?: any | null;
     createdAt: string;
     updatedAt: string;
   } | null;
@@ -475,6 +476,10 @@ export interface KycQueueItem extends ClientDetail {
   effectiveKycStatus?: string;
   lastUpdated?: string;
   kycDocumentsList?: any[];
+  idVerificationStatus?: 'PASSED' | 'NEEDS_REVIEW' | 'FAILED' | 'NOT_UPLOADED';
+  faceVerificationStatus?: 'PASSED' | 'NEEDS_REVIEW' | 'FAILED' | 'NOT_UPLOADED' | string;
+  ocrConfidence?: number | null;
+  faceMatchConfidence?: number | null;
   kycSubmission?: {
     id: string;
     status: string;
@@ -491,6 +496,8 @@ export interface KycQueueItem extends ClientDetail {
     governmentId?: Record<string, any>;
     declarations?: Record<string, any>;
     currentStep?: number;
+    extractedIdData?: any;
+    faceMatchResult?: any;
   } | null;
 }
 
@@ -501,6 +508,7 @@ export interface KycQueueResult {
     pending: number;
     underReview: number;
     correctionRequired: number;
+    resubmitted: number;
     approved: number;
     rejected: number;
     notStarted: number;

@@ -10,7 +10,17 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { FilterSelect } from '../components/SearchFilter';
 import { adminApi, ReportsData } from '../services/adminApi';
 
-const REPORT_TYPES = [
+export type ReportCategory =
+  | 'client'
+  | 'kyc'
+  | 'loan'
+  | 'repayment'
+  | 'savings'
+  | 'transactions'
+  | 'groups'
+  | 'branches';
+
+const REPORT_TYPES: { id: ReportCategory; label: string; icon: any; desc: string }[] = [
   { id: 'client', label: 'Client Registration', icon: UserPlus, desc: 'New member acquisitions by month and branch.' },
   { id: 'kyc', label: 'KYC Compliance Pipeline', icon: ShieldCheck, desc: 'Dossier reviews, approval velocity, and pass rates.' },
   { id: 'loan', label: 'Loan Originations', icon: FileText, desc: 'Credit facilities, approvals, releases, and commitments.' },
@@ -21,8 +31,27 @@ const REPORT_TYPES = [
   { id: 'branches', label: 'Branch Territorial Benchmark', icon: Building2, desc: 'Comparative performance of Leyte branch stations.' },
 ];
 
+const MONTH_MAP: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
+const formatMonthToDateString = (monthStr: string, isEnd = false) => {
+  if (!monthStr) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(monthStr)) return monthStr;
+  const lower = monthStr.toLowerCase().slice(0, 3);
+  const monthNum = MONTH_MAP[lower];
+  if (!monthNum) return '';
+  const currentYear = new Date().getFullYear();
+  if (isEnd) {
+    const lastDay = new Date(currentYear, parseInt(monthNum, 10), 0).getDate();
+    return `${currentYear}-${monthNum}-${String(lastDay).padStart(2, '0')}`;
+  }
+  return `${currentYear}-${monthNum}-01`;
+};
+
 export const ReportsAnalyticsPage: React.FC = () => {
-  const [category, setCategory] = useState('client');
+  const [category, setCategory] = useState<ReportCategory>('client');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [toast, setToast] = useState('');
@@ -36,8 +65,8 @@ export const ReportsAnalyticsPage: React.FC = () => {
     if (reports?.charts.client?.length) {
       const first = reports.charts.client[0]?.month;
       const last = reports.charts.client[reports.charts.client.length - 1]?.month;
-      if (first) setFromDate((prev) => prev || first);
-      if (last) setToDate((prev) => prev || last);
+      if (first) setFromDate((prev) => prev || formatMonthToDateString(first, false));
+      if (last) setToDate((prev) => prev || formatMonthToDateString(last, true));
     }
   }, [reports]);
 
@@ -97,7 +126,7 @@ export const ReportsAnalyticsPage: React.FC = () => {
           </div>
           <FilterSelect
             value={category}
-            onChange={setCategory}
+            onChange={(v) => setCategory(v as ReportCategory)}
             options={REPORT_TYPES.map((r) => ({ value: r.id, label: r.label }))}
             placeholder="Report Category"
             className="w-full md:w-64"

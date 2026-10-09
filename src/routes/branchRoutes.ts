@@ -194,20 +194,6 @@ function ctxOf(req: Request): BranchCtx {
   return (req as any).branchCtx as BranchCtx;
 }
 
-/**
- * Normalizes a query-string filter value.
- *
- * A client that builds its query with `new URLSearchParams({ status })` while
- * `status` is `undefined` sends the literal text "undefined", which is a
- * non-empty string and therefore passes the `if (value)` checks below and gets
- * applied as a real filter — matching zero rows and rendering an empty list
- * with no error to explain why. Treat those sentinels as "filter not set".
- */
-function qsStr(value: unknown): string {
-  const s = String(value ?? '').trim();
-  return s === 'undefined' || s === 'null' ? '' : s;
-}
-
 function scopeCond(ctx: BranchCtx, branchColumn: any, branchIdParam?: string) {
   if (ctx.viewAll || !ctx.branchId || ctx.branchId === 'all' || ctx.branchId.toLowerCase() === 'all') {
     if (branchIdParam && branchIdParam !== 'all' && branchIdParam.toLowerCase() !== 'all') {
@@ -516,7 +502,7 @@ branchRouter.get('/clients', requireBranch(['view_client_info', 'register_client
   const scope = scopeCond(ctx, schema.borrowers.branchId, req.query.branchId ? String(req.query.branchId) : undefined);
   if (scope) conditions.push(scope);
 
-  const q = qsStr(req.query.search).toLowerCase();
+  const q = String(req.query.search || '').trim().toLowerCase();
   if (q) {
     conditions.push(
       or(
@@ -526,9 +512,9 @@ branchRouter.get('/clients', requireBranch(['view_client_info', 'register_client
       ) as any
     );
   }
-  const status = qsStr(req.query.status);
+  const status = String(req.query.status || '');
   if (status) conditions.push(ilike(schema.borrowers.memberStatus, `%${status}%`) as any);
-  const kyc = qsStr(req.query.kyc);
+  const kyc = String(req.query.kyc || '');
   if (kyc) conditions.push(ilike(schema.borrowers.kycStatus, `%${kyc}%`) as any);
 
   let rows = await db.select().from(schema.borrowers).where(conditions.length ? and(...conditions) : undefined);
@@ -668,8 +654,8 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
   const db = getDb();
   if (!db) return res.json({ success: true, data: [], counts: {} });
 
-  const statusFilter = (qsStr(req.query.status) || 'ALL').toUpperCase();
-  const search = qsStr(req.query.search).toLowerCase();
+  const statusFilter = String(req.query.status || 'ALL').toUpperCase();
+  const search = String(req.query.search || '').trim().toLowerCase();
 
   const rows = await db.select().from(schema.borrowers).where(scopeCond(ctx, schema.borrowers.branchId, req.query.branchId ? String(req.query.branchId) : undefined));
   const subRows = await db.select().from(schema.kycSubmissions);
@@ -701,11 +687,22 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
     const totalDocs = Math.max(docCounts.get(b.id) || 0, userKycDocs.length);
     const effectiveStatus = (sub?.status || b.kycStatus || 'NOT_STARTED').toUpperCase();
 
+    const govIdData = (sub as any)?.governmentId || {};
+    const ocrData = govIdData.ocrData || null;
+    const faceMatchResult = govIdData.faceMatchResult || null;
+
+    const hasIdDoc = userKycDocs.some((d: any) => ['GOVERNMENT_ID', 'VALID_ID', 'ID_FRONT'].includes(d.documentType) && (d.fileUrl || d.fileName));
+    const hasSelfieDoc = userKycDocs.some((d: any) => ['SELFIE', 'SELFIE_WITH_ID', 'PHOTO_2X2'].includes(d.documentType) && (d.fileUrl || d.fileName));
+
     return {
       ...b,
       applicationNumber: sub?.id || `KYC-${String(b.borrowerNumber || b.id).replace(/\D/g, '').slice(-5).padStart(5, '0')}`,
       submittedDocuments: totalDocs,
       kycDocumentsList: userKycDocs,
+      idVerificationStatus: ocrData?.isReadable ? 'PASSED' : hasIdDoc ? 'NEEDS_REVIEW' : 'NOT_UPLOADED',
+      faceVerificationStatus: faceMatchResult?.isMatch ? 'PASSED' : hasSelfieDoc ? (faceMatchResult?.matchStatus || 'NEEDS_REVIEW') : 'NOT_UPLOADED',
+      ocrConfidence: ocrData?.confidenceScore ?? (govIdData.ocrConfidence || null),
+      faceMatchConfidence: faceMatchResult?.matchConfidence ?? null,
       kycSubmission: sub
         ? {
             id: sub.id,
@@ -723,18 +720,28 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
             governmentId: sub.governmentId,
             declarations: sub.declarations,
             currentStep: sub.currentStep,
+            extractedIdData: ocrData,
+            faceMatchResult: faceMatchResult,
           }
         : null,
       effectiveKycStatus: effectiveStatus,
-      lastUpdated: sub?.updatedAt || b.lastActivityDate || b.joinedDate || b.membershipDate,
+      lastUpdated: sub?.submittedAt || sub?.updatedAt || b.lastActivityDate || b.joinedDate || b.membershipDate,
     };
+  });
+
+  // Sort by newest submissions / activities first
+  fullQueue.sort((a, b) => {
+    const timeA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+    const timeB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+    return timeB - timeA;
   });
 
   const counts = {
     all: fullQueue.length,
-    pending: fullQueue.filter((c) => ['SUBMITTED', 'PENDING', 'PENDING_REVIEW', 'IN_PROGRESS'].includes(c.effectiveKycStatus)).length,
+    pending: fullQueue.filter((c) => ['SUBMITTED', 'PENDING', 'PENDING_VERIFICATION'].includes(c.effectiveKycStatus)).length,
     underReview: fullQueue.filter((c) => c.effectiveKycStatus === 'UNDER_REVIEW').length,
     correctionRequired: fullQueue.filter((c) => ['CORRECTION_REQUIRED', 'CORRECTION_REQUESTED'].includes(c.effectiveKycStatus)).length,
+    resubmitted: fullQueue.filter((c) => c.effectiveKycStatus === 'RESUBMITTED').length,
     approved: fullQueue.filter((c) => ['APPROVED', 'VERIFIED'].includes(c.effectiveKycStatus)).length,
     rejected: fullQueue.filter((c) => c.effectiveKycStatus === 'REJECTED').length,
     notStarted: fullQueue.filter((c) => c.effectiveKycStatus === 'NOT_STARTED').length,
@@ -743,12 +750,14 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
   let filtered = fullQueue;
 
   if (statusFilter !== 'ALL') {
-    if (statusFilter === 'PENDING' || statusFilter === 'PENDING_REVIEW') {
-      filtered = filtered.filter((c) => ['SUBMITTED', 'PENDING', 'PENDING_REVIEW', 'IN_PROGRESS'].includes(c.effectiveKycStatus));
+    if (statusFilter === 'PENDING' || statusFilter === 'PENDING_VERIFICATION') {
+      filtered = filtered.filter((c) => ['SUBMITTED', 'PENDING', 'PENDING_VERIFICATION'].includes(c.effectiveKycStatus));
     } else if (statusFilter === 'UNDER_REVIEW') {
       filtered = filtered.filter((c) => c.effectiveKycStatus === 'UNDER_REVIEW');
     } else if (statusFilter === 'CORRECTION_REQUIRED' || statusFilter === 'CORRECTION_REQUESTED') {
       filtered = filtered.filter((c) => ['CORRECTION_REQUIRED', 'CORRECTION_REQUESTED'].includes(c.effectiveKycStatus));
+    } else if (statusFilter === 'RESUBMITTED') {
+      filtered = filtered.filter((c) => c.effectiveKycStatus === 'RESUBMITTED');
     } else if (statusFilter === 'APPROVED' || statusFilter === 'VERIFIED') {
       filtered = filtered.filter((c) => ['APPROVED', 'VERIFIED'].includes(c.effectiveKycStatus));
     } else if (statusFilter === 'REJECTED') {
@@ -765,7 +774,8 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
         c.borrowerNumber?.toLowerCase().includes(search) ||
         c.applicationNumber?.toLowerCase().includes(search) ||
         c.phone?.includes(search) ||
-        c.email?.toLowerCase().includes(search)
+        c.email?.toLowerCase().includes(search) ||
+        c.effectiveKycStatus?.toLowerCase().includes(search)
     );
   }
 
@@ -1069,11 +1079,11 @@ branchRouter.get('/loan-applications', requireBranch(['process_loan_applications
   const conditions: any[] = [
     scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined),
   ].filter(Boolean);
-  const status = qsStr(req.query.status);
+  const status = String(req.query.status || '').trim();
   if (status) {
     conditions.push(ilike(schema.loans.status, `%${status}%`) as any);
   }
-  const search = qsStr(req.query.search);
+  const search = String(req.query.search || '').trim();
   if (search) {
     conditions.push(
       or(
@@ -1083,13 +1093,13 @@ branchRouter.get('/loan-applications', requireBranch(['process_loan_applications
       ) as any
     );
   }
-  const product = qsStr(req.query.product);
+  const product = String(req.query.product || '').trim();
   if (product) conditions.push(ilike(schema.loans.productName, `%${product}%`) as any);
-  const officer = qsStr(req.query.officer);
+  const officer = String(req.query.officer || '').trim();
   if (officer) conditions.push(ilike(schema.loans.loanOfficerName, `%${officer}%`) as any);
-  const from = qsStr(req.query.from);
+  const from = String(req.query.from || '').trim();
   if (from) conditions.push(gte(schema.loans.applicationDate, from));
-  const to = qsStr(req.query.to);
+  const to = String(req.query.to || '').trim();
   if (to) conditions.push(lte(schema.loans.applicationDate, to));
 
   const rows = await db
@@ -1200,9 +1210,9 @@ branchRouter.get('/loans', requireBranch(['review_client_loan_info', 'process_lo
   const db = getDb();
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const status = qsStr(req.query.status);
+  const status = String(req.query.status || '');
   if (status) conditions.push(ilike(schema.loans.status, `%${status}%`) as any);
-  const search = qsStr(req.query.search);
+  const search = String(req.query.search || '').trim();
   if (search) {
     conditions.push(or(ilike(schema.loans.borrowerName, `%${search}%`), ilike(schema.loans.loanNumber, `%${search}%`)) as any);
   }
@@ -2408,17 +2418,17 @@ branchRouter.get('/transactions', requireBranch(['view_transaction_records']), a
   const db = getDb();
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.financialTransactions.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const type = qsStr(req.query.type);
+  const type = String(req.query.type || '');
   if (type) conditions.push(eq(schema.financialTransactions.transactionType, type));
-  const status = qsStr(req.query.status);
+  const status = String(req.query.status || '');
   if (status) conditions.push(eq(schema.financialTransactions.status, status));
-  const q = qsStr(req.query.search);
+  const q = String(req.query.search || '').trim();
   if (q) {
     conditions.push(or(ilike(schema.financialTransactions.clientName, `%${q}%`), ilike(schema.financialTransactions.referenceNumber, `%${q}%`)) as any);
   }
-  const from = qsStr(req.query.from);
+  const from = String(req.query.from || '');
   if (from) conditions.push(gte(schema.financialTransactions.transactionDate, from));
-  const to = qsStr(req.query.to);
+  const to = String(req.query.to || '');
   if (to) conditions.push(lte(schema.financialTransactions.transactionDate, to));
   const rows = await db
     .select()
@@ -2468,9 +2478,9 @@ branchRouter.get('/documents', requireBranch(['view_client_info', 'register_clie
   const db = getDb();
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.documents.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const docType = qsStr(req.query.docType);
+  const docType = String(req.query.docType || '');
   if (docType) conditions.push(eq(schema.documents.docType, docType));
-  const status = qsStr(req.query.status);
+  const status = String(req.query.status || '');
   if (status) conditions.push(eq(schema.documents.status, status));
   const rows = await db
     .select()
@@ -2749,9 +2759,9 @@ branchRouter.get('/activity-log', requireBranch([]), async (req, res) => {
   const limit = Math.min(200, Number(req.query.limit) || 100);
   if (!db) return res.json({ success: true, data: [] });
   const conditions: any[] = [scopeCond(ctx, schema.auditLogs.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const module = qsStr(req.query.module);
+  const module = String(req.query.module || '');
   if (module) conditions.push(eq(schema.auditLogs.type, module));
-  const q = qsStr(req.query.search);
+  const q = String(req.query.search || '').trim();
   if (q) conditions.push(ilike(schema.auditLogs.action, `%${q}%`) as any);
   const rows = await db
     .select()

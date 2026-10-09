@@ -1,3 +1,5 @@
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from './passwordValidator';
+
 export interface FieldError {
   field: string;
   message: string;
@@ -31,6 +33,9 @@ export const validators = {
   password(value: string, min = 8): string | null {
     if (!value) return 'Password is required.';
     if (value.length < min) return `Password must be at least ${min} characters.`;
+    if (!isPasswordStrong(value)) {
+      return STRONG_PASSWORD_ERROR_MESSAGE;
+    }
     return null;
   },
 

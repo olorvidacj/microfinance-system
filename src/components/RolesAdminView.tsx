@@ -28,6 +28,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useAccess } from '../hooks/useAccess';
+import { PasswordStrengthIndicator } from './common/PasswordStrengthIndicator';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../utils/passwordValidator';
 import { useLoan } from '../context/LoanContext';
 import {
   RoleDefinition,
@@ -167,6 +169,10 @@ export const RolesAdminView: React.FC = () => {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserForm.fullName || !newUserForm.email || !newUserForm.password) return;
+    if (!isPasswordStrong(newUserForm.password)) {
+      alert(STRONG_PASSWORD_ERROR_MESSAGE);
+      return;
+    }
 
     try {
       const token = localStorage.getItem('HOSCOMCO_auth_token') || '';
@@ -658,15 +664,19 @@ export const RolesAdminView: React.FC = () => {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Password</label>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Temporary Password (required strong password)</label>
                     <input
                       type="password"
                       required
-                      placeholder="Min 8 characters"
+                      placeholder="Min 8 characters (Strong password)"
                       value={newUserForm.password}
                       onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
+                    />
+                    <PasswordStrengthIndicator
+                      password={newUserForm.password}
+                      showConfirmMatch={false}
                     />
                   </div>
                 </div>

@@ -115,23 +115,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await parseJson(res);
         if (!cancelled && res.ok && data.user) {
           setUser(data.user);
-        } else {
+          if (data.token) {
+            try {
+              localStorage.setItem(TOKEN_KEY, data.token);
+            } catch {}
+          }
+        } else if (res.status === 401 || res.status === 403) {
           try {
             localStorage.removeItem(TOKEN_KEY);
           } catch {}
         }
       } catch {
-        // Network error: keep session optimistically only if token parses as valid shape
+        // Network error: keep session optimistically if token has valid payload shape
         try {
-          const [, sig] = token.split('.');
-          const body = JSON.parse(atob(token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
-          if (!cancelled && sig && body?.exp > Date.now()) {
-            setUser({
-              id: body.sub,
-              email: body.email,
-              fullName: body.email,
-              role: body.role,
-            });
+          const [bodyStr, sig] = token.split('.');
+          if (!cancelled && bodyStr && sig) {
+            const body = JSON.parse(atob(bodyStr.replace(/-/g, '+').replace(/_/g, '/')));
+            if (body && (!body.exp || body.exp > Date.now())) {
+              setUser({
+                id: body.sub || body.id,
+                email: body.email,
+                fullName: body.fullName || body.email?.split('@')[0] || 'User',
+                role: body.role || 'CLIENT',
+                staffRole: body.staffRole || null,
+                staffId: body.staffId || null,
+                borrowerId: body.borrowerId || null,
+                branchId: body.branchId || null,
+              });
+            }
           }
         } catch {
           try {

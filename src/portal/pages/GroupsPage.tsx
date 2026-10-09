@@ -46,7 +46,7 @@ const GroupsPage: React.FC = () => {
   if (loading) return <LoadingState label="Loading your group…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
-  if (!group) {
+  if (!group || !group.id || !group.name) {
     return (
       <div className="space-y-6">
         <div>
@@ -70,6 +70,8 @@ const GroupsPage: React.FC = () => {
   }
 
   const gl = group.groupLoan;
+  const members = Array.isArray(group.members) ? group.members : [];
+  const schedule = Array.isArray(gl?.schedule) ? gl.schedule : [];
 
   return (
     <div className="space-y-6">
@@ -92,7 +94,7 @@ const GroupsPage: React.FC = () => {
                   <h2 className="text-xl font-bold text-slate-900">{group.name}</h2>
                   <p className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
                     <span className="inline-flex items-center gap-1">
-                      <Crown className="h-3.5 w-3.5 text-amber-500" /> {group.leaderName}
+                      <Crown className="h-3.5 w-3.5 text-amber-500" /> {group.leaderName || 'Group Leader'}
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" /> {group.centerName || group.branch || '—'}
@@ -102,8 +104,8 @@ const GroupsPage: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2 pb-1">
-              <StatusBadge status={group.status} />
-              <span className="text-sm text-slate-500">{group.memberCount} members</span>
+              <StatusBadge status={group.status || 'ACTIVE'} />
+              <span className="text-sm text-slate-500">{group.memberCount || members.length} members</span>
             </div>
           </div>
         </CardBody>
@@ -113,17 +115,22 @@ const GroupsPage: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>Group loan</CardTitle>
-            <StatusBadge status={gl.outstandingBalance > 0 ? 'ACTIVE' : 'COMPLETED'} />
+            <StatusBadge status={(Number(gl.outstandingBalance) || 0) > 0 ? 'ACTIVE' : 'COMPLETED'} />
           </CardHeader>
           <CardBody>
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <Stat label="Total loan" value={formatCurrency(gl.totalAmount)} icon={Banknote} />
-              <Stat label="Outstanding" value={formatCurrency(gl.outstandingBalance)} icon={ReceiptText} />
-              <Stat label="Paid" value={formatCurrency(gl.paidAmount)} icon={CheckCircle2} />
-              <Stat label="Next payment" value={formatCurrency(gl.nextPayment)} icon={Users} sub={gl.nextPaymentDate ? `Due ${formatDate(gl.nextPaymentDate)}` : undefined} />
+              <Stat label="Total loan" value={formatCurrency(gl.totalAmount || 0)} icon={Banknote} />
+              <Stat label="Outstanding" value={formatCurrency(gl.outstandingBalance || 0)} icon={ReceiptText} />
+              <Stat label="Paid" value={formatCurrency(gl.paidAmount || 0)} icon={CheckCircle2} />
+              <Stat
+                label="Next payment"
+                value={formatCurrency(gl.nextPayment || 0)}
+                icon={Users}
+                sub={gl.nextPaymentDate ? `Due ${formatDate(gl.nextPaymentDate)}` : undefined}
+              />
             </div>
             <div className="mt-5">
-              <ProgressBar value={gl.repaymentProgress} max={100} showLabel label="Repayment progress" />
+              <ProgressBar value={gl.repaymentProgress || 0} max={100} showLabel label="Repayment progress" />
             </div>
           </CardBody>
         </Card>
@@ -134,39 +141,56 @@ const GroupsPage: React.FC = () => {
         <CardHeader>
           <CardTitle>Circle members</CardTitle>
         </CardHeader>
-        <Table headers={['Member', 'Role', 'Contribution', 'Loan status']}>
-          {group.members.map((m) => (
-            <Tr key={m.borrowerId}>
-              <Td>
-                <span className="flex items-center gap-2.5">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">
-                    {m.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                  </span>
-                  <span className="font-medium text-slate-800">{m.name}</span>
-                  {m.role === 'Leader' && <Crown className="h-3.5 w-3.5 text-amber-500" />}
-                </span>
-              </Td>
-              <Td className="text-slate-500">{m.role || 'Member'}</Td>
-              <Td>
-                <StatusBadge
-                  status={m.contributionStatus}
-                  tone={m.contributionStatus === 'PAID' ? 'green' : m.contributionStatus === 'LATE' ? 'red' : 'amber'}
-                />
-              </Td>
-              <Td className="text-slate-500">{m.loanStatus || '—'}</Td>
-            </Tr>
-          ))}
-        </Table>
+        {members.length === 0 ? (
+          <CardBody>
+            <p className="text-sm text-slate-500">No member records listed for this circle.</p>
+          </CardBody>
+        ) : (
+          <Table headers={['Member', 'Role', 'Contribution', 'Loan status']}>
+            {members.map((m, idx) => {
+              const memberName = m.name || (m as any).fullName || (m as any).borrowerName || `Member ${idx + 1}`;
+              const initials = memberName
+                .split(' ')
+                .filter(Boolean)
+                .map((p: string) => p[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase() || 'M';
+
+              return (
+                <Tr key={m.borrowerId || idx}>
+                  <Td>
+                    <span className="flex items-center gap-2.5">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">
+                        {initials}
+                      </span>
+                      <span className="font-medium text-slate-800">{memberName}</span>
+                      {m.role === 'Leader' && <Crown className="h-3.5 w-3.5 text-amber-500" />}
+                    </span>
+                  </Td>
+                  <Td className="text-slate-500">{m.role || 'Member'}</Td>
+                  <Td>
+                    <StatusBadge
+                      status={m.contributionStatus || 'PAID'}
+                      tone={m.contributionStatus === 'PAID' ? 'green' : m.contributionStatus === 'LATE' ? 'red' : 'amber'}
+                    />
+                  </Td>
+                  <Td className="text-slate-500">{m.loanStatus || '—'}</Td>
+                </Tr>
+              );
+            })}
+          </Table>
+        )}
       </Card>
 
       {/* Group loan schedule */}
-      {gl && (
+      {gl && schedule.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Group loan schedule</CardTitle>
           </CardHeader>
           <Table headers={['#', 'Due date', 'Amount due', 'Balance', 'Status']}>
-            {gl.schedule.map((s) => (
+            {schedule.map((s) => (
               <Tr key={s.installmentNumber}>
                 <Td className="text-slate-400">{String(s.installmentNumber).padStart(2, '0')}</Td>
                 <Td>{formatDate(s.dueDate)}</Td>

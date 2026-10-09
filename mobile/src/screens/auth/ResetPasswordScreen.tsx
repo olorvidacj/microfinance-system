@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppButton, AppTextInput } from '../../components';
+import { AppButton, AppTextInput, PasswordStrengthIndicator } from '../../components';
 import { AuthLayout } from './AuthLayout';
 import { colors } from '../../theme';
 import { api } from '../../services/api';
 import { validators } from '../../utils/validation';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
 import { AuthStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 
@@ -48,12 +49,12 @@ export const ResetPasswordScreen: React.FC<Props> = ({ navigation, route }) => {
   return (
     <AuthLayout
       title="Create new password"
-      subtitle="Choose a strong password of at least 8 characters. You will use it to sign in next time."
+      subtitle="Choose a strong password with uppercase, lowercase, number, and special character."
     >
       {serverError ? <Text style={styles.error}>{serverError}</Text> : null}
       <AppTextInput
         label="New Password"
-        placeholder="At least 8 characters"
+        placeholder="Min. 8 characters"
         value={password}
         onChangeText={setPassword}
         secure
@@ -67,7 +68,16 @@ export const ResetPasswordScreen: React.FC<Props> = ({ navigation, route }) => {
         secure
         error={errors.confirm}
       />
-      <AppButton title="Reset Password" onPress={handleReset} loading={loading} />
+      <PasswordStrengthIndicator
+        password={password}
+        confirmPassword={confirm}
+      />
+      <AppButton
+        title="Reset Password"
+        onPress={handleReset}
+        loading={loading}
+        disabled={loading || !isPasswordStrong(password) || password !== confirm}
+      />
     </AuthLayout>
   );
 };

@@ -11,353 +11,463 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppButton, AppTextInput, WizardHeader } from '../../components';
+import { AppButton, AppTextInput, PasswordStrengthIndicator } from '../../components';
 import { colors, radius } from '../../theme';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { validators } from '../../utils/validation';
 import { AuthStackParamList } from '../../navigation/types';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
-const STEPS = [
-  { title: 'Personal Information', subtitle: 'Legal name and basic details' },
-  { title: 'Contact Information', subtitle: 'How we reach you' },
-  { title: 'Address', subtitle: 'Where you live in the Philippines' },
-  { title: 'Employment / Income', subtitle: 'Your source of livelihood' },
-  { title: 'Account Credentials', subtitle: 'Secure your account' },
-];
+const SUFFIX_OPTIONS = ['None', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
 
-const GENDERS = ['Female', 'Male', 'Prefer not to say'];
-const CIVIL_STATUS = ['Single', 'Married', 'Widowed', 'Separated'];
-const INCOME_SOURCES = [
-  'Business / Self-Employment',
-  'Salary / Employment',
-  'Agriculture / Farming',
-  'Family Support',
-  'Pension / Remittances',
-  'Other',
-];
-
-interface StepData {
+interface FormData {
   firstName: string;
   middleName: string;
+  hasNoMiddleName: boolean;
   lastName: string;
-  dateOfBirth: string;
-  gender: string;
-  civilStatus: string;
+  suffix: string;
   phone: string;
   email: string;
-  barangay: string;
-  city: string;
-  province: string;
-  address: string;
-  occupation: string;
-  monthlyIncome: string;
-  sourceOfIncome: string;
   password: string;
   confirmPassword: string;
-  agreed: boolean;
+  agreeTerms: boolean;
 }
 
-const initialData: StepData = {
+const initialForm: FormData = {
   firstName: '',
   middleName: '',
+  hasNoMiddleName: false,
   lastName: '',
-  dateOfBirth: '',
-  gender: '',
-  civilStatus: '',
+  suffix: 'None',
   phone: '',
   email: '',
-  barangay: '',
-  city: '',
-  province: '',
-  address: '',
-  occupation: '',
-  monthlyIncome: '',
-  sourceOfIncome: '',
   password: '',
   confirmPassword: '',
-  agreed: false,
+  agreeTerms: false,
 };
 
 export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
   const { signIn } = useAuth();
-  const [step, setStep] = useState(0);
-  const [data, setData] = useState<StepData>(initialData);
+  const [form, setForm] = useState<FormData>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [generalError, setGeneralError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [registered, setRegistered] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [registeredSession, setRegisteredSession] = useState<{
+    fullName: string;
+    email?: string;
+    session: any;
+  } | null>(null);
 
-  const set = (key: keyof StepData, value: any) => {
-    setData((d) => ({ ...d, [key]: value }));
-    setErrors((e) => {
-      const next = { ...e };
+  const update = (key: keyof FormData, value: any) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => {
+      const next = { ...prev };
       delete next[key];
       return next;
     });
+    setGeneralError(null);
   };
 
-  const validateStep = (s: number): boolean => {
-    const e: Record<string, string> = {};
-    if (s === 0) {
-      if (!validators.required(data.firstName)) e.firstName = validators.required(data.firstName) as string;
-      if (!validators.required(data.lastName)) e.lastName = validators.required(data.lastName) as string;
-      const dob = validators.dateOfBirth(data.dateOfBirth);
-      if (dob) e.dateOfBirth = dob;
-      if (!data.gender) e.gender = 'Select your gender.';
-      if (!data.civilStatus) e.civilStatus = 'Select your civil status.';
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    const fName = form.firstName.trim();
+    if (!fName || fName.length < 2) {
+      errs.firstName = 'Enter your legal First Name (min 2 characters).';
     }
-    if (s === 1) {
-      const ph = validators.phonePolicy(data.phone);
-      if (ph) e.phone = ph;
-      if (data.email) {
-        const em = validators.email(data.email);
-        if (em) e.email = em;
+
+    const lName = form.lastName.trim();
+    if (!lName || lName.length < 2) {
+      errs.lastName = 'Enter your legal Last Name (min 2 characters).';
+    }
+
+    if (!form.hasNoMiddleName && form.middleName.trim()) {
+      const invalidMiddle = ['n/a', 'na', 'none', '-', '.'];
+      if (invalidMiddle.includes(form.middleName.trim().toLowerCase())) {
+        errs.middleName = 'Check "No middle name" instead of typing N/A.';
       }
     }
-    if (s === 2) {
-      if (!validators.required(data.barangay)) e.barangay = validators.required(data.barangay, 'Barangay') as string;
-      if (!validators.required(data.city)) e.city = validators.required(data.city, 'Municipality / City') as string;
-      if (!validators.required(data.province)) e.province = validators.required(data.province, 'Province') as string;
-      if (!validators.required(data.address)) e.address = validators.required(data.address, 'Complete address') as string;
+
+    // Philippine phone validation
+    const cleanPhone = form.phone.replace(/\D/g, '');
+    const isPhMobile = /^(09\d{9}|639\d{9}|9\d{9})$/.test(cleanPhone);
+    if (!isPhMobile) {
+      errs.phone = 'Enter a valid Philippine mobile number (e.g. 0917 123 4567).';
     }
-    if (s === 3) {
-      if (!validators.required(data.occupation)) e.occupation = validators.required(data.occupation, 'Occupation') as string;
-      const inc = validators.amount(data.monthlyIncome);
-      if (inc) e.monthlyIncome = inc;
-      if (!data.sourceOfIncome) e.sourceOfIncome = 'Select your source of income.';
+
+    // Email validation (optional)
+    if (form.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(form.email.trim())) {
+        errs.email = 'Enter a valid email address or leave it blank.';
+      }
     }
-    if (s === 4) {
-      const pw = validators.password(data.password);
-      const cf = validators.confirmPassword(data.confirmPassword, data.password);
-      if (pw) e.password = pw;
-      if (cf) e.confirmPassword = cf;
-      if (!data.agreed) e.agreed = 'You must accept the terms, data privacy notice, and consent.';
+
+    // Password validation
+    if (!form.password || !isPasswordStrong(form.password)) {
+      errs.password = STRONG_PASSWORD_ERROR_MESSAGE;
     }
-    setErrors(e);
-    return Object.keys(e).length === 0;
+
+    if (form.password !== form.confirmPassword) {
+      errs.confirmPassword = 'Passwords do not match.';
+    }
+
+    if (!form.agreeTerms) {
+      errs.agreeTerms = 'You must agree to the Terms of Service & Privacy Policy.';
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  const nextStep = () => {
-    if (validateStep(step)) setStep((s) => s + 1);
-  };
+  const handleRegister = async () => {
+    setGeneralError(null);
+    if (!validate()) return;
 
-  const backStep = () => {
-    if (step === 0) navigation.goBack();
-    else setStep((s) => s - 1);
-  };
-
-  const handleSubmit = async () => {
-    if (!validateStep(4)) return;
     setSubmitting(true);
     try {
-      const res = await api.register({
-        phone: data.phone,
-        password: data.password,
-        fullName: `${data.firstName} ${data.middleName ? data.middleName.trim() + ' ' : ''}${data.lastName}`.trim(),
-        firstName: data.firstName,
-        middleName: data.middleName,
-        lastName: data.lastName,
-        email: data.email || undefined,
-        dateOfBirth: data.dateOfBirth,
-        gender: data.gender,
-        civilStatus: data.civilStatus,
-        address: data.address,
-        barangay: data.barangay,
-        city: data.city,
-        province: data.province,
-        occupation: data.occupation,
-        employerOrBusiness: data.sourceOfIncome,
-        sourceOfIncome: data.sourceOfIncome,
-        monthlyIncome: Number(data.monthlyIncome) || 0,
+      let cleanPhone = form.phone.replace(/\D/g, '');
+      if (cleanPhone.startsWith('63')) cleanPhone = '0' + cleanPhone.slice(2);
+      if (cleanPhone.startsWith('9') && cleanPhone.length === 10) cleanPhone = '0' + cleanPhone;
+
+      const suffixVal = form.suffix !== 'None' ? form.suffix.trim() : undefined;
+      const composedFullName = [
+        form.firstName.trim(),
+        (!form.hasNoMiddleName && form.middleName.trim()) ? form.middleName.trim() : null,
+        form.lastName.trim(),
+        suffixVal || null,
+      ].filter(Boolean).join(' ');
+
+      const session = await api.register({
+        fullName: composedFullName,
+        firstName: form.firstName.trim(),
+        middleName: (!form.hasNoMiddleName && form.middleName.trim()) ? form.middleName.trim() : undefined,
+        lastName: form.lastName.trim(),
+        suffix: suffixVal,
+        hasNoMiddleName: form.hasNoMiddleName,
+        phone: cleanPhone,
+        email: form.email.trim().toLowerCase() || undefined,
+        password: form.password,
+        confirmPassword: form.confirmPassword,
+        agreeTerms: form.agreeTerms,
       });
-      const session = {
-        token: res.token,
-        user: res.user,
-      };
-      await signIn(session);
-      setSuccessMessage(
-        'Your account has been created. Please complete your KYC verification before applying for a loan.'
-      );
-      setRegistered(true);
+
+      setRegisteredSession({
+        fullName: session.user?.fullName || composedFullName,
+        email: session.user?.email || form.email.trim(),
+        session,
+      });
     } catch (err: any) {
-      setErrors({ submit: err?.message || 'Registration failed. Please try again.' });
+      setGeneralError(err?.message || 'Registration failed. Please check your details and try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const ChipGroup = ({ options, selected, onSelect }: { options: string[]; selected: string; onSelect: (v: string) => void }) => (
-    <View style={styles.chipRow}>
-      {options.map((opt) => {
-        const active = selected === opt;
-        return (
-          <TouchableOpacity
-            key={opt}
-            style={[styles.chip, active && styles.chipActive]}
-            onPress={() => onSelect(opt)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name={active ? 'checkmark-circle' : 'ellipse-outline'} size={15} color={active ? colors.white : colors.textFaint} />
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
+  const handleCompleteKyc = async () => {
+    if (registeredSession?.session) {
+      await signIn(registeredSession.session);
+    } else {
+      navigation.navigate('Login');
+    }
+  };
 
-  if (registered) {
+  // SUCCESS SCREEN
+  if (registeredSession) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.successWrap}>
-          <View style={styles.successIcon}>
-            <Ionicons name="checkmark" size={34} color={colors.white} />
-          </View>
-          <Text style={styles.successTitle}>Account Created</Text>
-          <Text style={styles.successMsg}>{successMessage}</Text>
-          <View style={styles.successHint}>
-            <Ionicons name="shield-checkmark-outline" size={16} color={colors.teal} />
-            <Text style={styles.successHintText}>
-              KYC verification is done by authorized branch personnel. You will be notified when your documents are approved.
+        <ScrollView contentContainerStyle={styles.successContainer}>
+          <View style={styles.successCard}>
+            <View style={styles.successIconWrap}>
+              <Ionicons name="checkmark-circle" size={56} color={colors.greenDark} />
+            </View>
+
+            <Text style={styles.successTitle}>Account created successfully.</Text>
+            <Text style={styles.successSubtitle}>
+              Your member account for{' '}
+              <Text style={styles.boldText}>{registeredSession.fullName}</Text> has been created.
             </Text>
+
+            <View style={styles.kycNoticeCard}>
+              <View style={styles.kycNoticeHeader}>
+                <Ionicons name="shield-checkmark" size={20} color={colors.teal} />
+                <Text style={styles.kycNoticeTitle}>Next Step: Complete Your KYC</Text>
+              </View>
+              <Text style={styles.kycNoticeText}>
+                Your basic account is active. To unlock loan applications, savings withdrawals, and credit services, please complete your step-by-step KYC identity verification.
+              </Text>
+            </View>
+
+            <View style={styles.successActions}>
+              <AppButton
+                title="Complete KYC Verification"
+                onPress={handleCompleteKyc}
+                style={styles.primaryBtn}
+              />
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={handleCompleteKyc}
+              >
+                <Text style={styles.secondaryBtnText}>Go to Dashboard</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.successAction}>
-            <AppButton title="Go to My Dashboard" onPress={() => {}} />
-            <TouchableOpacity style={styles.successLink} onPress={() => navigation.popToTop()}>
-              <Text style={styles.successLinkText}>Sign back out</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.flex1}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backBtn} onPress={backStep} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="chevron-back" size={24} color={colors.text} />
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="arrow-back" size={22} color={colors.text} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Register as Client</Text>
-            <View style={{ width: 28 }} />
+            <View style={styles.headerBrand}>
+              <View style={styles.brandIcon}>
+                <Ionicons name="business" size={18} color={colors.goldDeep} />
+              </View>
+              <Text style={styles.brandText}>HOSCOMCO Microfinance</Text>
+            </View>
           </View>
 
-          <WizardHeader steps={STEPS} current={step} />
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>Register</Text>
+            <Text style={styles.subtitle}>
+              Register as a member client to access loans, savings, and cooperative self-service services.
+            </Text>
+          </View>
 
-          {errors.submit ? (
-            <View style={styles.submitError}>
-              <Ionicons name="alert-circle" size={16} color={colors.danger} />
-              <Text style={styles.submitErrorText}>{errors.submit}</Text>
+          {/* General Error Banner */}
+          {generalError ? (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle" size={18} color={colors.danger} />
+              <Text style={styles.errorBannerText}>{generalError}</Text>
             </View>
           ) : null}
 
-          {step === 0 && (
-            <View>
-              <AppTextInput label="First Name *" placeholder="e.g. Teresa" value={data.firstName} onChangeText={(v) => set('firstName', v)} error={errors.firstName} />
-              <AppTextInput label="Middle Name" placeholder="e.g. Reyes (optional)" value={data.middleName} onChangeText={(v) => set('middleName', v)} error={errors.middleName} />
-              <AppTextInput label="Last Name *" placeholder="e.g. Alcantara" value={data.lastName} onChangeText={(v) => set('lastName', v)} error={errors.lastName} />
-              <AppTextInput label="Date of Birth *" placeholder="YYYY-MM-DD" value={data.dateOfBirth} onChangeText={(v) => set('dateOfBirth', v)} error={errors.dateOfBirth} hint="Format: 1990-05-18" />
-              <Text style={styles.fieldLabel}>Gender *</Text>
-              <ChipGroup options={GENDERS} selected={data.gender} onSelect={(v) => set('gender', v)} />
-              {errors.gender ? <Text style={styles.fieldError}>{errors.gender}</Text> : null}
-              <Text style={styles.fieldLabel}>Civil Status *</Text>
-              <ChipGroup options={CIVIL_STATUS} selected={data.civilStatus} onSelect={(v) => set('civilStatus', v)} />
-              {errors.civilStatus ? <Text style={styles.fieldError}>{errors.civilStatus}</Text> : null}
+          {/* Card: Legal Name */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="person-outline" size={18} color={colors.primary} />
+              <Text style={styles.cardTitle}>Legal Name</Text>
             </View>
-          )}
+            <Text style={styles.cardHint}>
+              Enter your legal name exactly as shown on your government-issued ID.
+            </Text>
 
-          {step === 1 && (
-            <View>
-              <AppTextInput
-                label="Mobile Number *"
-                placeholder="e.g. 0917 555 4321"
-                value={data.phone}
-                onChangeText={(v) => set('phone', v)}
-                keyboardType="phone-pad"
-                error={errors.phone}
-                hint="Your registered mobile number for SMS alerts and OTP."
-              />
-              <AppTextInput
-                label="Email (Optional)"
-                placeholder="e.g. teresa@gmail.com"
-                value={data.email}
-                onChangeText={(v) => set('email', v)}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                error={errors.email}
-                hint="Useful for account recovery and official notices."
-              />
-            </View>
-          )}
+            <AppTextInput
+              label="First Name"
+              placeholder="e.g. Maria"
+              value={form.firstName}
+              onChangeText={(v) => update('firstName', v)}
+              error={errors.firstName}
+              autoCapitalize="words"
+            />
 
-          {step === 2 && (
-            <View>
-              <AppTextInput label="Barangay *" placeholder="e.g. Poblacion" value={data.barangay} onChangeText={(v) => set('barangay', v)} error={errors.barangay} />
-              <AppTextInput label="Municipality / City *" placeholder="e.g. Tacloban City" value={data.city} onChangeText={(v) => set('city', v)} error={errors.city} />
-              <AppTextInput label="Province *" placeholder="e.g. Leyte" value={data.province} onChangeText={(v) => set('province', v)} error={errors.province} />
-              <AppTextInput
-                label="Complete Address *"
-                placeholder="House no., street, building"
-                value={data.address}
-                onChangeText={(v) => set('address', v)}
-                error={errors.address}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-          )}
+            <AppTextInput
+              label="Middle Name (Optional)"
+              placeholder={form.hasNoMiddleName ? 'No middle name' : 'e.g. Santos'}
+              value={form.hasNoMiddleName ? '' : form.middleName}
+              onChangeText={(v) => update('middleName', v)}
+              editable={!form.hasNoMiddleName}
+              error={errors.middleName}
+              autoCapitalize="words"
+            />
 
-          {step === 3 && (
-            <View>
-              <AppTextInput label="Occupation *" placeholder="e.g. Store Owner, Farmer, Teacher" value={data.occupation} onChangeText={(v) => set('occupation', v)} error={errors.occupation} />
-              <AppTextInput label="Monthly Income (₱) *" placeholder="e.g. 35000" value={data.monthlyIncome} onChangeText={(v) => set('monthlyIncome', v)} keyboardType="numeric" error={errors.monthlyIncome} />
-              <Text style={styles.fieldLabel}>Source of Income *</Text>
-              <ChipGroup options={INCOME_SOURCES} selected={data.sourceOfIncome} onSelect={(v) => set('sourceOfIncome', v)} />
-              {errors.sourceOfIncome ? <Text style={styles.fieldError}>{errors.sourceOfIncome}</Text> : null}
-            </View>
-          )}
-
-          {step === 4 && (
-            <View>
-              <AppTextInput label="Password *" placeholder="At least 8 characters" value={data.password} onChangeText={(v) => set('password', v)} secure error={errors.password} />
-              <AppTextInput label="Confirm Password *" placeholder="Re-enter your password" value={data.confirmPassword} onChangeText={(v) => set('confirmPassword', v)} secure error={errors.confirmPassword} />
-              <TouchableOpacity style={styles.termsRow} onPress={() => set('agreed', !data.agreed)} activeOpacity={0.8}>
-                <Ionicons name={data.agreed ? 'checkbox' : 'square-outline'} size={22} color={data.agreed ? colors.primary : colors.textFaint} />
-                <View style={styles.flex1}>
-                  <Text style={styles.termsText}>
-                    I agree to the Cooperative's{' '}
-                    <Text style={styles.termsLink}>Terms & Conditions</Text>,{' '}
-                    <Text style={styles.termsLink}>Membership Rules</Text>, and{' '}
-                    <Text style={styles.termsLink}>Data Privacy Notice</Text>, and I consent to the processing of my personal data for membership and lending purposes.
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              {errors.agreed ? <Text style={styles.fieldError}>{errors.agreed}</Text> : null}
-            </View>
-          )}
-
-          <View style={styles.navRow}>
-            <TouchableOpacity style={styles.backStepBtn} onPress={backStep}>
-              <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
-              <Text style={styles.backStepText}>Back</Text>
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => {
+                const nextNoMiddle = !form.hasNoMiddleName;
+                update('hasNoMiddleName', nextNoMiddle);
+                if (nextNoMiddle) update('middleName', '');
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.checkbox, form.hasNoMiddleName && styles.checkboxChecked]}>
+                {form.hasNoMiddleName && <Ionicons name="checkmark" size={14} color="#FFF" />}
+              </View>
+              <Text style={styles.checkboxLabel}>I do not have a middle name</Text>
             </TouchableOpacity>
-            {step < 4 ? (
-              <View style={styles.flex1}>
-                <AppButton title="Continue" onPress={nextStep} />
+
+            <AppTextInput
+              label="Last Name"
+              placeholder="e.g. Dela Cruz"
+              value={form.lastName}
+              onChangeText={(v) => update('lastName', v)}
+              error={errors.lastName}
+              autoCapitalize="words"
+            />
+
+            {/* Suffix chips */}
+            <View style={styles.suffixContainer}>
+              <Text style={styles.inputLabel}>Suffix</Text>
+              <View style={styles.suffixChipsRow}>
+                {SUFFIX_OPTIONS.map((sfx) => {
+                  const isSelected = form.suffix === sfx;
+                  return (
+                    <TouchableOpacity
+                      key={sfx}
+                      style={[styles.suffixChip, isSelected && styles.suffixChipActive]}
+                      onPress={() => update('suffix', sfx)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.suffixChipText, isSelected && styles.suffixChipTextActive]}>
+                        {sfx}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            ) : (
-              <View style={styles.flex1}>
-                <AppButton title="Create My Account" onPress={handleSubmit} loading={submitting} icon={<Ionicons name="person-add-outline" size={18} color={colors.white} />} />
+            </View>
+          </View>
+
+          {/* Card: Contact Information */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="call-outline" size={18} color={colors.primary} />
+              <Text style={styles.cardTitle}>Contact Information</Text>
+            </View>
+
+            <AppTextInput
+              label="Philippine Mobile Number"
+              placeholder="e.g. 0917 123 4567"
+              value={form.phone}
+              onChangeText={(v) => update('phone', v)}
+              keyboardType="phone-pad"
+              error={errors.phone}
+              hint="Your mobile number will be used for SMS updates and verification."
+              leftElement={
+                <View style={styles.phonePrefix}>
+                  <Text style={styles.phonePrefixText}>🇵🇭 +63</Text>
+                </View>
+              }
+            />
+
+            <AppTextInput
+              label="Email Address (Optional)"
+              placeholder="e.g. name@example.com"
+              value={form.email}
+              onChangeText={(v) => update('email', v)}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              error={errors.email}
+              hint="Recommended for receipts and statement notifications."
+              rightElement={<Ionicons name="mail-outline" size={18} color={colors.textMuted} />}
+            />
+          </View>
+
+          {/* Card: Account Password */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
+              <Text style={styles.cardTitle}>Security & Password</Text>
+            </View>
+
+            <AppTextInput
+              label="Password"
+              placeholder="Min. 8 characters"
+              value={form.password}
+              onChangeText={(v) => update('password', v)}
+              secure={!showPassword}
+              error={errors.password}
+              rightElement={
+                <TouchableOpacity
+                  onPress={() => setShowPassword((p) => !p)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={18}
+                    color={colors.textMuted}
+                  />
+                </TouchableOpacity>
+              }
+            />
+
+            <AppTextInput
+              label="Confirm Password"
+              placeholder="Re-type your password"
+              value={form.confirmPassword}
+              onChangeText={(v) => update('confirmPassword', v)}
+              secure={!showConfirmPassword}
+              error={errors.confirmPassword}
+              rightElement={
+                <TouchableOpacity
+                  onPress={() => setShowConfirmPassword((p) => !p)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={18}
+                    color={colors.textMuted}
+                  />
+                </TouchableOpacity>
+              }
+            />
+
+            <PasswordStrengthIndicator
+              password={form.password}
+              confirmPassword={form.confirmPassword}
+            />
+          </View>
+
+          {/* Terms & Privacy Consent */}
+          <View style={styles.consentCard}>
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => update('agreeTerms', !form.agreeTerms)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.checkbox, form.agreeTerms && styles.checkboxChecked]}>
+                {form.agreeTerms && <Ionicons name="checkmark" size={14} color="#FFF" />}
               </View>
-            )}
+              <View style={styles.flex1}>
+                <Text style={styles.consentText}>
+                  I agree to the{' '}
+                  <Text style={styles.consentLink}>Terms of Service</Text> and{' '}
+                  <Text style={styles.consentLink}>Data Privacy Policy</Text> pursuant to Republic Act No. 10173 (Data Privacy Act of 2012).
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {errors.agreeTerms ? (
+              <Text style={styles.consentErrorText}>{errors.agreeTerms}</Text>
+            ) : null}
+          </View>
+
+          {/* Submit Button */}
+          <View style={styles.submitWrap}>
+            <AppButton
+              title={submitting ? 'Registering...' : 'Register'}
+              onPress={handleRegister}
+              loading={submitting}
+              disabled={submitting}
+              style={styles.submitBtn}
+            />
+
+            <View style={styles.signinRow}>
+              <Text style={styles.signinText}>Already have an account? </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                <Text style={styles.signinLink}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -368,13 +478,14 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F8FAFC',
   },
-  flex: {
+  flex1: {
     flex: 1,
   },
-  content: {
-    padding: 20,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
     paddingBottom: 40,
   },
   header: {
@@ -384,168 +495,296 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   backBtn: {
-    width: 28,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 6,
-    marginTop: 4,
-  },
-  fieldError: {
-    fontSize: 12,
-    color: colors.danger,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-  chipRow: {
+  headerBrand: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.round,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  brandIcon: {
+    marginRight: 6,
+  },
+  brandText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#92400E',
+  },
+  titleSection: {
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: radius.md,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#DC2626',
+    fontWeight: '500',
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 4,
   },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.round,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginRight: 8,
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  cardHint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 14,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
     marginBottom: 8,
   },
-  chipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginLeft: 6,
-  },
-  chipTextActive: {
-    color: colors.white,
-  },
-  termsRow: {
+  checkboxRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    marginVertical: 10,
+    gap: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  checkboxLabel: {
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  suffixContainer: {
+    marginTop: 6,
+  },
+  suffixChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  suffixChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.sm,
+    backgroundColor: '#F1F5F9',
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
+    borderColor: '#E2E8F0',
   },
-  flex1: {
-    flex: 1,
+  suffixChipActive: {
+    backgroundColor: '#091527',
+    borderColor: '#091527',
   },
-  termsText: {
+  suffixChipText: {
     fontSize: 12,
-    color: colors.textSecondary,
-    lineHeight: 17,
-    marginLeft: 8,
+    fontWeight: '600',
+    color: '#475569',
   },
-  termsLink: {
-    color: colors.primary,
+  suffixChipTextActive: {
+    color: '#FFFFFF',
     fontWeight: '700',
   },
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 22,
-  },
-  backStepBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 12,
+  phonePrefix: {
+    paddingRight: 8,
+    borderRightWidth: 1,
+    borderRightColor: '#CBD5E1',
     marginRight: 8,
+    justifyContent: 'center',
   },
-  backStepText: {
-    fontSize: 14,
+  phonePrefixText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: '#475569',
   },
-  submitError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
+  consentCard: {
+    backgroundColor: '#F8FAFC',
     borderRadius: radius.md,
-    padding: 10,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 20,
   },
-  submitErrorText: {
-    flex: 1,
-    marginLeft: 8,
+  consentText: {
     fontSize: 12,
-    color: colors.danger,
-    fontWeight: '600',
+    color: '#475569',
+    lineHeight: 18,
   },
-  successWrap: {
-    flex: 1,
+  consentLink: {
+    color: '#059669',
+    fontWeight: '700',
+  },
+  consentErrorText: {
+    fontSize: 11,
+    color: '#DC2626',
+    marginTop: 4,
+  },
+  submitWrap: {
+    marginTop: 8,
+  },
+  submitBtn: {
+    backgroundColor: '#091527',
+  },
+  signinRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  signinText: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  signinLink: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  // Success Screen Styles
+  successContainer: {
+    padding: 24,
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  successCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.xl,
     padding: 24,
     alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  successIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.green,
-    alignItems: 'center',
+  successIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#ECFDF5',
     justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 18,
+    borderWidth: 2,
+    borderColor: '#A7F3D0',
   },
   successTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: colors.text,
-  },
-  successMsg: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    color: '#0F172A',
     textAlign: 'center',
-    marginTop: 8,
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontSize: 14,
+    color: '#475569',
+    textAlign: 'center',
     lineHeight: 20,
+    marginBottom: 20,
   },
-  successHint: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.tealSoft,
-    borderWidth: 1,
-    borderColor: colors.tealBorder,
+  boldText: {
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  kycNoticeCard: {
+    backgroundColor: '#FFFBEB',
     borderRadius: radius.md,
-    padding: 12,
-    marginTop: 14,
-  },
-  successHintText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 12,
-    color: colors.tealDark,
-    lineHeight: 17,
-  },
-  successAction: {
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
     width: '100%',
-    marginTop: 24,
+    marginBottom: 24,
   },
-  successLink: {
+  kycNoticeHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    marginTop: 6,
+    gap: 8,
+    marginBottom: 6,
   },
-  successLinkText: {
-    fontSize: 13,
-    color: colors.textMuted,
-    fontWeight: '600',
+  kycNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  kycNoticeText: {
+    fontSize: 12,
+    color: '#B45309',
+    lineHeight: 18,
+  },
+  successActions: {
+    width: '100%',
+    gap: 12,
+  },
+  primaryBtn: {
+    backgroundColor: '#059669',
+  },
+  secondaryBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  secondaryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
   },
 });

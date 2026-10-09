@@ -326,6 +326,60 @@ export interface KycEmployment {
   yearsInCurrentEmployment?: number;
 }
 
+export interface IdQualityChecks {
+  isBlurry: boolean;
+  isTooDark: boolean;
+  isTooBrightOrGlare: boolean;
+  isCutOff: boolean;
+  isTooFar: boolean;
+  isUpsideDown: boolean;
+  isRecognizedDoc: boolean;
+}
+
+export interface IdValidationResult {
+  isReadable: boolean;
+  confidenceScore: number;
+  detectedType?: string;
+  qualityChecks?: IdQualityChecks;
+  qualityMessage?: string;
+  validationWarnings?: string[];
+  authenticityNotice?: string;
+}
+
+export interface ExtractedIdData {
+  idType?: string;
+  idTypeName?: string;
+  idNumber?: string;
+  fullName?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  suffix?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  civilStatus?: string;
+  nationality?: string;
+  address?: string;
+  houseNumber?: string;
+  street?: string;
+  barangay?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  issueDate?: string | null;
+  expirationDate?: string | null;
+  isExpired?: boolean;
+  autoFilledFields?: string[];
+  confidenceScore?: number;
+}
+
+export interface FaceMatchResult {
+  isMatch: boolean;
+  matchConfidence: number;
+  matchStatus: 'MATCH' | 'MISMATCH' | 'UNCERTAIN';
+  details: string;
+}
+
 export interface KycIdInfo {
   idType?: string;
   idTypeName?: string;
@@ -335,6 +389,9 @@ export interface KycIdInfo {
   frontImageUrl?: string;
   backImageUrl?: string;
   selfieUrl?: string;
+  ocrData?: ExtractedIdData;
+  ocrConfidence?: number;
+  faceMatchResult?: FaceMatchResult;
 }
 
 export interface KycSubmissionPayload {

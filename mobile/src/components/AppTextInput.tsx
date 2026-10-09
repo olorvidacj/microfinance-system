@@ -15,6 +15,7 @@ export interface AppTextInputProps extends TextInputProps {
   error?: string | null;
   hint?: string;
   secure?: boolean;
+  leftElement?: React.ReactNode;
   rightElement?: React.ReactNode;
   containerStyle?: any;
 }
@@ -24,6 +25,7 @@ export const AppTextInput: React.FC<AppTextInputProps> = ({
   error,
   hint,
   secure,
+  leftElement,
   rightElement,
   containerStyle,
   style,
@@ -36,6 +38,7 @@ export const AppTextInput: React.FC<AppTextInputProps> = ({
     <View style={[{ marginBottom: spacing.md }, containerStyle]}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <View style={[styles.inputWrap, error ? styles.inputError : null]}>
+        {leftElement}
         <TextInput
           placeholderTextColor={colors.textFaint}
           style={[styles.input, isSecure && styles.inputPadded, style]}

@@ -1,10 +1,41 @@
 import { ApiError, clientRequest } from './clientApi';
 import { ClientLoan, LoanApplication, LoanCalculation, LoanProduct, ScheduleItem } from '../types';
 
+export interface LoanMetrics {
+  totalLoans: number;
+  activeLoansCount: number;
+  pendingApplicationsCount: number;
+  completedLoansCount: number;
+  totalOutstandingBalance: number;
+  totalPrincipalBorrowed: number;
+  totalAmountPaid: number;
+  nextPaymentAmount: number;
+  nextPaymentDueDate: string | null;
+}
+
 export interface LoanSummary {
   activeLoans: ClientLoan[];
   completedLoans: ClientLoan[];
+  pendingApplications: LoanApplication[];
   allLoans: ClientLoan[];
+  summary: LoanMetrics;
+}
+
+export interface ClientPaymentRow {
+  id: string;
+  loanId?: string;
+  loanNumber?: string;
+  amount: number;
+  paymentDate: string;
+  paymentMethod: string;
+  referenceNumber?: string;
+  receiptNumber?: string;
+  officialReceiptNumber?: string;
+  principalPortion?: number;
+  interestPortion?: number;
+  collectedBy?: string;
+  status: string;
+  notes?: string;
 }
 
 const normalizeLoans = (raw: any[]): ClientLoan[] =>
@@ -21,20 +52,88 @@ const normalizeLoans = (raw: any[]): ClientLoan[] =>
     paidAmount: l.paidAmount !== undefined ? Number(l.paidAmount) : undefined,
     status: (l.status || 'PENDING').toUpperCase() as ClientLoan['status'],
     startDate: l.startDate,
+    disbursedDate: l.disbursedDate || l.startDate,
     applicationDate: l.applicationDate,
     maturityDate: l.maturityDate,
     nextPaymentDate: l.nextPaymentDate,
     purpose: l.purpose,
   }));
 
+const normalizeApplications = (raw: any[]): LoanApplication[] =>
+  (raw || []).map((a) => ({
+    id: a.id,
+    loanNumber: a.loanNumber || a.id,
+    productId: a.productId,
+    productName: a.productName || 'Loan',
+    principalAmount: Number(a.principalAmount) || 0,
+    termMonths: Number(a.termMonths) || 1,
+    applicationDate: a.applicationDate,
+    status: (a.status || 'PENDING').toUpperCase() as LoanApplication['status'],
+    coopStep: a.coopStep,
+    rejectionReason: a.rejectionReason,
+    disbursedAt: a.disbursedAt,
+    repaymentFrequency: a.repaymentFrequency,
+    purpose: a.purpose,
+    notes: a.notes,
+  }));
+
 export const loanService = {
   async list(): Promise<LoanSummary> {
     const payload = await clientRequest('/api/client/loans');
-    return {
-      activeLoans: normalizeLoans(payload?.activeLoans),
-      completedLoans: normalizeLoans(payload?.completedLoans),
-      allLoans: normalizeLoans(payload?.allLoans),
+    const activeLoans = normalizeLoans(payload?.activeLoans);
+    const completedLoans = normalizeLoans(payload?.completedLoans);
+    const pendingApplications = normalizeApplications(payload?.pendingApplications);
+    const allLoans = normalizeLoans(payload?.allLoans);
+
+    const summary: LoanMetrics = payload?.summary || {
+      totalLoans: allLoans.length,
+      activeLoansCount: activeLoans.length,
+      pendingApplicationsCount: pendingApplications.length,
+      completedLoansCount: completedLoans.length,
+      totalOutstandingBalance: activeLoans.reduce((sum, l) => sum + (l.remainingBalance || 0), 0),
+      totalPrincipalBorrowed: allLoans.reduce((sum, l) => sum + (l.principalAmount || 0), 0),
+      totalAmountPaid: allLoans.reduce((sum, l) => sum + (l.paidAmount || 0), 0),
+      nextPaymentAmount: activeLoans[0]?.monthlyInstallment || 0,
+      nextPaymentDueDate: activeLoans[0]?.nextPaymentDate || null,
     };
+
+    return {
+      activeLoans,
+      completedLoans,
+      pendingApplications,
+      allLoans,
+      summary,
+    };
+  },
+
+  async get(loanId: string): Promise<{ loan: ClientLoan; schedule: ScheduleItem[]; payments: ClientPaymentRow[] }> {
+    const payload = await clientRequest(`/api/client/loans/${loanId}`);
+    const rawLoan = payload?.loan;
+    const loan = rawLoan ? normalizeLoans([rawLoan])[0] : (null as any);
+    const schedule = (payload?.schedule || []).map((s: any) => ({
+      installmentNumber: Number(s.installmentNumber),
+      dueDate: s.dueDate,
+      amountDue: Number(s.amountDue || s.totalDue) || 0,
+      principal: Number(s.principal) || 0,
+      interest: Number(s.interest) || 0,
+      remainingBalance: Number(s.remainingBalance) || 0,
+      status: s.status as ScheduleItem['status'],
+      paidDate: s.paidDate,
+      receiptNumber: s.receiptNumber,
+    }));
+    const payments = (payload?.payments || []).map((p: any) => ({
+      id: p.id,
+      loanId: p.loanId,
+      loanNumber: p.loanNumber,
+      amount: Number(p.amount) || 0,
+      paymentDate: p.paymentDate || p.createdAt,
+      paymentMethod: p.paymentMethod || 'OTHER',
+      referenceNumber: p.referenceNumber || '',
+      officialReceiptNumber: p.officialReceiptNumber,
+      status: p.status || 'COMPLETED',
+      notes: p.notes,
+    }));
+    return { loan, schedule, payments };
   },
 
   async schedule(loanId: string): Promise<ScheduleItem[]> {
@@ -42,13 +141,31 @@ export const loanService = {
     return (payload?.schedule || []).map((s: any) => ({
       installmentNumber: Number(s.installmentNumber),
       dueDate: s.dueDate,
-      amountDue: Number(s.amountDue) || 0,
+      amountDue: Number(s.amountDue || s.totalDue) || 0,
       principal: Number(s.principal) || 0,
       interest: Number(s.interest) || 0,
       remainingBalance: Number(s.remainingBalance) || 0,
       status: s.status as ScheduleItem['status'],
       paidDate: s.paidDate,
       receiptNumber: s.receiptNumber,
+    }));
+  },
+
+  async payments(loanId?: string): Promise<ClientPaymentRow[]> {
+    const url = loanId ? `/api/client/loans/${loanId}/payments` : '/api/client/payments';
+    const payload = await clientRequest(url);
+    const rawList = payload?.payments || payload || [];
+    return (Array.isArray(rawList) ? rawList : []).map((p: any) => ({
+      id: p.id,
+      loanId: p.loanId,
+      loanNumber: p.loanNumber,
+      amount: Number(p.amount) || 0,
+      paymentDate: p.paymentDate || p.createdAt,
+      paymentMethod: p.paymentMethod || 'OTHER',
+      referenceNumber: p.referenceNumber || '',
+      officialReceiptNumber: p.officialReceiptNumber,
+      status: p.status || 'COMPLETED',
+      notes: p.notes,
     }));
   },
 
@@ -102,18 +219,6 @@ export const loanService = {
   async applications(): Promise<LoanApplication[]> {
     const payload = await clientRequest('/api/client/loan-applications');
     const apps = payload?.applications || payload || [];
-    return apps.map((a: any) => ({
-      id: a.id,
-      loanNumber: a.loanNumber || a.id,
-      productId: a.productId,
-      productName: a.productName || 'Loan',
-      principalAmount: Number(a.principalAmount) || 0,
-      termMonths: Number(a.termMonths) || 1,
-      applicationDate: a.applicationDate,
-      status: (a.status || 'PENDING').toUpperCase() as LoanApplication['status'],
-      coopStep: a.coopStep,
-      rejectionReason: a.rejectionReason,
-      disbursedAt: a.disbursedAt,
-    }));
+    return normalizeApplications(apps);
   },
 };

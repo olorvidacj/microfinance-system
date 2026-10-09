@@ -15,3 +15,4 @@ export { QuickAction } from './QuickAction';
 export { DocRow } from './DocRow';
 export { ScreenHeader } from './ScreenHeader';
 export { MenuItem } from './MenuItem';
+export { PasswordStrengthIndicator } from './PasswordStrengthIndicator';

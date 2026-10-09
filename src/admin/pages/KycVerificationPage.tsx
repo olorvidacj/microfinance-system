@@ -320,16 +320,34 @@ export const KycVerificationPage: React.FC = () => {
         isOpen={!!actionConfirm}
         onClose={() => setActionConfirm(null)}
         onConfirm={performAction}
-        title={actionConfirm?.type === 'approve' ? 'Approve KYC?' : actionConfirm?.type === 'reject' ? 'Reject KYC?' : 'Request Correction?'}
+        title={
+          actionConfirm?.type === 'approve'
+            ? 'Approve KYC?'
+            : actionConfirm?.type === 'reject'
+              ? 'Reject KYC?'
+              : 'Request Correction?'
+        }
         message={
           actionConfirm?.type === 'approve'
-            ? `Approve KYC verification for "${actionConfirm.request.clientName}"? This will unlock full credit and savings services.`
+            ? `Approve KYC verification for "${actionConfirm?.request?.clientName || ''}"? This will unlock full credit and savings services.`
             : actionConfirm?.type === 'reject'
-              ? `Reject KYC verification for "${actionConfirm.request.clientName}"? The reason will be recorded in compliance audit.`
-              : `Request correction for "${actionConfirm.request.clientName}"'s submitted documents? The member will be notified.`
+              ? `Reject KYC verification for "${actionConfirm?.request?.clientName || ''}"? The reason will be recorded in compliance audit.`
+              : `Request correction for "${actionConfirm?.request?.clientName || ''}"'s submitted documents? The member will be notified.`
         }
-        confirmLabel={actionConfirm?.type === 'approve' ? 'Approve KYC' : actionConfirm?.type === 'reject' ? 'Reject KYC' : 'Request Correction'}
-        variant={actionConfirm?.type === 'approve' ? 'info' : actionConfirm?.type === 'reject' ? 'danger' : 'warning'}
+        confirmLabel={
+          actionConfirm?.type === 'approve'
+            ? 'Approve KYC'
+            : actionConfirm?.type === 'reject'
+              ? 'Reject KYC'
+              : 'Request Correction'
+        }
+        variant={
+          actionConfirm?.type === 'approve'
+            ? 'info'
+            : actionConfirm?.type === 'reject'
+              ? 'danger'
+              : 'warning'
+        }
       />
 
       {toast && (

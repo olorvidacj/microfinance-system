@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../components/ui';
+import { PasswordStrengthIndicator } from '../../components/common/PasswordStrengthIndicator';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
 
 interface RegistrationFormState {
   firstName: string;
@@ -100,8 +102,8 @@ export const ClientRegisterPage: React.FC = () => {
       }
     }
 
-    if (!form.password || form.password.length < 6) {
-      return 'Password must be at least 6 characters.';
+    if (!form.password || !isPasswordStrong(form.password)) {
+      return STRONG_PASSWORD_ERROR_MESSAGE;
     }
 
     if (form.password !== form.confirmPassword) {
@@ -217,10 +219,10 @@ export const ClientRegisterPage: React.FC = () => {
       <div>
         <div className="inline-flex items-center gap-1.5 rounded-full bg-gold-500/10 px-3 py-1 text-xs font-semibold text-gold-800 ring-1 ring-inset ring-gold-500/20 mb-2">
           <Smartphone className="h-3.5 w-3.5 text-gold-700" />
-          <span>Quick Client Registration</span>
+          <span>Quick Registration</span>
         </div>
         <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-          Create Client Account
+          Register
         </h2>
         <p className="mt-1 text-xs sm:text-sm text-slate-500">
           Sign up with your basic details. Full KYC verification will follow before applying for loans.
@@ -392,7 +394,7 @@ export const ClientRegisterPage: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 required
                 autoComplete="new-password"
-                placeholder="Min. 6 characters"
+                placeholder="Min. 8 characters"
                 value={form.password}
                 onChange={(e) => update('password', e.target.value)}
                 className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
@@ -438,6 +440,12 @@ export const ClientRegisterPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Real-time Password Strength Indicator & Checklist */}
+        <PasswordStrengthIndicator
+          password={form.password}
+          confirmPassword={form.confirmPassword}
+        />
+
         {/* Terms & Privacy Consent */}
         <div className="pt-2">
           <label className="flex items-start gap-2.5 cursor-pointer rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:bg-slate-50 transition">
@@ -464,7 +472,7 @@ export const ClientRegisterPage: React.FC = () => {
             loading={loading}
             className="py-3 text-sm font-semibold"
           >
-            <ShieldCheck className="h-4 w-4 mr-1" /> Create Client Account
+            <ShieldCheck className="h-4 w-4 mr-1" /> Register
           </Button>
         </div>
       </form>

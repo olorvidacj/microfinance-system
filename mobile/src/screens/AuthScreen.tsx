@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { api } from '../services/api';
 import { UserSession } from '../types';
+import { PasswordStrengthIndicator } from '../components/PasswordStrengthIndicator';
+import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../utils/passwordValidator';
 
 interface AuthScreenProps {
   onSuccess: (session: UserSession) => void;
@@ -194,8 +196,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
     // 3. Password requirements
     if (!regPassword) {
       errors.password = 'Password is required';
-    } else if (!passHasMinLen || !passHasNumber || !passHasUpperOrSpecial) {
-      errors.password = 'Password must meet all security requirements below';
+    } else if (!isPasswordStrong(regPassword)) {
+      errors.password = STRONG_PASSWORD_ERROR_MESSAGE;
     }
 
     // 4. Confirm Password
@@ -378,8 +380,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
   };
 
   const handleResetPassword = async () => {
-    if (!newPassword || newPassword.length < 8) {
-      Alert.alert('Invalid Password', 'New password must be at least 8 characters with numbers.');
+    if (!newPassword || !isPasswordStrong(newPassword)) {
+      Alert.alert('Strong Password Required', STRONG_PASSWORD_ERROR_MESSAGE);
       return;
     }
     setLoading(true);
@@ -571,56 +573,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                       <Text style={{ fontSize: 16 }}>{showRegPassword ? '🙈' : '👁️'}</Text>
                     </TouchableOpacity>
                   </View>
-
-                  {/* Password Strength Meter */}
-                  {regPassword.length > 0 && (
-                    <View style={styles.strengthContainer}>
-                      <View style={styles.strengthBarBg}>
-                        <View
-                          style={[
-                            styles.strengthBarFill,
-                            {
-                              width: getPasswordStrength().width as any,
-                              backgroundColor: getPasswordStrength().color,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.strengthLabel, { color: getPasswordStrength().color }]}>
-                        Strength: {getPasswordStrength().label}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Live Security Requirements Checklist */}
-                  <View style={styles.checklistContainer}>
-                    <Text style={styles.checklistHeader}>Security Requirements:</Text>
-                    <View style={styles.checkItem}>
-                      <Text style={passHasMinLen ? styles.checkIconGreen : styles.checkIconGray}>
-                        {passHasMinLen ? '✓' : '○'}
-                      </Text>
-                      <Text style={passHasMinLen ? styles.checkTextGreen : styles.checkTextGray}>
-                        At least 8 characters
-                      </Text>
-                    </View>
-                    <View style={styles.checkItem}>
-                      <Text style={passHasNumber ? styles.checkIconGreen : styles.checkIconGray}>
-                        {passHasNumber ? '✓' : '○'}
-                      </Text>
-                      <Text style={passHasNumber ? styles.checkTextGreen : styles.checkTextGray}>
-                        Contains at least one number (0-9)
-                      </Text>
-                    </View>
-                    <View style={styles.checkItem}>
-                      <Text style={passHasUpperOrSpecial ? styles.checkIconGreen : styles.checkIconGray}>
-                        {passHasUpperOrSpecial ? '✓' : '○'}
-                      </Text>
-                      <Text style={passHasUpperOrSpecial ? styles.checkTextGreen : styles.checkTextGray}>
-                        Contains uppercase letter or special character (!@#$)
-                      </Text>
-                    </View>
-                  </View>
-
                   {step1Errors.password && <Text style={styles.errorText}>⚠️ {step1Errors.password}</Text>}
                 </View>
 
@@ -648,19 +600,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                       <Text style={{ fontSize: 16 }}>{showConfirmPassword ? '🙈' : '👁️'}</Text>
                     </TouchableOpacity>
                   </View>
-
-                  {confirmPassword.length > 0 && (
-                    <View style={styles.matchIndicatorRow}>
-                      <Text style={{ fontSize: 12, marginRight: 4 }}>{passMatches ? '✅' : '❌'}</Text>
-                      <Text style={passMatches ? styles.matchSuccessText : styles.matchErrorText}>
-                        {passMatches ? 'Passwords match perfectly' : 'Passwords do not match yet'}
-                      </Text>
-                    </View>
-                  )}
                   {step1Errors.confirmPassword && (
                     <Text style={styles.errorText}>⚠️ {step1Errors.confirmPassword}</Text>
                   )}
                 </View>
+
+                {/* Password Strength Indicator & Checklist */}
+                <PasswordStrengthIndicator
+                  password={regPassword}
+                  confirmPassword={confirmPassword}
+                />
 
                 {/* Step 1 Continue Button */}
                 <TouchableOpacity
@@ -1171,8 +1120,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onSuccess }) => {
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry
-                placeholder="Enter new password"
+                placeholder="Min. 8 characters (Strong)"
                 placeholderTextColor="#94A3B8"
+              />
+              <PasswordStrengthIndicator
+                password={newPassword}
+                showConfirmMatch={false}
               />
             </View>
 

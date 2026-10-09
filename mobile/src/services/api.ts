@@ -36,33 +36,51 @@ import {
 } from '../types';
 
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 const BACKEND_PORT = 3000;
 
 function resolveApiBaseUrl(): string {
-  // 1. Explicit override (production build / self-hosted API)
+  // 1. Explicit override (production build / remote API / tunnel)
   const override = process.env.EXPO_PUBLIC_API_URL;
   if (override) {
-    return override.replace(/\/+$/, '');
+    const isLocalhost = override.includes('localhost') || override.includes('127.0.0.1');
+    if (!isLocalhost || Platform.OS === 'web') {
+      return override.replace(/\/+$/, '');
+    }
   }
 
   // 2. Web: reuse the page origin (the Express server serves both API & frontend)
-  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location && window.location.origin) {
     return `${window.location.origin}/api`;
   }
 
   // 3. Native (Expo Go / dev build): resolve the Metro dev-server host and point
   //    at the backend port, which listens on 0.0.0.0 for LAN access from devices.
-  const hostUri =
-    Constants.expoConfig?.hostUri ||
-    Constants.expoGoConfig?.debuggerHost ||
-    '';
-  const host = (hostUri || '').split(':')[0].trim();
-  if (host) {
-    return `http://${host}:${BACKEND_PORT}/api`;
+  const constantsAny = Constants as any;
+  const rawHostCandidates = [
+    Constants.expoConfig?.hostUri,
+    constantsAny.expoGoConfig?.debuggerHost,
+    constantsAny.manifest?.debuggerHost,
+    constantsAny.manifest2?.extra?.expoGo?.debuggerHost,
+    constantsAny.manifest2?.extra?.expoClient?.hostUri,
+    constantsAny.experienceUrl,
+    constantsAny.linkingUri,
+  ];
+
+  for (const candidate of rawHostCandidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      // Clean scheme if present (e.g. "exp://", "http://")
+      const stripped = candidate.replace(/^[a-zA-Z]+:\/\//, '');
+      // Extract hostname before colon or slash
+      const host = stripped.split('/')[0].split(':')[0].trim();
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
+        return `http://${host}:${BACKEND_PORT}/api`;
+      }
+    }
   }
 
-  // 4. Last-resort fallback
+  // 4. Fallback to localhost
   return `http://localhost:${BACKEND_PORT}/api`;
 }
 
@@ -96,15 +114,33 @@ class ApiService {
         headers,
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data: any = {};
+      if (text && text.trim().length > 0) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: text };
+        }
+      }
+
       if (!response.ok) {
         throw new Error(data.error || `HTTP Error ${response.status}`);
       }
       return data as T;
     } catch (err: any) {
-      console.warn(`[API] Error fetching ${endpoint}:`, err.message);
-      if (err instanceof TypeError) {
-        throw new Error(`Unable to reach the server (${API_BASE_URL}).\n\nMake sure the backend is running on port ${BACKEND_PORT} and your device is on the same network.`);
+      console.warn(`[API] Error fetching ${endpoint}:`, err?.message || err);
+      const errMsg = String(err?.message || '');
+      if (
+        err instanceof TypeError ||
+        errMsg.includes('fetch failed') ||
+        errMsg.includes('ConnectException') ||
+        errMsg.includes('Network request failed') ||
+        errMsg.includes('failed to connect')
+      ) {
+        throw new Error(
+          `Cannot connect to backend server at ${API_BASE_URL}.\n\nPlease ensure:\n1. Backend server is running ('npm run dev').\n2. Your mobile device and PC are on the same Wi-Fi.\n3. Windows Firewall allows inbound connections to port ${BACKEND_PORT}.`
+        );
       }
       throw err;
     }
@@ -123,11 +159,15 @@ class ApiService {
   async register(payload: {
     phone: string;
     password?: string;
+    confirmPassword?: string;
     fullName?: string;
     firstName?: string;
     middleName?: string;
     lastName?: string;
+    suffix?: string;
+    hasNoMiddleName?: boolean;
     email?: string;
+    agreeTerms?: boolean;
     borrowerNumber?: string;
     dateOfBirth?: string;
     gender?: string;
@@ -145,13 +185,13 @@ class ApiService {
     idNumber?: string;
     facebookAccount?: string;
     employmentStatus?: string;
-  }): Promise<UserSession> {
-    const data = await this.request<{ success: boolean; token: string; user: any }>('/auth/register', {
+  }): Promise<UserSession & { message?: string }> {
+    const data = await this.request<{ success: boolean; token: string; user: any; message?: string }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
     this.setToken(data.token);
-    return { token: data.token, user: data.user };
+    return { token: data.token, user: data.user, message: data.message };
   }
 
   async sendRegistrationOtp(phone: string, email?: string): Promise<{
@@ -263,6 +303,87 @@ class ApiService {
 
   async uploadKycSelfie(payload: { imageBase64: string; mime?: string }): Promise<any> {
     return this.request('/client/kyc/selfie', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async processKycId(payload: {
+    frontImageBase64: string;
+    backImageBase64?: string;
+    documentType?: string;
+    fileName?: string;
+  }): Promise<{
+    success: boolean;
+    validation: {
+      isReadable: boolean;
+      confidenceScore: number;
+      detectedType?: string;
+      qualityChecks?: {
+        isBlurry: boolean;
+        isTooDark: boolean;
+        isTooBrightOrGlare: boolean;
+        isCutOff: boolean;
+        isTooFar: boolean;
+        isUpsideDown: boolean;
+        isRecognizedDoc: boolean;
+      };
+      qualityMessage?: string;
+      validationWarnings?: string[];
+      authenticityNotice?: string;
+    };
+    extractedData: {
+      idType?: string;
+      idTypeName?: string;
+      idNumber?: string;
+      fullName?: string;
+      firstName?: string;
+      middleName?: string;
+      lastName?: string;
+      suffix?: string;
+      dateOfBirth?: string;
+      gender?: string;
+      civilStatus?: string;
+      nationality?: string;
+      address?: string;
+      houseNumber?: string;
+      street?: string;
+      barangay?: string;
+      city?: string;
+      province?: string;
+      postalCode?: string;
+      issueDate?: string | null;
+      expirationDate?: string | null;
+      isExpired?: boolean;
+      autoFilledFields?: string[];
+      confidenceScore?: number;
+    };
+    document?: {
+      id: string;
+      frontFileUrl?: string;
+      backFileUrl?: string;
+    };
+  }> {
+    return this.request('/client/kyc/process-id', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async matchKycFace(payload: {
+    selfieImageBase64: string;
+    idImageBase64?: string;
+  }): Promise<{
+    success: boolean;
+    matchResult: {
+      isMatch: boolean;
+      matchConfidence: number;
+      matchStatus: 'MATCH' | 'MISMATCH' | 'UNCERTAIN';
+      details: string;
+    };
+    selfieUrl?: string;
+  }> {
+    return this.request('/client/kyc/match-face', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -397,12 +518,14 @@ class ApiService {
   }
 
   // 8. Transactions (financial activity)
-  async getTransactions(payload: { search?: string; type?: TransactionType }): Promise<FinancialTransaction[]> {
-    const res = await this.request<{ success: boolean; transactions: FinancialTransaction[] }>('/client/transactions', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    return res.transactions;
+  async getTransactions(payload: { search?: string; type?: TransactionType | 'ALL' } = {}): Promise<FinancialTransaction[]> {
+    const params = new URLSearchParams();
+    if (payload.search) params.append('search', payload.search);
+    if (payload.type && payload.type !== 'ALL') params.append('type', payload.type);
+    const qs = params.toString();
+    const endpoint = `/client/transactions${qs ? `?${qs}` : ''}`;
+    const res = await this.request<{ success: boolean; transactions: FinancialTransaction[] }>(endpoint);
+    return res.transactions || [];
   }
 
   // 9. Savings

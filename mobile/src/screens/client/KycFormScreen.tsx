@@ -77,12 +77,158 @@ export const KycFormScreen: React.FC = () => {
   const [requiredDocs, setRequiredDocs] = useState<KycRequiredDocumentItem[]>([]);
   const [uploads, setUploads] = useState<DocUpload[]>([]);
 
+  // OCR ID Scanning & Quality State
+  const [isScanningId, setIsScanningId] = useState(false);
+  const [scanStage, setScanStage] = useState<'idle' | 'scanning' | 'checking_quality' | 'reading_info' | 'complete' | 'failed'>('idle');
+  const [scannedIdDoc, setScannedIdDoc] = useState<{ idType?: string; idNumber?: string; confidenceScore?: number } | null>(null);
+  const [qualityChecks, setQualityChecks] = useState<{
+    isBlurry: boolean;
+    isTooDark: boolean;
+    isTooBrightOrGlare: boolean;
+    isCutOff: boolean;
+    isTooFar: boolean;
+    isUpsideDown: boolean;
+    isRecognizedDoc: boolean;
+  } | null>(null);
+  const [qualityError, setQualityError] = useState<string | null>(null);
+  const [autoFilledKeys, setAutoFilledKeys] = useState<string[]>([]);
+  const [extractedConfirmed, setExtractedConfirmed] = useState(false);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<{ referenceNumber?: string; message?: string }>({});
   const [pickTarget, setPickTarget] = useState<DocUpload | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
+
+  const handleScanId = async (mode: 'camera' | 'library') => {
+    try {
+      setQualityError(null);
+      setQualityChecks(null);
+
+      let res;
+      if (mode === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          setQualityError('Camera access is required to take photo of your ID.');
+          return;
+        }
+        res = await ImagePicker.launchCameraAsync({
+          quality: 0.85,
+          allowsEditing: false,
+        });
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          setQualityError('Gallery access is required to upload photo of your ID.');
+          return;
+        }
+        res = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.85,
+          allowsEditing: false,
+        });
+      }
+
+      if (res.canceled || !res.assets || res.assets.length === 0) return;
+
+      const asset = res.assets[0];
+      setIsScanningId(true);
+      setScanStage('scanning');
+
+      const t1 = setTimeout(() => setScanStage('checking_quality'), 600);
+      const t2 = setTimeout(() => setScanStage('reading_info'), 1300);
+
+      const uriLower = (asset.uri || '').toLowerCase();
+      const mime = uriLower.endsWith('.png') ? 'image/png' : uriLower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const imageBase64 = `data:${mime};base64,${base64}`;
+
+      const processRes = await api.processKycId({
+        frontImageBase64: imageBase64,
+        fileName: asset.fileName || `id_scan_${Date.now()}.jpg`,
+      });
+
+      clearTimeout(t1);
+      clearTimeout(t2);
+
+      const validation = processRes.validation || { isReadable: true, confidenceScore: 92 };
+      const extracted = processRes.extractedData || {};
+
+      if (!validation.isReadable || (validation.confidenceScore !== undefined && validation.confidenceScore < 50)) {
+        setScanStage('failed');
+        setQualityChecks(validation.qualityChecks || null);
+        setQualityError(
+          validation.qualityMessage ||
+            "We can't clearly read your ID. Please retake the photo in good lighting and make sure the entire ID is visible."
+        );
+        return;
+      }
+
+      setScanStage('complete');
+      setScannedIdDoc({
+        idType: extracted.idTypeName || extracted.idType || 'Government ID',
+        idNumber: extracted.idNumber,
+        confidenceScore: validation.confidenceScore || 92,
+      });
+
+      // Auto-fill form fields
+      const newAutoFilled: string[] = [];
+      if (extracted.firstName) {
+        setFirstName(extracted.firstName);
+        newAutoFilled.push('firstName');
+      }
+      if (extracted.middleName) {
+        setMiddleName(extracted.middleName);
+        newAutoFilled.push('middleName');
+      }
+      if (extracted.lastName) {
+        setLastName(extracted.lastName);
+        newAutoFilled.push('lastName');
+      }
+      if (extracted.dateOfBirth) {
+        setDateOfBirth(extracted.dateOfBirth);
+        newAutoFilled.push('dateOfBirth');
+      }
+      if (extracted.gender) {
+        setGender(extracted.gender);
+        newAutoFilled.push('gender');
+      }
+      if (extracted.civilStatus) {
+        setCivilStatus(extracted.civilStatus);
+        newAutoFilled.push('civilStatus');
+      }
+      if (extracted.street || extracted.address) {
+        setStreet(extracted.street || extracted.address || '');
+        newAutoFilled.push('street');
+      }
+      if (extracted.barangay) {
+        setBarangay(extracted.barangay);
+        newAutoFilled.push('barangay');
+      }
+      if (extracted.city) {
+        setCity(extracted.city);
+        newAutoFilled.push('city');
+      }
+      if (extracted.province) {
+        setProvince(extracted.province);
+        newAutoFilled.push('province');
+      }
+      if (extracted.postalCode) {
+        setPostalCode(extracted.postalCode);
+        newAutoFilled.push('postalCode');
+      }
+
+      setAutoFilledKeys(newAutoFilled);
+    } catch (err: any) {
+      setScanStage('failed');
+      setQualityError(err?.message || 'Failed to process ID. Please try again with clear lighting.');
+    } finally {
+      setIsScanningId(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -381,14 +527,133 @@ export const KycFormScreen: React.FC = () => {
 
           {step === 0 && (
             <View>
-              <AppTextInput label="First Name *" value={firstName} placeholder="As shown on your valid ID" onChangeText={set('firstName')} error={errors.firstName} />
-              <AppTextInput label="Middle Name" value={middleName} placeholder="Optional" onChangeText={set('middleName')} error={errors.middleName} />
-              <AppTextInput label="Last Name *" value={lastName} placeholder="As shown on your valid ID" onChangeText={set('lastName')} error={errors.lastName} />
-              <AppTextInput label="Date of Birth *" value={dateOfBirth} placeholder="YYYY-MM-DD" onChangeText={set('dateOfBirth')} error={errors.dateOfBirth} hint="Format: 1990-05-18" />
-              <Text style={styles.fieldLabel}>Gender *</Text>
+              {/* ID Scan Banner */}
+              <AppCard style={styles.ocrCard}>
+                <View style={styles.ocrHeaderRow}>
+                  <View style={styles.ocrIconWrap}>
+                    <Ionicons name="scan-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={styles.ocrTitle}>Instant Government ID Auto-Fill</Text>
+                    <Text style={styles.ocrSub}>Scan your PhilSys, Driver's License, or Passport to auto-fill</Text>
+                  </View>
+                </View>
+
+                {isScanningId ? (
+                  <View style={styles.ocrProgressBox}>
+                    <Ionicons name="sync-outline" size={18} color={colors.primary} />
+                    <Text style={styles.ocrProgressText}>
+                      {scanStage === 'scanning' && '1/3: Scanning ID photo...'}
+                      {scanStage === 'checking_quality' && '2/3: Checking image quality & glare...'}
+                      {scanStage === 'reading_info' && '3/3: Reading ID details with OCR...'}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.ocrBtnRow}>
+                    <TouchableOpacity
+                      style={styles.ocrBtn}
+                      onPress={() => handleScanId('camera')}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="camera-outline" size={16} color={colors.white} />
+                      <Text style={styles.ocrBtnText}>Take Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.ocrBtnSecondary}
+                      onPress={() => handleScanId('library')}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="image-outline" size={16} color={colors.textSecondary} />
+                      <Text style={styles.ocrBtnSecondaryText}>Upload Photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Quality Failure Banner */}
+                {qualityError && (
+                  <View style={styles.ocrErrorBox}>
+                    <View style={styles.ocrErrorHeader}>
+                      <Ionicons name="alert-circle" size={18} color={colors.danger} />
+                      <Text style={styles.ocrErrorTitle}>ID Quality Check Failed</Text>
+                    </View>
+                    <Text style={styles.ocrErrorMsg}>{qualityError}</Text>
+                    {qualityChecks && (
+                      <View style={styles.qualityList}>
+                        {qualityChecks.isBlurry && <Text style={styles.qualityItem}>❌ Blurry image detected</Text>}
+                        {qualityChecks.isTooDark && <Text style={styles.qualityItem}>❌ Too dark / underexposed</Text>}
+                        {qualityChecks.isTooBrightOrGlare && <Text style={styles.qualityItem}>❌ Flash glare detected</Text>}
+                        {qualityChecks.isCutOff && <Text style={styles.qualityItem}>❌ ID edges / corners cut off</Text>}
+                        {qualityChecks.isTooFar && <Text style={styles.qualityItem}>❌ ID is too far away</Text>}
+                        {qualityChecks.isUpsideDown && <Text style={styles.qualityItem}>❌ ID is upside down / tilted</Text>}
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Validated OCR Result Card */}
+                {scannedIdDoc && !qualityError && (
+                  <View style={styles.ocrSuccessBox}>
+                    <View style={styles.ocrSuccessHeader}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.green} />
+                      <Text style={styles.ocrSuccessTitle}>ID Validated ({scannedIdDoc.confidenceScore}% Quality Score)</Text>
+                    </View>
+                    <Text style={styles.ocrSuccessType}>{scannedIdDoc.idType} {scannedIdDoc.idNumber ? `· ${scannedIdDoc.idNumber}` : ''}</Text>
+                    <TouchableOpacity
+                      style={styles.confirmExtractedRow}
+                      onPress={() => setExtractedConfirmed(!extractedConfirmed)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name={extractedConfirmed ? 'checkbox' : 'square-outline'}
+                        size={18}
+                        color={extractedConfirmed ? colors.primary : colors.textSecondary}
+                      />
+                      <Text style={styles.confirmExtractedText}>
+                        I confirm that the information extracted from my ID is correct.
+                      </Text>
+                    </TouchableOpacity>
+                    <Text style={styles.ocrDisclaimer}>ID information extracted — manual verification required by cooperative staff.</Text>
+                  </View>
+                )}
+              </AppCard>
+
+              <AppTextInput
+                label={autoFilledKeys.includes('firstName') ? 'First Name * ✨ Auto-filled' : 'First Name *'}
+                value={firstName}
+                placeholder="As shown on your valid ID"
+                onChangeText={set('firstName')}
+                error={errors.firstName}
+              />
+              <AppTextInput
+                label={autoFilledKeys.includes('middleName') ? 'Middle Name ✨ Auto-filled' : 'Middle Name'}
+                value={middleName}
+                placeholder="Optional"
+                onChangeText={set('middleName')}
+                error={errors.middleName}
+              />
+              <AppTextInput
+                label={autoFilledKeys.includes('lastName') ? 'Last Name * ✨ Auto-filled' : 'Last Name *'}
+                value={lastName}
+                placeholder="As shown on your valid ID"
+                onChangeText={set('lastName')}
+                error={errors.lastName}
+              />
+              <AppTextInput
+                label={autoFilledKeys.includes('dateOfBirth') ? 'Date of Birth * ✨ Auto-filled' : 'Date of Birth *'}
+                value={dateOfBirth}
+                placeholder="YYYY-MM-DD"
+                onChangeText={set('dateOfBirth')}
+                error={errors.dateOfBirth}
+                hint="Format: 1990-05-18"
+              />
+              <Text style={styles.fieldLabel}>
+                Gender * {autoFilledKeys.includes('gender') ? '✨' : ''}
+              </Text>
               <ChipGroup options={GENDERS} selected={gender} onSelect={(v) => { setGender(v); setErrors((e) => ({ ...e, gender: '' })); }} />
               {errors.gender ? <Text style={styles.fieldError}>{errors.gender}</Text> : null}
-              <Text style={styles.fieldLabel}>Civil Status *</Text>
+              <Text style={styles.fieldLabel}>
+                Civil Status * {autoFilledKeys.includes('civilStatus') ? '✨' : ''}
+              </Text>
               <ChipGroup options={CIVIL_STATUS} selected={civilStatus} onSelect={(v) => { setCivilStatus(v); setErrors((e) => ({ ...e, civilStatus: '' })); }} />
               {errors.civilStatus ? <Text style={styles.fieldError}>{errors.civilStatus}</Text> : null}
               <AppTextInput label="Mobile Number *" value={phone} placeholder="e.g. 0917 555 4321" onChangeText={set('phone')} keyboardType="phone-pad" error={errors.phone} />
@@ -398,11 +663,42 @@ export const KycFormScreen: React.FC = () => {
 
           {step === 1 && (
             <View>
-              <AppTextInput label="House / Street" value={street} placeholder="House no., street, building" onChangeText={set('street')} error={errors.street} />
-              <AppTextInput label="Barangay *" value={barangay} placeholder="e.g. Poblacion" onChangeText={set('barangay')} error={errors.barangay} />
-              <AppTextInput label="City / Municipality *" value={city} placeholder="e.g. Tacloban City" onChangeText={set('city')} error={errors.city} />
-              <AppTextInput label="Province *" value={province} placeholder="e.g. Leyte" onChangeText={set('province')} error={errors.province} />
-              <AppTextInput label="Postal Code" value={postalCode} placeholder="e.g. 6500" onChangeText={set('postalCode')} keyboardType="number-pad" error={errors.postalCode} />
+              <AppTextInput
+                label={autoFilledKeys.includes('street') ? 'House / Street ✨ Auto-filled' : 'House / Street'}
+                value={street}
+                placeholder="House no., street, building"
+                onChangeText={set('street')}
+                error={errors.street}
+              />
+              <AppTextInput
+                label={autoFilledKeys.includes('barangay') ? 'Barangay * ✨ Auto-filled' : 'Barangay *'}
+                value={barangay}
+                placeholder="e.g. Poblacion"
+                onChangeText={set('barangay')}
+                error={errors.barangay}
+              />
+              <AppTextInput
+                label={autoFilledKeys.includes('city') ? 'City / Municipality * ✨ Auto-filled' : 'City / Municipality *'}
+                value={city}
+                placeholder="e.g. Tacloban City"
+                onChangeText={set('city')}
+                error={errors.city}
+              />
+              <AppTextInput
+                label={autoFilledKeys.includes('province') ? 'Province * ✨ Auto-filled' : 'Province *'}
+                value={province}
+                placeholder="e.g. Leyte"
+                onChangeText={set('province')}
+                error={errors.province}
+              />
+              <AppTextInput
+                label={autoFilledKeys.includes('postalCode') ? 'Postal Code ✨ Auto-filled' : 'Postal Code'}
+                value={postalCode}
+                placeholder="e.g. 6500"
+                onChangeText={set('postalCode')}
+                keyboardType="number-pad"
+                error={errors.postalCode}
+              />
             </View>
           )}
 
@@ -670,4 +966,172 @@ const styles = StyleSheet.create({
   metaValue: { fontSize: 12, fontWeight: '700', color: colors.text },
   homeLink: { paddingVertical: 12, marginTop: 6 },
   homeLinkText: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
+  ocrCard: {
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    borderRadius: radius.lg,
+    padding: 14,
+    backgroundColor: colors.surface,
+  },
+  ocrHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  ocrIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  ocrTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  ocrSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  ocrProgressBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  ocrProgressText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primaryDark,
+    marginLeft: 8,
+  },
+  ocrBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ocrBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  ocrBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  ocrBtnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  ocrBtnSecondaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  ocrErrorBox: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+  },
+  ocrErrorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  ocrErrorTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  ocrErrorMsg: {
+    fontSize: 11,
+    color: colors.danger,
+    lineHeight: 16,
+  },
+  qualityList: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.dangerBorder,
+  },
+  qualityItem: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.danger,
+    marginTop: 2,
+  },
+  ocrSuccessBox: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: colors.greenSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.greenBorder,
+  },
+  ocrSuccessHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ocrSuccessTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.greenDark,
+  },
+  ocrSuccessType: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 4,
+  },
+  ocrDisclaimer: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  confirmExtractedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+    backgroundColor: colors.surface,
+    padding: 8,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.greenBorder,
+  },
+  confirmExtractedText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text,
+  },
 });

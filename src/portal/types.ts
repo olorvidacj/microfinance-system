@@ -136,6 +136,69 @@ export interface KycDocumentItem {
   status: 'PENDING' | 'VERIFIED' | 'REJECTED';
 }
 
+export interface IdQualityChecks {
+  isBlurry: boolean;
+  isTooDark: boolean;
+  isTooBrightOrGlare: boolean;
+  isCutOff: boolean;
+  isTooFar: boolean;
+  isUpsideDown: boolean;
+  isRecognizedDoc: boolean;
+}
+
+export interface IdValidationResult {
+  isReadable: boolean;
+  confidenceScore: number;
+  detectedType: string;
+  qualityChecks?: IdQualityChecks;
+  qualityMessage?: string;
+  authenticityNotice?: string;
+  validationWarnings?: string[];
+}
+
+export interface ExtractedIdData {
+  fullName?: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  suffix?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  civilStatus?: string;
+  nationality?: string;
+  address?: string;
+  houseNumber?: string;
+  street?: string;
+  barangay?: string;
+  city?: string;
+  province?: string;
+  postalCode?: string;
+  idType?: string;
+  idTypeName?: string;
+  idNumber?: string;
+  issueDate?: string | null;
+  expirationDate?: string | null;
+  isExpired?: boolean;
+  confidenceScore?: number;
+  isReadable?: boolean;
+  detectedType?: string;
+  qualityChecks?: IdQualityChecks;
+  qualityMessage?: string;
+  authenticityNotice?: string;
+  validationWarnings?: string[];
+  autoFilledFields?: string[];
+}
+
+export interface FaceMatchResult {
+  isMatch: boolean;
+  matchConfidence: number;
+  matchStatus: 'MATCH' | 'LOW_CONFIDENCE' | 'FAILED';
+  livenessVerified: boolean;
+  details: string;
+  recommendation?: 'CONTINUE' | 'RETRY_SELFIE' | 'MANUAL_REVIEW';
+  timestamp?: string;
+}
+
 export interface KycStatusData {
   kycStatus: KYCStatus;
   isVerified: boolean;
@@ -145,9 +208,13 @@ export interface KycStatusData {
   submittedAt?: string;
   reviewedAt?: string;
   correctionReason?: string;
+  correctionDetails?: any;
   rejectionReason?: string;
   verifiedAt?: string;
   reviewedByName?: string;
+  extractedIdData?: ExtractedIdData;
+  faceMatchResult?: FaceMatchResult;
+  submission?: any;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +273,8 @@ export interface KycSubmissionFull {
   rejectionReason?: string;
   verifiedAt?: string;
   documents: KycDocumentItem[];
+  extractedIdData?: ExtractedIdData;
+  faceMatchResult?: FaceMatchResult;
   createdAt: string;
   updatedAt: string;
 }
@@ -229,6 +298,7 @@ export interface ClientLoan {
   totalInterest?: number;
   status: LoanStatus;
   startDate?: string;
+  disbursedDate?: string;
   applicationDate?: string;
   maturityDate?: string;
   nextPaymentDate?: string;
@@ -288,6 +358,8 @@ export interface LoanApplication {
   rejectionReason?: string | null;
   disbursedAt?: string | null;
   repaymentFrequency?: string;
+  purpose?: string;
+  notes?: string;
 }
 
 // ---------------------------------------------------------------------------
