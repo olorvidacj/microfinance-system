@@ -18,6 +18,7 @@ import BranchRoutes from './branch/routers/BranchRoutes';
 import { isBranchStaffRole } from './branch/components/layout/BranchLayout';
 
 import { AdminRoutes } from './admin/router';
+import { hasPermission } from './auth/permissions';
 
 /** A staff login with no role the branch app recognises. Roles are set by an administrator. */
 const NoStaffRole: React.FC = () => {
@@ -98,9 +99,15 @@ const AuthGate: React.FC = () => {
     );
   }
 
+  // The site's home page stays the home page for everyone; a signed-in visitor gets a
+  // button to their own app instead of being redirected away from it.
+  const home = homeFor(user);
+  const landing = <LandingView onSignIn={() => navigate(home.path)} account={{ label: home.label, onOpen: () => navigate(home.path) }} />;
+
   if (user.role === 'CLIENT') {
     return (
       <Routes>
+        <Route path="/" element={landing} />
         <Route path="/portal" element={<PortalLayout />}>
           {PORTAL_ROUTES.map((r) => (
             <Route key={r.path} path={r.path} element={r.element} />
@@ -112,12 +119,20 @@ const AuthGate: React.FC = () => {
     );
   }
 
-  if (user.role === 'STAFF' && isBranchStaffRole(user.staffRole)) {
-    return <BranchRoutes />;
-  }
-
-  return <NoStaffRole />;
+  return (
+    <Routes>
+      <Route path="/" element={landing} />
+      <Route path="*" element={user.role === 'STAFF' && isBranchStaffRole(user.staffRole) ? <BranchRoutes /> : <NoStaffRole />} />
+    </Routes>
+  );
 };
+
+/** Where a signed-in user's work is: members the portal, administrators the console, other staff the branch app. */
+function homeFor(user: { role: string; staffRole?: string | null }): { path: string; label: string } {
+  if (user.role === 'CLIENT') return { path: '/portal', label: 'Go to my account' };
+  if (hasPermission(user.staffRole, 'manage_users')) return { path: '/admin', label: 'Go to the admin console' };
+  return { path: '/staff/app', label: 'Go to the staff app' };
+}
 
 export const App: React.FC = () => {
   return (
