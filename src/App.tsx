@@ -53,45 +53,32 @@ const AuthGate: React.FC = () => {
     );
   }
 
+  // Pages anyone may open, signed in or not. Signing in or registering from them
+  // replaces whatever session this browser had; every sign-in then goes to /app,
+  // which opens the right area for the account that signed in.
+  const publicPages = [
+    <Route
+      key="landing"
+      path="/"
+      element={
+        <LandingView
+          onSignIn={(mode = 'signin') => navigate(mode === 'register' ? '/portal/register' : '/login')}
+          account={user ? { label: homeFor(user).label, onOpen: () => navigate(homeFor(user).path) } : undefined}
+        />
+      }
+    />,
+    <Route key="login" path="/login" element={<LoginPage onBack={() => navigate('/')} onSwitchToRegister={() => navigate('/portal/register')} onSuccess={() => navigate('/app', { replace: true })} />} />,
+    <Route key="register" path="/register" element={<Navigate to="/portal/register" replace />} />,
+    <Route key="portal-login" path="/portal/login" element={<PublicPortalLayout><ClientLoginPage /></PublicPortalLayout>} />,
+    <Route key="portal-register" path="/portal/register" element={<PublicPortalLayout><ClientRegisterPage /></PublicPortalLayout>} />,
+  ];
+
   if (!user) {
     return (
       <Routes>
-        <Route
-          path="/"
-          element={
-            <LandingView
-              onSignIn={(mode = 'signin') => navigate(mode === 'register' ? '/register' : '/login')}
-            />
-          }
-        />
-        <Route
-          path="/login"
-          element={
-            <LoginPage
-              onBack={() => navigate('/')}
-              onSwitchToRegister={() => navigate('/register')}
-              onSuccess={() => navigate('/')}
-            />
-          }
-        />
-        <Route path="/register" element={<Navigate to="/portal/register" replace />} />
+        {publicPages}
         <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
-        <Route
-          path="/portal/login"
-          element={
-            <PublicPortalLayout>
-              <ClientLoginPage />
-            </PublicPortalLayout>
-          }
-        />
-        <Route
-          path="/portal/register"
-          element={
-            <PublicPortalLayout>
-              <ClientRegisterPage />
-            </PublicPortalLayout>
-          }
-        />
+        <Route path="/app" element={<Navigate to="/" replace />} />
         <Route path="/staff/login" element={<StaffLoginPage />} />
         <Route path="/staff/*" element={<Navigate to="/staff/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -99,15 +86,12 @@ const AuthGate: React.FC = () => {
     );
   }
 
-  // The site's home page stays the home page for everyone; a signed-in visitor gets a
-  // button to their own app instead of being redirected away from it.
   const home = homeFor(user);
-  const landing = <LandingView onSignIn={() => navigate(home.path)} account={{ label: home.label, onOpen: () => navigate(home.path) }} />;
-
   if (user.role === 'CLIENT') {
     return (
       <Routes>
-        <Route path="/" element={landing} />
+        {publicPages}
+        <Route path="/app" element={<Navigate to={home.path} replace />} />
         <Route path="/portal" element={<PortalLayout />}>
           {PORTAL_ROUTES.map((r) => (
             <Route key={r.path} path={r.path} element={r.element} />
@@ -121,7 +105,8 @@ const AuthGate: React.FC = () => {
 
   return (
     <Routes>
-      <Route path="/" element={landing} />
+      {publicPages}
+      <Route path="/app" element={<Navigate to={home.path} replace />} />
       <Route path="*" element={user.role === 'STAFF' && isBranchStaffRole(user.staffRole) ? <BranchRoutes /> : <NoStaffRole />} />
     </Routes>
   );
