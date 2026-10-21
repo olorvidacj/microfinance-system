@@ -133,7 +133,7 @@ The web portal and the mobile app call the same endpoints and share the response
 | Remaining | Why |
 |---|---|
 | Superseded migrations 0003–0010, 0017, 0019–0022 are still in the folders | They are listed as skipped (with reasons) in `APPLY_ORDER.txt`, so `db:migrate` never runs them, but `supabase db reset` would. Moving them into a `superseded/` folder was blocked by the tool's permission check; it is your call. |
-| Live database has no `schema_migrations` record, and 0023–0029 are not applied there | Apply 0023–0028 (`node ./.apply-live.tmp.cjs --apply`), then `npm run db:migrate -- --baseline-through 0028_group_lending.sql --yes` to record the history and apply 0029. Until then the server logs the pending files at start and the overdue and interest jobs fail on live. |
+| Live database has no `schema_migrations` record; 0018 and 0023–0029 are not applied there | Read-only check on 2026-10-22: live has 0000–0016 and none of 0018, 0023–0029. After a backup, run `npm run db:migrate -- --baseline-through 0016_payment_proofs.sql --yes`: it records 0000–0016 as present and applies 0018 (private KYC bucket, U1), 0023–0028 and 0029 in order, one transaction each. Do not baseline through 0028: that would record 0018 as applied when it is not. Until then the server logs the pending files at start and the overdue and interest jobs fail on live. |
 | Rollbacks exist for 0000 and 0023–0029 only | 0001–0022 predate the rule. |
 
 ### 4.2 Money column types
@@ -157,7 +157,7 @@ All ledger, loan, schedule, payment, savings and fund money columns are `numeric
 ## What remains
 
 1. **U1** Apply `0018_private_kyc_document_bucket.sql` to production (makes the KYC bucket private).
-2. **Live migrations** 0023–0029 and the `schema_migrations` baseline (4.1).
+2. **Live migrations**: `npm run db:migrate -- --baseline-through 0016_payment_proofs.sql --yes` after a backup; this also applies 0018 (item 1) (4.1).
 3. **U2** Delete the corrupted `shared/kyc/` folder; move the repository out of OneDrive or commit.
 4. **Superseded migrations** into `superseded/` folders, if you want `supabase db reset` to build the same database (4.1).
 5. Branch **performance** charts on the portfolio module (3.2).
