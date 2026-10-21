@@ -28,7 +28,7 @@ Every row of the first audit is accounted for: it now reads **works**, or it is 
 
 | # | Finding | Status | Detail |
 |---|---|---|---|
-| **U1** | KYC files publicly readable | **remains (needs your go-ahead)** | The code side is fixed: `initDb.ts` no longer runs any DDL at start-up, so nothing re-opens the bucket, and the server serves identity files only through short-lived signed links. The **live** bucket `kyc-documents` is still `public = true`, and on 2026-10-22 the anon key could still list it (one top-level folder). Migration `0018_private_kyc_document_bucket.sql` closes it; it has not been applied to production. |
+| **U1** | KYC files publicly readable | **works** | Migration 0018 was applied to production on 2026-10-22: `kyc-documents` is private and the anon key lists nothing. The server no longer runs DDL at start-up, so nothing re-opens it; identity files are served only through short-lived signed links. **Remains:** the `documents` bucket (branch documents such as loan papers) is still `public = true`; listing is refused, but a file can be fetched by anyone who knows its exact path. Make it private and serve it through signed links, as the KYC bucket now is. |
 | **U2** | Source files corrupted on disk | **remains (your decision)** | The 10 files in `shared/kyc/` are still the corrupted copies. Nothing imports them any more: `shared/kyc-core/` replaced them and is type-checked and tested. The Supabase copy of migration 0023 was restored. Delete `shared/kyc/` (or restore it from OneDrive history), and move the repository out of OneDrive or commit regularly. |
 | **U3** | Account takeover by phone-number matching | **works** | Auto-linking by phone suffix is gone ([clientProvisioning.ts:175](../src/db/clientProvisioning.ts#L175)); a login is linked to a member only by verified email, and registration creates the member in the same transaction. |
 | **U4** | Unassigned branch staff saw every branch | **works** | All-branch access now comes only from the `view_all_records` permission; staff without it and without a branch get 403 ([branchRoutes.ts](../src/routes/branchRoutes.ts) `requireBranch`). |
@@ -133,7 +133,7 @@ The web portal and the mobile app call the same endpoints and share the response
 | Remaining | Why |
 |---|---|
 | Superseded migrations 0003–0010, 0017, 0019–0022 are still in the folders | They are listed as skipped (with reasons) in `APPLY_ORDER.txt`, so `db:migrate` never runs them, but `supabase db reset` would. Moving them into a `superseded/` folder was blocked by the tool's permission check; it is your call. |
-| Live database has no `schema_migrations` record; 0018 and 0023–0029 are not applied there | Read-only check on 2026-10-22: live has 0000–0016 and none of 0018, 0023–0029. After a backup, run `npm run db:migrate -- --baseline-through 0016_payment_proofs.sql --yes`: it records 0000–0016 as present and applies 0018 (private KYC bucket, U1), 0023–0028 and 0029 in order, one transaction each. Do not baseline through 0028: that would record 0018 as applied when it is not. Until then the server logs the pending files at start and the overdue and interest jobs fail on live. |
+| Production migrations | **Done 2026-10-22.** After a full backup (`database/backups/full-20261021-223445`, plus storage buckets and policies), `npm run db:migrate -- --baseline-through 0016_payment_proofs.sql --yes` recorded 0000–0016 and applied 0018, 0023–0028 and 0029, one transaction each; `db:migrate --status` reports 17 applied, 0 pending. Every pre-existing row was kept: the only count changes are the ones the migrations make (4 ledger accounts added; existing savings balances posted to the ledger as 10 opening transactions and 2 journal entries; the old `savings_products` table renamed `legacy_savings_products` with its 2 rows). GL 2010 = ₱144,550.00 = the 25 savings accounts; GL 2040 = ₱14,500.00; debits = credits. |
 | Rollbacks exist for 0000 and 0023–0029 only | 0001–0022 predate the rule. |
 
 ### 4.2 Money column types
@@ -156,13 +156,12 @@ All ledger, loan, schedule, payment, savings and fund money columns are `numeric
 
 ## What remains
 
-1. **U1** Apply `0018_private_kyc_document_bucket.sql` to production (makes the KYC bucket private).
-2. **Live migrations**: `npm run db:migrate -- --baseline-through 0016_payment_proofs.sql --yes` after a backup; this also applies 0018 (item 1) (4.1).
-3. **U2** Delete the corrupted `shared/kyc/` folder; move the repository out of OneDrive or commit.
-4. **Superseded migrations** into `superseded/` folders, if you want `supabase db reset` to build the same database (4.1).
-5. Branch **performance** charts on the portfolio module (3.2).
-6. Branch **client edit** of a phone number: shared validation and uniqueness check (3.2).
-7. **`/api/storage`** development fallback: signed links (3.4).
-8. **16 legacy float columns** to `numeric` (4.2).
-9. **Delete** the unreachable legacy shell components and `public/supabase_schema.sql` (served to anyone; schema only, no data).
-10. Not audited: `/api/gemini/*`.
+1. Make the `documents` storage bucket private and serve branch documents through signed links (U1).
+2. **U2** Delete the corrupted `shared/kyc/` folder; move the repository out of OneDrive or commit.
+3. **Superseded migrations** into `superseded/` folders, if you want `supabase db reset` to build the same database (4.1).
+4. Branch **performance** charts on the portfolio module (3.2).
+5. Branch **client edit** of a phone number: shared validation and uniqueness check (3.2).
+6. **`/api/storage`** development fallback: signed links (3.4).
+7. **16 legacy float columns** to `numeric` (4.2).
+8. **Delete** the unreachable legacy shell components and `public/supabase_schema.sql` (served to anyone; schema only, no data).
+9. Not audited: `/api/gemini/*`.
