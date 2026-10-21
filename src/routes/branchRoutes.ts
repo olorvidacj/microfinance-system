@@ -5,14 +5,67 @@ import { getDb, schema } from '../db/index';
 import { storeDocument, DOCUMENT_BUCKET } from '../db/documentStorage';
 import { getServerSupabase } from '../db/supabaseServer';
 import { hasAnyPermission, getRolePermissions, normalizeRole, SystemPermission } from '../auth/permissions';
-import {
-  allocatePaymentToSchedule,
-  calculateLoanSchedule,
-  canWithdrawFromSavings,
-  getComputedInstallmentStatus,
-  sumSavingsAccountBalances,
-} from '../utils/loanMath';
 import type { InstallmentStatus } from '../types';
+import type { AppDb } from '../kyc/errors';
+import { assertKycVerified, claimApplication, decideApplication, kycDossier, kycQueue, releaseApplication, type StaffActor } from '../kyc/service';
+import { registerByBranch } from '../onboarding/registration';
+import { psgcResolver } from '../onboarding/geography';
+import { isKycVerified, kycStatusLabel, normaliseKycStatus } from '../../shared/kyc-core';
+import { PERIODS_PER_YEAR, RUNNING_LOAN_STATUSES, centsFromDb, centsToDecimal, daysBetween, normaliseLoanStatus, productToDto, savingsProductToDto, type LoanStatus } from '../../shared/lending';
+import { loans as lendingLoans, paymentRows } from '../lending/tables';
+import {
+  cancelApplication,
+  createApplication,
+  decideApplication as decideLoan,
+  disburseLoan,
+  listProducts,
+  loanDetail,
+  loanSummaries,
+  startReview,
+  submitApplication,
+  type LendingStaff,
+} from '../lending/service';
+import { claimProof, collectionsOverview, loanPayments, payoffQuote, postPayment, proofQueue, receiptFor, rejectProof, reversePayment, runOverdueCheck, verifyProof } from '../lending/repayment';
+import {
+  accountDetail,
+  changeStatus,
+  closeAccount,
+  decideWithdrawalRequest,
+  deposit,
+  listAccounts,
+  listSavingsProducts,
+  openAccount,
+  reconcileSavings,
+  runInterestPosting,
+  statement,
+  withdraw,
+  withdrawalRequests,
+} from '../savings/service';
+import {
+  addMember,
+  changeGroupStatus,
+  coverFromFund,
+  createGroup,
+  fundView,
+  groupDetail,
+  groupMeetings,
+  listGroups,
+  officers as groupOfficers,
+  pendingGroupLoans,
+  postCollection,
+  recordConsent,
+  recordMeeting,
+  reconcileGroupFunds,
+  refundFund,
+  removeMember,
+  repayCover,
+  setRole,
+  updateGroup,
+} from '../groups/service';
+import { signedKycUrl } from '../kyc/storage';
+import { manilaToday } from '../kyc/service';
+import { sendError } from './httpErrors';
+import { portfolioSummary } from '../reports/portfolio';
 
 // Re-declared locally to avoid importing heavy frontend types into the bundle.
 interface InstallmentRow {
@@ -44,14 +97,16 @@ interface BranchCtx {
   avatar: string;
   branchId: string | null;
   viewAll: boolean;
+  permissions: SystemPermission[];
 }
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Today's date in the Philippines (YYYY-MM-DD); the UTC date is still yesterday until 8 a.m. Manila time. */
 function todayStr(): string {
-  return new Date().toISOString().split('T')[0];
+  return manilaToday();
 }
 
 function genId(prefix: string): string {
@@ -61,30 +116,6 @@ function genId(prefix: string): string {
 
 function genRef(prefix: string): string {
   return `${prefix}-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-}
-
-/**
- * Re-derives `borrowers.savings_balance` as the SUM of every savings account the
- * member holds.
- *
- * `savings_balance` is a member-wide TOTAL, not a per-account figure. Writing a
- * single account's balance into it corrupts any member with more than one
- * account, and because the client self-service withdrawal path validates against
- * this column, the error becomes withdrawable money. Always call this after
- * mutating a savings_accounts row instead of assigning the account balance.
- */
-async function syncMemberSavingsTotal(db: any, memberId: string | null | undefined): Promise<void> {
-  if (!memberId) return;
-  try {
-    const accounts = await db
-      .select({ balance: schema.savingsAccounts.balance })
-      .from(schema.savingsAccounts)
-      .where(eq(schema.savingsAccounts.memberId, memberId));
-    const total = sumSavingsAccountBalances(accounts as any);
-    await db.update(schema.borrowers).set({ savingsBalance: total }).where(eq(schema.borrowers.id, memberId));
-  } catch (err: any) {
-    console.error('[savings] failed to sync member savings total:', err?.message || err);
-  }
 }
 
 // Governance & oversight roles: granted read visibility across the branch, but
@@ -151,7 +182,9 @@ function requireBranch(permissions: SystemPermission[] = []) {
 
     const rawBranchId = auth.branchId || null;
     const isGlobalBranch = !rawBranchId || rawBranchId === 'all' || rawBranchId.toLowerCase() === 'all';
-    const viewAll = hasAnyPermission(staffRole, ['view_all_records', 'manage_users', 'manage_settings']) || isGlobalBranch;
+    // Access to every branch comes only from role permissions. A staff account
+    // with no branch assignment is refused below, never widened to all branches.
+    const viewAll = hasAnyPermission(staffRole, ['view_all_records', 'manage_users', 'manage_settings']);
     const branchId = isGlobalBranch ? null : rawBranchId;
 
     const ctx: BranchCtx = {
@@ -164,6 +197,7 @@ function requireBranch(permissions: SystemPermission[] = []) {
       avatar,
       branchId,
       viewAll,
+      permissions: effectivePermissions,
     };
 
     if (isObserver && req.method !== 'GET') {
@@ -188,6 +222,11 @@ function requireBranch(permissions: SystemPermission[] = []) {
     (req as any).branchCtx = ctx;
     next();
   };
+}
+
+/** The branch session as a KYC/onboarding actor. */
+function staffActorOf(ctx: BranchCtx): StaffActor {
+  return { kind: 'staff', userId: ctx.userId, staffId: ctx.staffId, name: ctx.staffName, role: ctx.staffRole, branchId: ctx.branchId, viewAll: ctx.viewAll };
 }
 
 function ctxOf(req: Request): BranchCtx {
@@ -341,64 +380,50 @@ async function loadBranchData(ctx: BranchCtx, req?: Request) {
     db.select().from(schema.membershipApplications).where(ctx.viewAll && !bid ? undefined : eq(schema.membershipApplications.branchId, bid as string)),
   ]);
   const memberIds = new Set(borrowers.map((b: any) => b.id));
-  const savingsScoped = ctx.viewAll && !bid ? savingsAccounts : savingsAccounts.filter((a: any) => memberIds.has(a.memberId));
-  return { borrowers, loans, payments, savingsAccounts: savingsScoped, savingsTransactions, transactions, groups, applications };
+  const all = ctx.viewAll && !bid;
+  const savingsScoped = all ? savingsAccounts : savingsAccounts.filter((a: any) => memberIds.has(a.memberId));
+  const savingsTxScoped = all ? savingsTransactions : savingsTransactions.filter((t: any) => memberIds.has(t.memberId));
+  return { borrowers, loans, payments, savingsAccounts: savingsScoped, savingsTransactions: savingsTxScoped, transactions, groups, applications };
+}
+
+/** The branch in view: the staff member's own, or (all-branch roles) the one asked for, or every branch. */
+function reportBranch(ctx: BranchCtx, req: Request): string | null {
+  return ctx.viewAll ? (req.query.branchId ? String(req.query.branchId) : null) : ctx.branchId;
 }
 
 branchRouter.get('/dashboard', requireBranch([]), async (req, res) => {
   const ctx = ctxOf(req);
-  const data = await loadBranchData(ctx, req);
-  const today = todayStr();
-
-  const activeClients = (data.borrowers as any[]).filter((b) => b.memberStatus === 'Active');
-  const pendingVerification = (data.borrowers as any[]).filter(
-    (b) => b.kycStatus !== 'VERIFIED' || b.memberStatus === 'Pending'
-  );
-  const activeLoans = (data.loans as any[]).filter((l) => ['Disbursed', 'Active', 'In Arrears'].includes(l.status));
-  const outstandingBalance = activeLoans.reduce((s, l) => s + (l.remainingBalance || 0), 0);
-  const todaysCollections = (data.payments as any[]).filter((p) => String(p.paymentDate).startsWith(today));
-  const overdueLoans = (data.loans as any[]).filter(
-    (l) => l.status === 'In Arrears' || (l.daysInArrears && l.daysInArrears > 0)
-  );
-  const overdueOutstanding = overdueLoans.reduce((s, l) => s + (l.remainingBalance || 0), 0);
-  const pendingApplications = (data.loans as any[]).filter((l) =>
-    ['Draft', 'Submitted', 'Under Review', 'For Assessment'].includes(l.status)
-  );
-  const totalDeposited = (data.savingsTransactions as any[])
-    .filter((t) => t.type === 'Deposit' && String(t.date).startsWith(today))
-    .reduce((s, t) => s + t.amount, 0);
-  const todayWithdrawals = (data.savingsTransactions as any[])
-    .filter((t) => t.type === 'Withdrawal' && String(t.date).startsWith(today))
-    .reduce((s, t) => s + t.amount, 0);
-  const totalSavings = (data.savingsAccounts as any[]).reduce((s, a) => s + (a.balance || 0), 0);
-
-  res.json({
-    success: true,
-    data: {
-      personnel: {
-        name: ctx.staffName,
-        role: ctx.staffRole,
-        title: ctx.title,
-        branchId: ctx.branchId,
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'The database is not available right now.' });
+  try {
+    // The same figures as the admin reports and the member portal (src/reports/portfolio.ts).
+    const p = await portfolioSummary(db as unknown as AppDb, { branchId: reportBranch(ctx, req) });
+    res.json({
+      success: true,
+      data: {
+        personnel: { name: ctx.staffName, role: ctx.staffRole, title: ctx.title, branchId: ctx.branchId },
+        asOf: nowIso(),
+        portfolio: p,
+        summary: {
+          totalClients: p.members.total,
+          activeClients: p.members.active,
+          pendingVerification: p.members.kycAwaitingReview,
+          activeLoans: p.loans.running,
+          outstandingBalance: p.loans.outstanding,
+          todayCollections: p.collections.todayAmount,
+          todayTransactionCount: p.collections.todayCount,
+          pendingApplications: p.loans.applications,
+          totalSavings: p.savings.balance,
+          todayDeposits: p.savings.depositsToday,
+          todayWithdrawals: p.savings.withdrawalsToday,
+          overdueLoans: p.loans.overdue,
+          overdueOutstanding: p.loans.overdueOutstanding,
+        },
       },
-      asOf: nowIso(),
-      summary: {
-        totalClients: data.borrowers.length,
-        activeClients: activeClients.length,
-        pendingVerification: pendingVerification.length,
-        activeLoans: activeLoans.length,
-        outstandingBalance: Math.round(outstandingBalance * 100) / 100,
-        todayCollections: Math.round(todaysCollections.reduce((s, p) => s + p.amount, 0) * 100) / 100,
-        todayTransactionCount: todaysCollections.length,
-        pendingApplications: pendingApplications.length,
-        totalSavings: Math.round(totalSavings * 100) / 100,
-        todayDeposits: Math.round(totalDeposited * 100) / 100,
-        todayWithdrawals: Math.round(todayWithdrawals * 100) / 100,
-        overdueLoans: overdueLoans.length,
-        overdueOutstanding: Math.round(overdueOutstanding * 100) / 100,
-      },
-    },
-  });
+    });
+  } catch (err) {
+    sendError(res, err, 'branch-dashboard');
+  }
 });
 
 branchRouter.get('/performance', requireBranch([]), async (req, res) => {
@@ -415,7 +440,7 @@ branchRouter.get('/performance', requireBranch([]), async (req, res) => {
 
   const loansArr = data.loans as any[];
   const portfolio = {
-    active: loansArr.filter((l) => ['Disbursed', 'Active', 'In Arrears'].includes(l.status)).length,
+    active: loansArr.filter((l) => ['Disbursed', 'Active'].includes(l.status)).length,
     completed: loansArr.filter((l) => ['Completed', 'Settled', 'Fully Paid'].includes(l.status)).length,
     overdue: loansArr.filter((l) => l.status === 'In Arrears' || (l.daysInArrears && l.daysInArrears > 0)).length,
     pending: loansArr.filter((l) => ['Draft', 'Submitted', 'Under Review', 'For Assessment', 'Approved'].includes(l.status)).length,
@@ -522,7 +547,7 @@ branchRouter.get('/clients', requireBranch(['view_client_info', 'register_client
   const flagHasLoan = req.query.hasActiveLoan === 'true' || req.query.hasOverdueLoan === 'true';
   if (flagHasLoan) {
     const loans = await db.select().from(schema.loans).where(scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined));
-    const withActive = new Set(loans.filter((l: any) => ['Disbursed', 'Active', 'In Arrears'].includes(l.status)).map((l: any) => l.borrowerId));
+    const withActive = new Set(loans.filter((l: any) => ['Disbursed', 'Active'].includes(l.status)).map((l: any) => l.borrowerId));
     const withOverdue = new Set(loans.filter((l: any) => l.status === 'In Arrears' || (l.daysInArrears && l.daysInArrears > 0)).map((l: any) => l.borrowerId));
     rows = rows.filter((b: any) =>
       req.query.hasActiveLoan === 'true' && req.query.hasOverdueLoan === 'true'
@@ -559,60 +584,16 @@ branchRouter.get('/clients/:id', requireBranch(['view_client_info', 'register_cl
   res.json({ success: true, data: { client, loans, documents: docs, savingsAccounts: savingsAttrs } });
 });
 
+/** Staff-assisted registration (src/onboarding/registration.ts): validated, duplicate-checked, audited. */
 branchRouter.post('/clients', requireBranch(['register_clients', 'manage_kyc', 'assist_clients']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const id = body.id || genId('bor');
-  const borrowerNumber = body.borrowerNumber || `CLI-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
-  const nowDate = todayStr();
-  const branchId = ctx.viewAll && body.branchId ? String(body.branchId) : ctx.branchId;
-  await db.insert(schema.borrowers).values({
-    id,
-    borrowerNumber,
-    fullName: String(body.fullName || 'New Client').trim(),
-    idNumber: String(body.idNumber || ''),
-    phone: String(body.phone || ''),
-    email: String(body.email || ''),
-    dateOfBirth: String(body.dateOfBirth || '1990-01-01'),
-    gender: String(body.gender || 'Not specified'),
-    civilStatus: String(body.civilStatus || 'Single'),
-    address: String(body.address || ''),
-    facebookAccount: body.facebookAccount ? String(body.facebookAccount) : null,
-    branchId: branchId || 'br-main',
-    employmentStatus: String(body.employmentStatus || 'Employed'),
-    employerOrBusiness: String(body.employerOrBusiness || ''),
-    occupation: String(body.occupation || ''),
-    monthlyIncome: Number(body.monthlyIncome) || 0,
-    monthlyExpenses: Number(body.monthlyExpenses) || 0,
-    creditScore: Number(body.creditScore) || 600,
-    creditTier: String(body.creditTier || 'Standard'),
-    kycStatus: String(body.kycStatus || 'PENDING'),
-    memberStatus: String(body.memberStatus || 'Pending'),
-    membershipDate: String(body.membershipDate || nowDate),
-    savingsBalance: 0,
-    shareCapital: 0,
-    activeLoansCount: 0,
-    totalBorrowed: 0,
-    totalRepaid: 0,
-    avatar: String(body.avatar || `https://ui-avatars.com/api/?background=1E40AF&color=fff&name=${encodeURIComponent(String(body.fullName || 'New Client'))}`),
-    joinedDate: nowDate,
-    lastActivityDate: nowDate,
-    notes: body.notes ? String(body.notes) : null,
-  });
-  await db.insert(schema.savingsAccounts).values({
-    id: genId('sav'),
-    memberId: id,
-    memberName: String(body.fullName || 'New Client').trim(),
-    passbookNumber: `PB-${borrowerNumber}`,
-    balance: 0,
-    maintainingBalance: 1000,
-    interestRate: 1.0,
-  });
-  await audit(ctx, 'CLIENT_REGISTERED', `Registered new client ${borrowerNumber} (${body.fullName || 'New Client'})`, 'BORROWER', { targetType: 'Borrower', targetId: id });
-  await notify(ctx, 'CLIENT_REGISTRATION', 'New client registered', `${body.fullName || 'New client'} was registered under this branch.`, { relatedType: 'Borrower', relatedId: id });
-  res.status(201).json({ success: true, data: { id, borrowerNumber } });
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    const result = await registerByBranch(db as unknown as AppDb, staffActorOf(ctxOf(req)), req.body || {}, { geo: psgcResolver });
+    res.status(201).json({ success: true, data: { id: result.borrowerId, borrowerNumber: result.borrowerNumber } });
+  } catch (err) {
+    sendError(res, err, 'branch-register');
+  }
 });
 
 branchRouter.put('/clients/:id', requireBranch(['register_clients', 'manage_kyc', 'assist_clients']), async (req, res) => {
@@ -620,6 +601,17 @@ branchRouter.put('/clients/:id', requireBranch(['register_clients', 'manage_kyc'
   const db = getDb();
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
   const body = req.body || {};
+  const identityFields = ['fullName', 'dateOfBirth', 'phone', 'email'].filter((k) => body[k] !== undefined);
+  if (identityFields.length > 0) {
+    const current = await db.select({ kycStatus: schema.borrowers.kycStatus }).from(schema.borrowers).where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any)).limit(1);
+    if (!current[0]) return res.status(404).json({ error: 'Client not found in this branch.' });
+    const status = normaliseKycStatus(current[0].kycStatus);
+    if (['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'SUSPENDED'].includes(status)) {
+      return res.status(409).json({
+        error: `The member's KYC is ${kycStatusLabel(status).toLowerCase()}, so ${identityFields.join(', ')} cannot be changed here. Ask the member to update their KYC application instead.`,
+      });
+    }
+  }
   const row: any = {
     ...(body.fullName !== undefined ? { fullName: String(body.fullName) } : {}),
     ...(body.phone !== undefined ? { phone: String(body.phone) } : {}),
@@ -650,447 +642,92 @@ function finalizeBranchField(_row: any) {
 // ---------------------------------------------------------------------------
 
 branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 'assist_clients']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.json({ success: true, data: [], counts: {} });
-
-  const statusFilter = String(req.query.status || 'ALL').toUpperCase();
-  const search = String(req.query.search || '').trim().toLowerCase();
-
-  const rows = await db.select().from(schema.borrowers).where(scopeCond(ctx, schema.borrowers.branchId, req.query.branchId ? String(req.query.branchId) : undefined));
-  const subRows = await db.select().from(schema.kycSubmissions);
-  const subsByBorrower = new Map<string, any>();
-  subRows.forEach((s: any) => {
-    const prev = subsByBorrower.get(s.borrowerId);
-    if (!prev || new Date(s.createdAt) > new Date(prev.createdAt)) {
-      subsByBorrower.set(s.borrowerId, s);
-    }
-  });
-
-  const kycDocs = await db.select().from(schema.kycDocuments);
-  const kycDocsByBorrower = new Map<string, any[]>();
-  kycDocs.forEach((d: any) => {
-    const list = kycDocsByBorrower.get(d.borrowerId) || [];
-    list.push(d);
-    kycDocsByBorrower.set(d.borrowerId, list);
-  });
-
-  const generalDocs = await db.select().from(schema.documents);
-  const docCounts = new Map<string, number>();
-  generalDocs.forEach((d: any) => {
-    if (d.clientId) docCounts.set(d.clientId, (docCounts.get(d.clientId) || 0) + 1);
-  });
-
-  const fullQueue = rows.map((b: any) => {
-    const sub = subsByBorrower.get(b.id);
-    const userKycDocs = kycDocsByBorrower.get(b.id) || [];
-    const totalDocs = Math.max(docCounts.get(b.id) || 0, userKycDocs.length);
-    const effectiveStatus = (sub?.status || b.kycStatus || 'NOT_STARTED').toUpperCase();
-
-    const govIdData = (sub as any)?.governmentId || {};
-    const ocrData = govIdData.ocrData || null;
-    const faceMatchResult = govIdData.faceMatchResult || null;
-
-    const hasIdDoc = userKycDocs.some((d: any) => ['GOVERNMENT_ID', 'VALID_ID', 'ID_FRONT'].includes(d.documentType) && (d.fileUrl || d.fileName));
-    const hasSelfieDoc = userKycDocs.some((d: any) => ['SELFIE', 'SELFIE_WITH_ID', 'PHOTO_2X2'].includes(d.documentType) && (d.fileUrl || d.fileName));
-
-    return {
-      ...b,
-      applicationNumber: sub?.id || `KYC-${String(b.borrowerNumber || b.id).replace(/\D/g, '').slice(-5).padStart(5, '0')}`,
-      submittedDocuments: totalDocs,
-      kycDocumentsList: userKycDocs,
-      idVerificationStatus: ocrData?.isReadable ? 'PASSED' : hasIdDoc ? 'NEEDS_REVIEW' : 'NOT_UPLOADED',
-      faceVerificationStatus: faceMatchResult?.isMatch ? 'PASSED' : hasSelfieDoc ? (faceMatchResult?.matchStatus || 'NEEDS_REVIEW') : 'NOT_UPLOADED',
-      ocrConfidence: ocrData?.confidenceScore ?? (govIdData.ocrConfidence || null),
-      faceMatchConfidence: faceMatchResult?.matchConfidence ?? null,
-      kycSubmission: sub
-        ? {
-            id: sub.id,
-            status: effectiveStatus,
-            submittedAt: sub.submittedAt,
-            reviewedAt: sub.reviewedAt,
-            reviewedByName: sub.reviewedByName,
-            correctionReason: sub.correctionReason,
-            correctionDetails: sub.correctionDetails,
-            rejectionReason: sub.rejectionReason,
-            personalInfo: sub.personalInfo,
-            address: sub.address,
-            contactInfo: sub.contactInfo,
-            employment: sub.employment,
-            governmentId: sub.governmentId,
-            declarations: sub.declarations,
-            currentStep: sub.currentStep,
-            extractedIdData: ocrData,
-            faceMatchResult: faceMatchResult,
-          }
-        : null,
-      effectiveKycStatus: effectiveStatus,
-      lastUpdated: sub?.submittedAt || sub?.updatedAt || b.lastActivityDate || b.joinedDate || b.membershipDate,
-    };
-  });
-
-  // Sort by newest submissions / activities first
-  fullQueue.sort((a, b) => {
-    const timeA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
-    const timeB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
-    return timeB - timeA;
-  });
-
-  const counts = {
-    all: fullQueue.length,
-    pending: fullQueue.filter((c) => ['SUBMITTED', 'PENDING', 'PENDING_VERIFICATION'].includes(c.effectiveKycStatus)).length,
-    underReview: fullQueue.filter((c) => c.effectiveKycStatus === 'UNDER_REVIEW').length,
-    correctionRequired: fullQueue.filter((c) => ['CORRECTION_REQUIRED', 'CORRECTION_REQUESTED'].includes(c.effectiveKycStatus)).length,
-    resubmitted: fullQueue.filter((c) => c.effectiveKycStatus === 'RESUBMITTED').length,
-    approved: fullQueue.filter((c) => ['APPROVED', 'VERIFIED'].includes(c.effectiveKycStatus)).length,
-    rejected: fullQueue.filter((c) => c.effectiveKycStatus === 'REJECTED').length,
-    notStarted: fullQueue.filter((c) => c.effectiveKycStatus === 'NOT_STARTED').length,
-  };
-
-  let filtered = fullQueue;
-
-  if (statusFilter !== 'ALL') {
-    if (statusFilter === 'PENDING' || statusFilter === 'PENDING_VERIFICATION') {
-      filtered = filtered.filter((c) => ['SUBMITTED', 'PENDING', 'PENDING_VERIFICATION'].includes(c.effectiveKycStatus));
-    } else if (statusFilter === 'UNDER_REVIEW') {
-      filtered = filtered.filter((c) => c.effectiveKycStatus === 'UNDER_REVIEW');
-    } else if (statusFilter === 'CORRECTION_REQUIRED' || statusFilter === 'CORRECTION_REQUESTED') {
-      filtered = filtered.filter((c) => ['CORRECTION_REQUIRED', 'CORRECTION_REQUESTED'].includes(c.effectiveKycStatus));
-    } else if (statusFilter === 'RESUBMITTED') {
-      filtered = filtered.filter((c) => c.effectiveKycStatus === 'RESUBMITTED');
-    } else if (statusFilter === 'APPROVED' || statusFilter === 'VERIFIED') {
-      filtered = filtered.filter((c) => ['APPROVED', 'VERIFIED'].includes(c.effectiveKycStatus));
-    } else if (statusFilter === 'REJECTED') {
-      filtered = filtered.filter((c) => c.effectiveKycStatus === 'REJECTED');
-    } else if (statusFilter === 'NOT_STARTED') {
-      filtered = filtered.filter((c) => c.effectiveKycStatus === 'NOT_STARTED');
-    }
-  }
-
-  if (search) {
-    filtered = filtered.filter(
-      (c) =>
-        c.fullName?.toLowerCase().includes(search) ||
-        c.borrowerNumber?.toLowerCase().includes(search) ||
-        c.applicationNumber?.toLowerCase().includes(search) ||
-        c.phone?.includes(search) ||
-        c.email?.toLowerCase().includes(search) ||
-        c.effectiveKycStatus?.toLowerCase().includes(search)
-    );
-  }
-
-  res.json({
-    success: true,
-    data: filtered,
-    counts,
-  });
-});
-
-// Single client KYC Dossier with full details, documents, and audit history
-branchRouter.get('/kyc/:id', requireBranch(['manage_kyc', 'view_client_info', 'assist_clients']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-
-  const borrowerRows = await db
-    .select()
-    .from(schema.borrowers)
-    .where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any))
-    .limit(1);
-
-  if (borrowerRows.length === 0) {
-    return res.status(404).json({ error: 'Client KYC dossier not found in this branch.' });
-  }
-  const client = borrowerRows[0] as any;
-
-  const [subRows, kycDocs, generalDocs, auditRows] = await Promise.all([
-    db.select().from(schema.kycSubmissions).where(eq(schema.kycSubmissions.borrowerId, client.id)).orderBy(desc(schema.kycSubmissions.createdAt)).limit(1),
-    db.select().from(schema.kycDocuments).where(eq(schema.kycDocuments.borrowerId, client.id)),
-    db.select().from(schema.documents).where(eq(schema.documents.clientId, client.id)),
-    db.select().from(schema.kycAuditLog).where(eq(schema.kycAuditLog.borrowerId, client.id)).orderBy(desc(schema.kycAuditLog.createdAt)),
-  ]);
-
-  const submission = subRows[0] || null;
-
-  // Build document checklist
-  const requiredTypes = [
-    { type: 'GOVERNMENT_ID', name: 'Government-Issued Photo ID', description: 'Clear photo of valid government ID (PhilSys, Passport, UMID, Driver License).' },
-    { type: 'PROOF_OF_ADDRESS', name: 'Proof of Address', description: 'Utility bill, Barangay certificate, or lease contract.' },
-    { type: 'PROOF_OF_INCOME', name: 'Proof of Income / Livelihood', description: 'Recent payslip, ITR, COE, or Business Permit.' },
-    { type: 'SELFIE_WITH_ID', name: 'Selfie with Government ID', description: 'Clear photo of face holding the government ID.' },
-  ];
-
-  const allDocs = [...kycDocs];
-  generalDocs.forEach((gd: any) => {
-    if (!allDocs.some((d) => d.fileName === gd.fileName || d.fileUrl === gd.fileUrl)) {
-      allDocs.push({
-        id: gd.id,
-        kycSubmissionId: submission?.id || 'GENERAL',
-        borrowerId: client.id,
-        documentType: gd.docType || 'DOCUMENT',
-        documentName: gd.docName || gd.docType || 'Document',
-        fileName: gd.fileName || gd.docName,
-        fileUrl: gd.fileUrl,
-        storagePath: gd.storagePath,
-        fileSize: null,
-        mimeType: null,
-        status: gd.status === 'Verified' ? 'ACCEPTED' : gd.status === 'Rejected' ? 'REJECTED' : 'PENDING',
-        rejectionReason: gd.notes,
-        verifiedBy: gd.uploadedBy,
-        verifiedAt: null,
-        createdAt: gd.createdAt,
-      });
-    }
-  });
-
-  const structuredDocuments = requiredTypes.map((r) => {
-    const matched = allDocs.find((d: any) =>
-      d.documentType === r.type ||
-      (r.type === 'GOVERNMENT_ID' && ['VALID_ID', 'ID_FRONT', 'GOVERNMENT_ID'].includes(d.documentType)) ||
-      (r.type === 'SELFIE_WITH_ID' && ['SELFIE', 'SELFIE_WITH_ID', 'PHOTO_2X2'].includes(d.documentType))
-    );
-    return {
-      type: r.type,
-      name: r.name,
-      description: r.description,
-      isUploaded: !!(matched?.fileUrl || matched?.fileName),
-      documentId: matched?.id || null,
-      fileName: matched?.fileName || null,
-      fileUrl: matched?.fileUrl || null,
-      status: matched?.status || 'NOT_UPLOADED',
-      rejectionReason: matched?.rejectionReason || null,
-      verifiedBy: matched?.verifiedBy || null,
-      uploadedAt: matched?.createdAt || null,
-    };
-  });
-
-  res.json({
-    success: true,
-    data: {
-      client: {
-        id: client.id,
-        borrowerNumber: client.borrowerNumber,
-        fullName: client.fullName,
-        firstName: client.firstName,
-        middleName: client.middleName,
-        lastName: client.lastName,
-        suffix: client.suffix,
-        hasNoMiddleName: client.hasNoMiddleName,
-        phone: client.phone,
-        email: client.email,
-        dateOfBirth: client.dateOfBirth,
-        gender: client.gender,
-        civilStatus: client.civilStatus,
-        address: client.address,
-        barangay: client.barangay,
-        cityMunicipality: client.cityMunicipality,
-        province: client.province,
-        occupation: client.occupation,
-        employerOrBusiness: client.employerOrBusiness,
-        monthlyIncome: client.monthlyIncome,
-        monthlyExpenses: client.monthlyExpenses,
-        idNumber: client.idNumber,
-        branchId: client.branchId,
-        memberStatus: client.memberStatus,
-        kycStatus: client.kycStatus,
-        membershipDate: client.membershipDate,
-        joinedDate: client.joinedDate,
-        avatar: client.avatar,
-        notes: client.notes,
-        createdAt: client.createdAt,
-      },
-      submission: submission
-        ? {
-            id: submission.id,
-            status: submission.status,
-            personalInfo: submission.personalInfo,
-            address: submission.address,
-            contactInfo: submission.contactInfo,
-            employment: submission.employment,
-            governmentId: submission.governmentId,
-            declarations: submission.declarations,
-            currentStep: submission.currentStep,
-            correctionReason: submission.correctionReason,
-            correctionDetails: submission.correctionDetails,
-            rejectionReason: submission.rejectionReason,
-            submittedAt: submission.submittedAt,
-            reviewedAt: submission.reviewedAt,
-            reviewedByName: submission.reviewedByName,
-            verifiedAt: submission.verifiedAt,
-            createdAt: submission.createdAt,
-            updatedAt: submission.updatedAt,
-          }
-        : null,
-      documents: structuredDocuments,
-      rawDocuments: allDocs,
-      auditTrail: auditRows,
-    },
-  });
-});
-
-branchRouter.post('/kyc/:id/review', requireBranch(['manage_kyc']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const { decision, notes, correctionDetails, reason, documentDecisions } = req.body || {};
-  const reviewNotes = notes || reason || (correctionDetails ? `${correctionDetails.section || 'General'}: ${correctionDetails.reason || correctionDetails.field || ''}` : '');
-  const decisionMap: Record<string, string> = {
-    APPROVE: 'APPROVED',
-    APPROVED: 'APPROVED',
-    VERIFIED: 'APPROVED',
-    REJECT: 'REJECTED',
-    REJECTED: 'REJECTED',
-    CORRECTION_REQUESTED: 'CORRECTION_REQUIRED',
-    REQUEST_CORRECTION: 'CORRECTION_REQUIRED',
-    CORRECTION_REQUIRED: 'CORRECTION_REQUIRED',
-    UNDER_REVIEW: 'UNDER_REVIEW',
-  };
-  const targetStatus = decisionMap[String(decision || '').toUpperCase()];
-  if (!targetStatus) return res.status(400).json({ error: 'decision must be APPROVE, REJECT, REQUEST_CORRECTION, or UNDER_REVIEW' });
-  if (['REJECTED', 'CORRECTION_REQUIRED'].includes(targetStatus) && !reviewNotes) {
-    return res.status(400).json({ error: 'A specific reason is required when rejecting or requesting correction.' });
-  }
-  const now = nowIso();
-  const borrowerRows = await db
-    .select()
-    .from(schema.borrowers)
-    .where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any))
-    .limit(1);
-
-  if (borrowerRows.length === 0) {
-    return res.status(404).json({ error: 'Borrower not found in this branch.' });
-  }
-
-  const prevStatus = borrowerRows[0].kycStatus || 'NOT_STARTED';
-  const clientName = borrowerRows[0].fullName || 'Client';
-
-  await db
-    .update(schema.borrowers)
-    .set({
-      kycStatus: targetStatus,
-      memberStatus: targetStatus === 'APPROVED' ? 'Active' : borrowerRows[0].memberStatus,
-      notes: reviewNotes
-        ? `${String(reviewNotes)} | Reviewed by ${ctx.staffName} (${ctx.staffRole}) on ${now}`
-        : `KYC marked '${targetStatus}' by ${ctx.staffName} (${ctx.staffRole}) on ${now}`,
-    })
-    .where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any));
-
-  const subRows = await db.select().from(schema.kycSubmissions).where(eq(schema.kycSubmissions.borrowerId, req.params.id)).orderBy(desc(schema.kycSubmissions.createdAt)).limit(1);
-  let subId: string | null = null;
-  if (subRows.length > 0) {
-    subId = subRows[0].id;
-    await db.update(schema.kycSubmissions).set({
-      status: targetStatus,
-      reviewedAt: now,
-      reviewedBy: ctx.staffId || null,
-      reviewedByName: ctx.staffName,
-      verifiedAt: targetStatus === 'APPROVED' ? now : null,
-      correctionReason: targetStatus === 'CORRECTION_REQUIRED' ? (reviewNotes ? String(reviewNotes) : null) : null,
-      correctionDetails: targetStatus === 'CORRECTION_REQUIRED' ? (correctionDetails || null) : null,
-      rejectionReason: targetStatus === 'REJECTED' ? (reviewNotes ? String(reviewNotes) : null) : null,
-      updatedAt: now,
-    } as any).where(eq(schema.kycSubmissions.id, subRows[0].id));
-  }
-
-  // If document decisions are provided, update individual document statuses
-  if (Array.isArray(documentDecisions) && documentDecisions.length > 0) {
-    for (const d of documentDecisions) {
-      if (d.id && d.status) {
-        try {
-          await db.update(schema.kycDocuments).set({
-            status: d.status,
-            rejectionReason: d.reason || null,
-            verifiedBy: ctx.staffName,
-            verifiedAt: d.status === 'ACCEPTED' ? now : null,
-          }).where(eq(schema.kycDocuments.id, d.id));
-        } catch {}
-      }
-    }
-  }
-
-  // Record chronological audit entry
-  await db.insert(schema.kycAuditLog).values({
-    id: `KYC-AUDIT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    borrowerId: req.params.id,
-    kycSubmissionId: subId,
-    staffUserId: ctx.staffId || null,
-    staffName: ctx.staffName,
-    action: targetStatus === 'APPROVED' ? 'APPROVED' : targetStatus === 'REJECTED' ? 'REJECTED' : targetStatus === 'CORRECTION_REQUIRED' ? 'CORRECTION_REQUESTED' : 'UNDER_REVIEW',
-    previousStatus: prevStatus,
-    newStatus: targetStatus,
-    reason: reviewNotes ? String(reviewNotes) : null,
-    createdAt: now,
-  });
-
-  await audit(ctx, 'KYC_REVIEWED', `KYC decision '${targetStatus}' for client ${req.params.id} (${clientName}). ${reviewNotes ? 'Notes: ' + reviewNotes : ''}`, 'BORROWER', { targetType: 'Borrower', targetId: req.params.id });
-
-  // 1. Staff internal notification
-  await notify(ctx, 'KYC', `KYC ${targetStatus}`, `KYC verification for ${clientName} was marked '${targetStatus}' by ${ctx.staffName}.`, { relatedType: 'Borrower', relatedId: req.params.id });
-
-  // 2. Client-facing notification so member instantly sees the decision in their portal
   try {
-    let clientTitle = 'KYC Verification Status Update';
-    let clientMsg = `Your KYC verification is now ${targetStatus.toLowerCase().replace(/_/g, ' ')}.`;
-    if (targetStatus === 'APPROVED') {
-      clientTitle = '🎉 KYC Verification Approved';
-      clientMsg = 'Congratulations! Your HOSCOMO KYC verification has been approved. You now have full verified access to apply for microloans, open savings, and enjoy microfinance services.';
-    } else if (targetStatus === 'CORRECTION_REQUIRED') {
-      clientTitle = '⚠️ KYC Correction Required';
-      clientMsg = `Staff requested a correction on your KYC application: ${reviewNotes}. Please update the requested fields and resubmit.`;
-    } else if (targetStatus === 'REJECTED') {
-      clientTitle = '❌ KYC Verification Not Approved';
-      clientMsg = `Your KYC application could not be approved at this time. Reason: ${reviewNotes}. Please contact branch support for assistance.`;
-    }
-
-    await db.insert(schema.branchNotifications).values({
-      id: `NOTIF-CLI-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      branchId: borrowerRows[0].branchId || 'br-main',
-      type: 'KYC_DECISION',
-      title: clientTitle,
-      message: clientMsg,
-      relatedType: 'Borrower',
-      relatedId: req.params.id,
-      isRead: false,
-      createdAt: now,
+    const ctx = ctxOf(req);
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    const { items, counts } = await kycQueue(db as unknown as AppDb, { branchId: ctx.branchId, viewAll: ctx.viewAll }, {
+      status: req.query.status ? String(req.query.status) : undefined,
+      search: req.query.search ? String(req.query.search) : undefined,
+      branchId: req.query.branchId ? String(req.query.branchId) : undefined,
     });
-  } catch (notifErr) {
-    console.warn('[KYC Review] Client notification dispatch warning:', notifErr);
+    res.json({ success: true, data: items, counts });
+  } catch (err) {
+    sendError(res, err, 'branch-kyc-queue');
   }
+});
 
-  res.json({
-    success: true,
-    status: targetStatus,
-    reviewedAt: now,
-    reviewerName: ctx.staffName,
-    message: `KYC verification marked as ${targetStatus.replace(/_/g, ' ')}.`,
-  });
+branchRouter.get('/kyc/:id', requireBranch(['manage_kyc', 'view_client_info', 'assist_clients']), async (req, res) => {
+  try {
+    const ctx = ctxOf(req);
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    res.json({ success: true, data: await kycDossier(db as unknown as AppDb, { branchId: ctx.branchId, viewAll: ctx.viewAll }, req.params.id) });
+  } catch (err) {
+    sendError(res, err, 'branch-kyc-dossier');
+  }
+});
+
+branchRouter.post('/kyc/:id/claim', requireBranch(['manage_kyc']), async (req, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    res.json({ success: true, ...(await claimApplication(db as unknown as AppDb, staffActorOf(ctxOf(req)), req.params.id)) });
+  } catch (err) {
+    sendError(res, err, 'branch-kyc-claim');
+  }
+});
+
+branchRouter.post('/kyc/:id/release', requireBranch(['manage_kyc']), async (req, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    const reason = req.body?.reason ? String(req.body.reason) : null;
+    res.json({ success: true, ...(await releaseApplication(db as unknown as AppDb, staffActorOf(ctxOf(req)), req.params.id, reason)) });
+  } catch (err) {
+    sendError(res, err, 'branch-kyc-release');
+  }
+});
+
+/** Approve, reject or request resubmission, always with a reason the member sees. */
+branchRouter.post('/kyc/:id/review', requireBranch(['manage_kyc']), async (req, res) => {
+  try {
+    const db = getDb();
+    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
+    const body = req.body || {};
+    const result = await decideApplication(db as unknown as AppDb, staffActorOf(ctxOf(req)), req.params.id, {
+      decision: body.decision,
+      reason: body.reason ?? body.notes,
+      sections: body.sections,
+      idempotencyKey: req.get('Idempotency-Key') || null,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    sendError(res, err, 'branch-kyc-review');
+  }
 });
 
 // ---------------------------------------------------------------------------
-// Loan applications & assessment
+// Loan applications, decisions and disbursement (src/lending/service.ts)
 // ---------------------------------------------------------------------------
 
-const APPLICATION_STATUSES = ['Draft', 'Submitted', 'Under Review', 'For Assessment', 'Approved', 'Rejected', 'Cancelled'];
+function lendingStaffOf(ctx: BranchCtx): LendingStaff {
+  return { ...staffActorOf(ctx), permissions: ctx.permissions };
+}
 
-branchRouter.get('/loan-applications', requireBranch(['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.json({ success: true, data: [] });
-  const conditions: any[] = [
-    scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined),
-  ].filter(Boolean);
-  const status = String(req.query.status || '').trim();
-  if (status) {
-    conditions.push(ilike(schema.loans.status, `%${status}%`) as any);
-  }
+const LOAN_READ_PERMISSIONS: SystemPermission[] = ['review_client_loan_info', 'process_loan_applications', 'manage_loan_applications', 'monitor_loan_repayment', 'disburse_loans'];
+
+function loanListConditions(ctx: BranchCtx, req: Request) {
+  const conditions: any[] = [scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
+  const statuses = String(req.query.status || '')
+    .split(',')
+    .map((s) => normaliseLoanStatus(s.trim()))
+    .filter((s): s is LoanStatus => !!s);
+  if (statuses.length) conditions.push(inArray(schema.loans.status, statuses));
   const search = String(req.query.search || '').trim();
   if (search) {
     conditions.push(
-      or(
-        ilike(schema.loans.borrowerName, `%${search}%`),
-        ilike(schema.loans.loanNumber, `%${search}%`),
-        ilike(schema.loans.borrowerPhone, `%${search}%`)
-      ) as any
+      or(ilike(schema.loans.borrowerName, `%${search}%`), ilike(schema.loans.loanNumber, `%${search}%`), ilike(schema.loans.borrowerPhone, `%${search}%`)) as any,
     );
   }
   const product = String(req.query.product || '').trim();
@@ -1101,1313 +738,281 @@ branchRouter.get('/loan-applications', requireBranch(['process_loan_applications
   if (from) conditions.push(gte(schema.loans.applicationDate, from));
   const to = String(req.query.to || '').trim();
   if (to) conditions.push(lte(schema.loans.applicationDate, to));
+  return conditions;
+}
 
+async function listLoans(req: Request, res: Response) {
+  const ctx = ctxOf(req);
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+  const conditions = loanListConditions(ctx, req);
   const rows = await db
     .select()
     .from(schema.loans)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(schema.loans.applicationDate));
   res.json({ success: true, data: rows });
-});
+}
 
-branchRouter.get('/loan-products', requireBranch(['process_loan_applications', 'review_client_loan_info', 'monitor_loan_repayment']), async (req, res) => {
+branchRouter.get('/loan-applications', requireBranch(['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications', 'disburse_loans']), listLoans);
+branchRouter.get('/loans', requireBranch(LOAN_READ_PERMISSIONS), listLoans);
+
+branchRouter.get('/loan-products', requireBranch(['process_loan_applications', 'review_client_loan_info', 'monitor_loan_repayment']), async (_req, res) => {
   const db = getDb();
-  if (!db) return res.json({ success: true, data: [] });
-  const rows = await db.select().from(schema.loanProducts);
-  res.json({ success: true, data: rows });
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+  try {
+    const products = await listProducts(db as unknown as AppDb);
+    res.json({ success: true, data: products.map(productToDto) });
+  } catch (err) {
+    sendError(res, err, 'branch-loan-products');
+  }
 });
 
 branchRouter.post('/loan-applications', requireBranch(['process_loan_applications']), async (req, res) => {
   const ctx = ctxOf(req);
   const db = getDb();
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const principal = Number(body.principalAmount) || 0;
-  const termMonths = Number(body.termMonths) || 6;
-  const rate = Number(body.interestRate) || 12;
-  const frequency = String(body.repaymentFrequency || 'Monthly');
-  const interestType = String(body.interestType || 'Flat Rate');
-  const processingFeePct = Number(body.processingFeePercentage) || 2;
-  const startDate = String(body.applicationDate || todayStr());
-
-  const borrower = body.borrowerId
-    ? (await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, String(body.borrowerId))).limit(1))[0]
-    : undefined;
-
-  const calc = calculateLoanSchedule({
-    principal,
-    annualInterestRate: rate,
-    termMonths,
-    interestType: interestType as any,
-    repaymentFrequency: frequency as any,
-    processingFeePercentage: processingFeePct,
-    startDate,
-  });
-
-  const id = genId('loan');
-  const loanNumber = `LA-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
-  const branchId = ctx.viewAll && body.branchId ? String(body.branchId) : ctx.branchId;
-  const loanData: any = {
-    id,
-    loanNumber,
-    borrowerId: body.borrowerId || (borrower as any)?.id || 'bor-unknown',
-    borrowerName: (borrower as any)?.fullName || String(body.borrowerName || 'Unknown Client'),
-    borrowerPhone: (borrower as any)?.phone || String(body.borrowerPhone || ''),
-    borrowerAvatar: (borrower as any)?.avatar || null,
-    branchId: branchId || 'br-main',
-    productId: String(body.productId || ''),
-    productName: String(body.productName || 'General Loan'),
-    principalAmount: principal,
-    interestRate: rate,
-    interestType,
-    repaymentFrequency: frequency,
-    termMonths,
-    totalInstallments: calc.totalInstallments,
-    processingFee: calc.processingFee,
-    totalInterest: calc.totalInterest,
-    totalPayable: calc.totalPayable,
-    totalPaid: 0,
-    remainingBalance: calc.totalPayable,
-    status: String(body.status || 'Submitted'),
-    coopStep: 'SUBMITTED',
-    applicationDate: startDate,
-    startDate: null,
-    maturityDate: String(body.maturityDate || new Date(Date.now() + termMonths * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]),
-    loanOfficerId: ctx.staffId || ctx.userId,
-    loanOfficerName: ctx.staffName,
-    purpose: String(body.purpose || 'General purpose'),
-    collateral: body.collateral || null,
-    guarantors: body.guarantors || null,
-    schedule: calc.schedule as any,
-  };
-  await db.insert(schema.loans).values(loanData);
-  await audit(ctx, 'LOAN_APPLICATION_SUBMITTED', `Submitted loan application ${loanNumber} for ${loanData.borrowerName} (₱${principal.toLocaleString()})`, 'LOAN', { targetType: 'Loan', targetId: id });
-  await notify(ctx, 'LOAN_APPLICATION', 'New loan application', `Application ${loanNumber} for ${loanData.borrowerName} (₱${principal.toLocaleString()}) was submitted.`, { relatedType: 'Loan', relatedId: id });
-  res.status(201).json({ success: true, data: { id, loanNumber, ...calc } });
-});
-
-branchRouter.get('/loans/:id', requireBranch(['review_client_loan_info', 'process_loan_applications', 'manage_loan_applications', 'monitor_loan_repayment']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(404).json({ error: 'Loan not found' });
-  const rows = await db.select().from(schema.loans).where(and(eq(schema.loans.id, req.params.id), scopeCond(ctx, schema.loans.branchId) as any));
-  if (rows.length === 0) return res.status(404).json({ error: 'Loan not found in this branch.' });
-  const loan = rows[0] as any;
-  const [payments, borrower] = await Promise.all([
-    db.select().from(schema.payments).where(eq(schema.payments.loanId, loan.id)),
-    loan.borrowerId ? db.select().from(schema.borrowers).where(eq(schema.borrowers.id, loan.borrowerId)).limit(1) : Promise.resolve([]),
-  ]);
-  const schedule: InstallmentRow[] = Array.isArray(loan.schedule) ? loan.schedule : [];
-  const amortization = schedule.map((item) => ({
-    ...item,
-    status: getComputedInstallmentStatus(item.dueDate, item.totalDue, item.amountPaid || 0),
-  }));
-  res.json({ success: true, data: { loan, amortization, payments, borrower: borrower[0] || null } });
-});
-
-branchRouter.get('/loans', requireBranch(['review_client_loan_info', 'process_loan_applications', 'manage_loan_applications', 'monitor_loan_repayment']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.json({ success: true, data: [] });
-  const conditions: any[] = [scopeCond(ctx, schema.loans.branchId, req.query.branchId ? String(req.query.branchId) : undefined)].filter(Boolean);
-  const status = String(req.query.status || '');
-  if (status) conditions.push(ilike(schema.loans.status, `%${status}%`) as any);
-  const search = String(req.query.search || '').trim();
-  if (search) {
-    conditions.push(or(ilike(schema.loans.borrowerName, `%${search}%`), ilike(schema.loans.loanNumber, `%${search}%`)) as any);
-  }
-  const rows = await db.select().from(schema.loans).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(schema.loans.applicationDate));
-  res.json({ success: true, data: rows });
-});
-
-branchRouter.post('/loans/:id/action', requireBranch(['manage_loan_applications', 'approve_sensitive_operations']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const { action, notes, reason, approvedAmount, approvedTermMonths, approvedInterestRate } = req.body || {};
-  const allowed: Record<string, string> = {
-    submit: 'Submitted',
-    recommend: 'For Assessment',
-    return: 'Draft',
-    request_correction: 'Draft',
-    reject: 'Rejected',
-    approve: 'Approved',
-    disburse: 'Active',
-    cancel: 'Cancelled',
-  };
-  const normalizedAction = String(action || '').toLowerCase();
-  const targetStatus = allowed[normalizedAction];
-  if (!targetStatus) return res.status(400).json({ error: 'Unknown action' });
-  if (['reject', 'cancel'].includes(normalizedAction) && !reason && !notes) {
-    return res.status(400).json({ error: 'A reason is required when rejecting or cancelling a loan application.' });
-  }
-
-  const rows = await db.select().from(schema.loans).where(and(eq(schema.loans.id, req.params.id), scopeCond(ctx, schema.loans.branchId) as any)).limit(1);
-  if (rows.length === 0) return res.status(404).json({ error: 'Loan not found in this branch.' });
-  const loan = rows[0] as any;
-
-  const set: any = { status: targetStatus };
-
-  if (normalizedAction === 'approve') {
-    set.approvalDate = todayStr();
-    set.approvedBy = ctx.staffName;
-    set.coopStep = 'FOR_DISBURSEMENT';
-
-    // If terms were adjusted during credit committee / manager approval
-    if (approvedAmount || approvedTermMonths || approvedInterestRate) {
-      const finalPrincipal = Number(approvedAmount) || loan.principalAmount;
-      const finalTerm = Number(approvedTermMonths) || loan.termMonths;
-      const finalRate = Number(approvedInterestRate) || loan.interestRate;
-
-      const recalc = calculateLoanSchedule({
-        principal: finalPrincipal,
-        annualInterestRate: finalRate,
-        termMonths: finalTerm,
-        interestType: loan.interestType as any,
-        repaymentFrequency: loan.repaymentFrequency as any,
-        processingFeePercentage: Number(loan.processingFeePercentage) || 2,
-        startDate: loan.applicationDate || todayStr(),
-      });
-
-      set.principalAmount = finalPrincipal;
-      set.termMonths = finalTerm;
-      set.interestRate = finalRate;
-      set.totalInstallments = recalc.totalInstallments;
-      set.processingFee = recalc.processingFee;
-      set.totalInterest = recalc.totalInterest;
-      set.totalPayable = recalc.totalPayable;
-      set.remainingBalance = recalc.totalPayable;
-      set.schedule = recalc.schedule;
-    }
-
-    // Dispatch approval notification to client
-    try {
-      await db.insert(schema.branchNotifications).values({
-        id: `NOTIF-APP-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-        branchId: loan.branchId || 'br-main',
-        type: 'LOAN_APPROVED',
-        title: '🎉 Loan Application Approved',
-        message: `Your loan application ${loan.loanNumber} for ₱${(set.principalAmount || loan.principalAmount).toLocaleString()} has been approved and is queued for fund disbursement.`,
-        relatedType: 'Loan',
-        relatedId: loan.id,
-        isRead: false,
-        createdAt: nowIso(),
-      });
-    } catch {}
-  } else if (normalizedAction === 'recommend') {
-    set.status = 'For Assessment';
-    set.coopStep = 'CREDIT_COMMITTEE_REVIEW';
-  } else if (normalizedAction === 'reject') {
-    set.rejectionReason = reason || notes || 'Application declined by Credit Committee';
-    set.coopStep = 'REJECTED';
-    try {
-      await db.insert(schema.branchNotifications).values({
-        id: `NOTIF-REJ-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-        branchId: loan.branchId || 'br-main',
-        type: 'LOAN_REJECTED',
-        title: '❌ Loan Application Update',
-        message: `Your loan application ${loan.loanNumber} was declined. Reason: ${set.rejectionReason}`,
-        relatedType: 'Loan',
-        relatedId: loan.id,
-        isRead: false,
-        createdAt: nowIso(),
-      });
-    } catch {}
-  } else if (normalizedAction === 'request_correction' || normalizedAction === 'return') {
-    set.status = 'Draft';
-    set.coopStep = 'CORRECTION_REQUIRED';
-    set.notes = notes || reason || 'Correction requested by loan officer';
-    try {
-      await db.insert(schema.branchNotifications).values({
-        id: `NOTIF-CORR-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-        branchId: loan.branchId || 'br-main',
-        type: 'LOAN_CORRECTION',
-        title: '⚠️ Loan Application Action Required',
-        message: `Additional information or document correction is required for application ${loan.loanNumber}: ${set.notes}`,
-        relatedType: 'Loan',
-        relatedId: loan.id,
-        isRead: false,
-        createdAt: nowIso(),
-      });
-    } catch {}
-  }
-
-  await db.update(schema.loans).set(set).where(eq(schema.loans.id, req.params.id));
-  await audit(ctx, `LOAN_${targetStatus.replace(/ /g, '_').toUpperCase()}`, `Loan ${loan.loanNumber} moved to '${targetStatus}'. ${reason ? 'Reason: ' + reason : ''}`, 'LOAN', { targetType: 'Loan', targetId: req.params.id });
-  await notify(ctx, 'LOAN_APPLICATION', `Loan ${targetStatus}`, `Loan ${loan.loanNumber} for ${loan.borrowerName} was marked '${targetStatus}'.`, { relatedType: 'Loan', relatedId: req.params.id });
-  res.json({ success: true, status: targetStatus });
-});
-
-// Dedicated Atomic Loan Disbursement Endpoint
-branchRouter.post('/loans/:id/disburse', requireBranch(['manage_loan_applications', 'approve_sensitive_operations', 'process_loan_applications']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-
-  const rows = await db.select().from(schema.loans).where(and(eq(schema.loans.id, req.params.id), scopeCond(ctx, schema.loans.branchId) as any)).limit(1);
-  if (rows.length === 0) return res.status(404).json({ error: 'Loan not found in this branch.' });
-  const loan = rows[0] as any;
-
-  // Idempotency check: Cannot disburse already disbursed or settled loans
-  if (['Active', 'Disbursed', 'In Arrears', 'Completed'].includes(loan.status)) {
-    return res.status(400).json({ error: `Loan has already been disbursed (Current status: ${loan.status}).` });
-  }
-
-  const {
-    disbursementMethod = 'Cash',
-    disbursementAccount = '',
-    disbursementDate = todayStr(),
-    referenceNumber,
-    voucherNumber: rawVoucher,
-    deductProcessingFee = true,
-    notes = '',
-  } = req.body || {};
-
-  const voucherNumber = rawVoucher || referenceNumber || `DISB-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
-  const feeAmount = Number(loan.processingFee) || 0;
-  const netProceeds = deductProcessingFee
-    ? Math.max(0, Math.round((loan.principalAmount - feeAmount) * 100) / 100)
-    : loan.principalAmount;
-
-  // Recalculate schedule starting from actual disbursement date
-  const recalc = calculateLoanSchedule({
-    principal: loan.principalAmount,
-    annualInterestRate: loan.interestRate,
-    termMonths: loan.termMonths,
-    interestType: loan.interestType as any,
-    repaymentFrequency: loan.repaymentFrequency as any,
-    processingFeePercentage: Number(loan.processingFeePercentage) || 0,
-    startDate: disbursementDate,
-  });
-
-  const maturityDate = recalc.schedule && recalc.schedule.length > 0
-    ? recalc.schedule[recalc.schedule.length - 1].dueDate
-    : loan.maturityDate;
-  const nextPaymentDate = recalc.schedule && recalc.schedule.length > 0
-    ? recalc.schedule[0].dueDate
-    : loan.nextPaymentDate;
-
-  const voucherData = {
-    voucherNumber,
-    disbursementDate,
-    disbursementMethod,
-    disbursementAccount,
-    grossPrincipal: loan.principalAmount,
-    processingFee: feeAmount,
-    deductProcessingFee,
-    netProceeds,
-    disbursedBy: ctx.staffName,
-    disbursedByRole: ctx.staffRole,
-    notes,
-    createdAt: nowIso(),
-  };
-
-  // 1. Update loan record to Active & Disbursed
-  await db
-    .update(schema.loans)
-    .set({
-      status: 'Active',
-      coopStep: 'ACTIVE_DISBURSED',
-      startDate: disbursementDate,
-      disbursedDate: disbursementDate,
-      maturityDate,
-      nextPaymentDate,
-      disbursementMethod,
-      disbursementAccount: disbursementAccount || null,
-      officerInCharge: ctx.staffName,
-      disbursementVoucher: voucherData as any,
-      schedule: recalc.schedule as any,
-    })
-    .where(eq(schema.loans.id, loan.id));
-
-  // 2. Insert atomic financial transaction in ledger
-  const txnId = genId('txn');
-  await db.insert(schema.financialTransactions).values({
-    id: txnId,
-    referenceNumber: `TX-${voucherNumber}`,
-    clientId: loan.borrowerId,
-    clientName: loan.borrowerName,
-    accountOrLoanId: loan.id,
-    accountOrLoanType: 'Loan',
-    branchId: loan.branchId,
-    transactionType: 'Loan Disbursement',
-    amount: loan.principalAmount,
-    transactionDate: disbursementDate,
-    paymentMethod: String(disbursementMethod),
-    processedBy: `${ctx.staffName} (${ctx.title})`,
-    processedByRole: ctx.staffRole,
-    status: 'Completed',
-    notes: notes || `Disbursement voucher ${voucherNumber} for loan ${loan.loanNumber} (Net: ₱${netProceeds.toLocaleString()})`,
-    metadata: {
-      voucherNumber,
-      netProceeds,
-      processingFee: feeAmount,
-      disbursementMethod,
-      deductProcessingFee,
-      disbursementAccount,
-    },
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  });
-
-  // 3. Update borrower record: increment active loans and total borrowed
-  if (loan.borrowerId) {
-    try {
-      const bRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, loan.borrowerId)).limit(1);
-      if (bRows.length > 0) {
-        const b = bRows[0] as any;
-        await db.update(schema.borrowers).set({
-          activeLoansCount: (b.activeLoansCount || 0) + 1,
-          totalBorrowed: Math.round(((b.totalBorrowed || 0) + loan.principalAmount) * 100) / 100,
-          lastActivityDate: disbursementDate,
-        }).where(eq(schema.borrowers.id, loan.borrowerId));
-      }
-    } catch (bErr) {
-      console.warn('[Loan Disbursement] Borrower update warning:', bErr);
-    }
-  }
-
-  // 4. Client Notification
   try {
-    await db.insert(schema.branchNotifications).values({
-      id: `NOTIF-DISB-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      branchId: loan.branchId || 'br-main',
-      type: 'LOAN_DISBURSEMENT',
-      title: '💰 Loan Disbursed Successfully',
-      message: `Your loan ${loan.loanNumber} has been disbursed! Net proceeds: ₱${netProceeds.toLocaleString()} via ${disbursementMethod} (Voucher: ${voucherNumber}). First payment is due on ${nextPaymentDate}.`,
-      relatedType: 'Loan',
-      relatedId: loan.id,
-      isRead: false,
-      createdAt: nowIso(),
-    });
-  } catch {}
-
-  // 5. Audit Log
-  await audit(
-    ctx,
-    'LOAN_DISBURSED',
-    `Disbursed loan ${loan.loanNumber} to ${loan.borrowerName} (₱${loan.principalAmount.toLocaleString()}, Net: ₱${netProceeds.toLocaleString()} via ${disbursementMethod}, Voucher: ${voucherNumber})`,
-    'LOAN',
-    { targetType: 'Loan', targetId: loan.id }
-  );
-
-  await notify(
-    ctx,
-    'LOAN_DISBURSEMENT',
-    'Loan Disbursed',
-    `₱${loan.principalAmount.toLocaleString()} disbursed for ${loan.loanNumber} (${loan.borrowerName}) with voucher ${voucherNumber}.`,
-    { relatedType: 'Loan', relatedId: loan.id }
-  );
-
-  res.json({
-    success: true,
-    message: `Loan ${loan.loanNumber} successfully disbursed.`,
-    voucher: voucherData,
-    loan: {
-      id: loan.id,
-      loanNumber: loan.loanNumber,
-      status: 'Active',
-      disbursedDate: disbursementDate,
-      startDate: disbursementDate,
-      maturityDate,
-      nextPaymentDate,
-      remainingBalance: loan.remainingBalance,
-    },
-  });
+    const body = req.body || {};
+    const result = await createApplication(db as unknown as AppDb, lendingStaffOf(ctx), { ...body, requestKey: req.get('Idempotency-Key') || body.requestKey });
+    res.status(result.replayed ? 200 : 201).json({ success: true, replayed: result.replayed, data: result.loan });
+  } catch (err) {
+    sendError(res, err, 'branch-loan-apply');
+  }
 });
+
+branchRouter.get('/loans/:id', requireBranch(LOAN_READ_PERMISSIONS), async (req, res) => {
+  const ctx = ctxOf(req);
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+  try {
+    const view = await loanDetail(db as unknown as AppDb, lendingStaffOf(ctx), req.params.id);
+    const payments = await loanPayments(db as unknown as AppDb, view.id);
+    const borrower = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, view.borrowerId)).limit(1);
+    res.json({ success: true, data: { view, payments, borrower: borrower[0] || null } });
+  } catch (err) {
+    sendError(res, err, 'branch-loan-detail');
+  }
+});
+
+function loanAction(
+  permissions: SystemPermission[],
+  run: (db: AppDb, staff: LendingStaff, req: Request) => Promise<unknown>,
+  context: string,
+) {
+  branchRouter.post(`/loans/:id/${context}`, requireBranch(permissions), async (req, res) => {
+    const db = getDb();
+    if (!db) return res.status(503).json({ error: 'Database unavailable' });
+    try {
+      const result = await run(db as unknown as AppDb, lendingStaffOf(ctxOf(req)), req);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      sendError(res, err, `branch-loan-${context}`);
+    }
+  });
+}
+
+loanAction(['process_loan_applications'], (db, staff, req) => submitApplication(db, staff, req.params.id, req.body || {}), 'submit');
+loanAction(['manage_loan_applications'], (db, staff, req) => startReview(db, staff, req.params.id), 'review');
+loanAction(['manage_loan_applications'], (db, staff, req) => decideLoan(db, staff, req.params.id, req.body || {}), 'decision');
+loanAction(['process_loan_applications', 'manage_loan_applications'], (db, staff, req) => cancelApplication(db, staff, req.params.id, (req.body || {}).reason), 'cancel');
+loanAction(
+  ['disburse_loans'],
+  (db, staff, req) => disburseLoan(db, staff, req.params.id, req.body || {}, req.get('Idempotency-Key')),
+  'disburse',
+);
 
 branchRouter.post('/loans/:id/assessment', requireBranch(['process_loan_applications', 'review_client_loan_info']), async (req, res) => {
   const ctx = ctxOf(req);
   const db = getDb();
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
   const body = req.body || {};
-  const rows = await db.select().from(schema.loans).where(and(eq(schema.loans.id, req.params.id), scopeCond(ctx, schema.loans.branchId) as any)).limit(1);
-  if (rows.length === 0) return res.status(404).json({ error: 'Loan not found in this branch.' });
-  const loan = rows[0] as any;
-  const borrower = loan.borrowerId
-    ? (await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, loan.borrowerId)).limit(1))[0]
-    : undefined;
+  try {
+    const view = await loanDetail(db as unknown as AppDb, lendingStaffOf(ctx), req.params.id);
+    const borrower = (await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, view.borrowerId)).limit(1))[0];
 
-  const monthlyIncome = Number(body.monthlyIncome) || Number((borrower as any)?.monthlyIncome) || 0;
-  const monthlyExpenses = Number(body.monthlyExpenses) || Number((borrower as any)?.monthlyExpenses) || 0;
-  const existingObligations = Number(body.existingObligations) || 0;
-  const disposalFactor = 0.5; // 50% of disposable income allocated to repayment (industry guideline)
+    // Income figures are the officer's estimates; they guide the decision and move no money.
+    const monthlyIncome = Number(body.monthlyIncome) || Number(borrower?.monthlyIncome) || 0;
+    const monthlyExpenses = Number(body.monthlyExpenses) || Number(borrower?.monthlyExpenses) || 0;
+    const existingObligations = Number(body.existingObligations) || 0;
+    const disposableIncome = Math.max(0, monthlyIncome - monthlyExpenses - existingObligations);
+    const repaymentCapacityMonthly = Math.round(disposableIncome * 0.5 * 100) / 100;
 
-  const disposableIncome = Math.max(0, monthlyIncome - monthlyExpenses - existingObligations);
-  const estimatedInstallmentCap = Math.round(disposableIncome * disposalFactor * 100) / 100;
+    const installment = view.schedule[0] ? centsFromDb(view.schedule[0].total) : 0;
+    const perMonth = PERIODS_PER_YEAR[view.frequency as keyof typeof PERIODS_PER_YEAR] / 12;
+    const monthlyInstallment = (installment / 100) * perMonth;
+    const debtRatio = monthlyIncome > 0 ? (existingObligations + monthlyInstallment) / monthlyIncome : 0;
+    const affordableShare = monthlyInstallment > 0 ? Math.min(1, repaymentCapacityMonthly / monthlyInstallment) : 1;
+    const recommendedAmount = Math.floor((centsFromDb(view.principal) / 100) * affordableShare / 100) * 100;
 
-  const calc = calculateLoanSchedule({
-    principal: loan.principalAmount,
-    annualInterestRate: loan.interestRate,
-    termMonths: loan.termMonths,
-    interestType: loan.interestType,
-    repaymentFrequency: loan.repaymentFrequency,
-    processingFeePercentage: Number((loan as any).processingFeePercentage) || 0,
-  });
+    const riskIndicators: string[] = [];
+    if (!borrower) riskIndicators.push('No member record found for this application');
+    else {
+      if (!isKycVerified(borrower.kycStatus)) riskIndicators.push('Member KYC is not verified');
+      if (monthlyIncome > 0 && existingObligations / monthlyIncome > 0.4) riskIndicators.push('Existing obligations exceed 40% of declared income');
+      if (borrower.memberStatus !== 'Active') riskIndicators.push(`Member is not active (${borrower.memberStatus})`);
+      if (debtRatio > 0.6) riskIndicators.push('Repayment debt ratio exceeds 60%');
+    }
+    if (recommendedAmount < centsFromDb(view.principal) / 100) riskIndicators.push('Requested amount exceeds the estimated affordable amount');
 
-  const installmentsPerYear = calc.schedule.length / Math.max(1, loan.termMonths);
-  const debtRatio = monthlyIncome > 0 ? (existingObligations + estimatedInstallmentCap) / monthlyIncome : 0;
-  const affordablePrincipal =
-    disposableIncome > 0
-      ? Math.max(0, Math.floor((estimatedInstallmentCap * loan.termMonths) / (1 + (loan.interestRate / 100) * (loan.termMonths / 12)) / 1000) * 1000)
-      : 0;
-  const recommendedAmount = Math.min(loan.principalAmount, affordablePrincipal || loan.principalAmount);
-
-  const riskIndicators: string[] = [];
-  if (!borrower) riskIndicators.push('No client record found for this application');
-  else {
-    if ((borrower as any).kycStatus !== 'VERIFIED' && (borrower as any).kycStatus !== 'APPROVED') riskIndicators.push('Client KYC is not yet verified');
-    if (existingObligations / Math.max(1, monthlyIncome) > 0.4) riskIndicators.push('Existing obligations exceed 40% of declared income');
-    if ((borrower as any).memberStatus !== 'Active') riskIndicators.push(`Client is not an active member (${(borrower as any).memberStatus})`);
-    if (debtRatio > 0.6) riskIndicators.push('Repayment debt ratio exceeds 60%');
+    const assessment = {
+      monthlyIncome,
+      monthlyExpenses,
+      existingObligations,
+      disposableIncome,
+      repaymentCapacityMonthly,
+      debtRatio,
+      recommendedAmount,
+      estimatedInstallment: installment / 100,
+      riskIndicators,
+      isEstimate: true,
+      note: 'These figures are estimates to guide the decision. Approval is a separate, recorded step.',
+      assessedBy: ctx.staffName,
+      assessedAt: nowIso(),
+    };
+    await db.update(schema.loans).set({ underwritingReport: assessment as any }).where(eq(schema.loans.id, view.id));
+    await audit(ctx, 'LOAN_ASSESSED', `Assessment recorded for ${view.loanNumber}. Estimated affordable amount ₱${recommendedAmount.toLocaleString()}.`, 'LOAN', { targetType: 'Loan', targetId: view.id });
+    res.json({ success: true, data: assessment });
+  } catch (err) {
+    sendError(res, err, 'branch-loan-assessment');
   }
-  if (recommendedAmount < loan.principalAmount) riskIndicators.push('Requested amount exceeds the estimated affordable amount');
-
-  const assessment = {
-    monthlyIncome,
-    monthlyExpenses,
-    existingObligations,
-    disposableIncome,
-    repaymentCapacityMonthly: estimatedInstallmentCap,
-    debtRatio,
-    recommendedAmount,
-    estimatedInstallment: Math.round(calc.installmentAmount * 100) / 100,
-    riskIndicators,
-    isEstimate: true,
-    note: 'These figures are automated estimates for assessment guidance only. Approval requires authorized personnel decision and full loan documentation.',
-    assessedBy: ctx.staffName,
-    assessedAt: nowIso(),
-  };
-
-  await db
-    .update(schema.loans)
-    .set({ underwritingReport: assessment as any, status: ['Draft', 'Submitted'].includes(loan.status) ? 'For Assessment' : loan.status })
-    .where(eq(schema.loans.id, loan.id));
-  await audit(ctx, 'LOAN_ASSESSED', `Assessment recorded for loan ${loan.loanNumber}. Recommended ₱${recommendedAmount.toLocaleString()}.`, 'LOAN', { targetType: 'Loan', targetId: loan.id });
-  res.json({ success: true, data: assessment });
 });
 
 // ---------------------------------------------------------------------------
-// Payments / collections
+// Payments, proofs and collections (src/lending/repayment.ts)
 // ---------------------------------------------------------------------------
 
 branchRouter.get('/collections/today', requireBranch(['process_loan_repayments', 'view_transaction_records']), async (req, res) => {
   const ctx = ctxOf(req);
   const db = getDb();
-  if (!db) return res.json({ success: true, data: { payments: [], totals: {} } });
-  const today = todayStr();
-  const rows = await db.select().from(schema.payments).where(and(scopeCond(ctx, schema.payments.branchId, req.query.branchId ? String(req.query.branchId) : undefined) as any, eq(schema.payments.paymentDate, today)));
-  const cash = rows.filter((p: any) => String(p.paymentMethod).toLowerCase().includes('cash')).reduce((s, p: any) => s + p.amount, 0);
-  const other = rows.reduce((s, p: any) => s + p.amount, 0) - cash;
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+  const today = manilaToday();
+  const rows = await db
+    .select()
+    .from(schema.payments)
+    .where(and(scopeCond(ctx, schema.payments.branchId, req.query.branchId ? String(req.query.branchId) : undefined) as any, eq(schema.payments.paymentDate, today), eq(schema.payments.status, 'POSTED')));
+  const views = rows.map((r) => ({ ...r, amountCents: centsFromDb(String(r.amount)) }));
+  const total = views.reduce((s, p) => s + p.amountCents, 0);
+  const cash = views.filter((p) => p.paymentMethod === 'CASH').reduce((s, p) => s + p.amountCents, 0);
   res.json({
     success: true,
     data: {
       payments: rows,
-      totals: {
-        total: Math.round(rows.reduce((s, p: any) => s + p.amount, 0) * 100) / 100,
-        count: rows.length,
-        cash: Math.round(cash * 100) / 100,
-        other: Math.round(other * 100) / 100,
-      },
+      totals: { total: centsToDecimal(total), count: rows.length, cash: centsToDecimal(cash), other: centsToDecimal(total - cash) },
     },
   });
 });
 
-/**
- * The single place money is moved against a loan.
- */
-async function postLoanPayment(
-  ctx: BranchCtx,
-  input: {
-    loanId: string;
-    amount: number;
-    date?: string;
-    paymentMethod?: string;
-    transactionReference?: string;
-    notes?: string | null;
-    source?: 'BRANCH_COLLECTION' | 'PROOF_VERIFICATION';
-    proofId?: string;
-  },
-): Promise<
-  | { ok: true; receipt: Record<string, any> }
-  | { ok: false; status: number; error: string }
-> {
-  const db = getDb();
-  if (!db) return { ok: false, status: 503, error: 'Database unavailable' };
-
-  const { loanId, amount } = input;
-  if (!loanId || !(amount > 0)) {
-    return { ok: false, status: 400, error: 'loanId and a positive amount are required.' };
-  }
-
-  const rows = await db
-    .select()
-    .from(schema.loans)
-    .where(and(eq(schema.loans.id, loanId), scopeCond(ctx, schema.loans.branchId) as any))
-    .limit(1);
-  if (rows.length === 0) return { ok: false, status: 404, error: 'Loan not found in this branch.' };
-  const loan = rows[0] as any;
-
-  if (amount > (loan.remainingBalance || 0) + 0.01) {
-    return {
-      ok: false,
-      status: 400,
-      error: `Payment exceeds outstanding balance (₱${(loan.remainingBalance || 0).toLocaleString()}).`,
-    };
-  }
-
-  const paymentDate = String(input.date || todayStr());
-  const schedule: InstallmentRow[] = Array.isArray(loan.schedule) ? loan.schedule : [];
-  const allocation = allocatePaymentToSchedule(schedule, amount, paymentDate);
-  const id = genId('pay');
-  const receiptNumber = `OR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
-  const newTotalPaid = Math.min(Math.round(((loan.totalPaid || 0) + amount) * 100) / 100, loan.totalPayable);
-  const newRemaining = Math.max(0, Math.round((loan.totalPayable - newTotalPaid) * 100) / 100);
-  const nextUnpaid = allocation.updatedSchedule.find((s: any) => (s.amountPaid || 0) < s.totalDue - 0.001);
-  const isCompleted = newRemaining <= 0.01;
-  const newStatus = isCompleted
-    ? 'Completed'
-    : ['Draft', 'Submitted', 'Under Review', 'For Assessment', 'Approved'].includes(loan.status)
-      ? 'Active'
-      : loan.status;
-
-  await db.insert(schema.payments).values({
-    id,
-    receiptNumber,
-    loanId: loan.id,
-    loanNumber: loan.loanNumber,
-    borrowerId: loan.borrowerId,
-    borrowerName: loan.borrowerName,
-    branchId: loan.branchId,
-    amount,
-    paymentDate,
-    paymentMethod: String(input.paymentMethod || 'Cash'),
-    transactionReference: String(input.transactionReference || ''),
-    collectedBy: ctx.staffName,
-    principalPortion: allocation.principalPaid,
-    interestPortion: allocation.interestPaid,
-    penaltyPortion: 0,
-    rebateDiscount: 0,
-    paymentScheduleType: 'Installment',
-    isAdvancePayment: false,
-    notes: input.notes ? String(input.notes) : null,
-  });
-
-  await db
-    .update(schema.loans)
-    .set({
-      schedule: allocation.updatedSchedule as any,
-      totalPaid: newTotalPaid,
-      remainingBalance: newRemaining,
-      status: newStatus,
-      lastPaymentDate: paymentDate,
-      nextPaymentDate: nextUnpaid ? nextUnpaid.dueDate : isCompleted ? null : loan.maturityDate,
-      daysInArrears: 0,
-    })
-    .where(eq(schema.loans.id, loan.id));
-
-  if (loan.borrowerId) {
-    const borrowerRows = await db
-      .select()
-      .from(schema.borrowers)
-      .where(eq(schema.borrowers.id, loan.borrowerId))
-      .limit(1);
-    if (borrowerRows.length > 0) {
-      const prev = borrowerRows[0] as any;
-      const updatedActiveCount = isCompleted
-        ? Math.max(0, (prev.activeLoansCount || 1) - 1)
-        : (prev.activeLoansCount || 0);
-
-      await db
-        .update(schema.borrowers)
-        .set({
-          totalRepaid: Math.round(((prev.totalRepaid || 0) + amount) * 100) / 100,
-          activeLoansCount: updatedActiveCount,
-          lastActivityDate: paymentDate,
-        })
-        .where(eq(schema.borrowers.id, loan.borrowerId));
-    }
-  }
-
-  const source = input.source || 'BRANCH_COLLECTION';
-  const sourceNote =
-    source === 'PROOF_VERIFICATION'
-      ? `Verified from client-submitted proof${input.proofId ? ` ${input.proofId}` : ''}`
-      : 'Branch collection';
-
-  await db.insert(schema.financialTransactions).values({
-    id: genId('txn'),
-    referenceNumber: `TX-${receiptNumber}`,
-    clientId: loan.borrowerId,
-    clientName: loan.borrowerName,
-    accountOrLoanId: loan.id,
-    accountOrLoanType: 'Loan',
-    branchId: loan.branchId,
-    transactionType: 'Loan Repayment',
-    amount,
-    transactionDate: paymentDate,
-    paymentMethod: String(input.paymentMethod || 'Cash'),
-    processedBy: `${ctx.staffName} (${ctx.title})`,
-    processedByRole: ctx.staffRole,
-    status: 'Completed',
-    notes: `Collection for ${loan.loanNumber} · ${receiptNumber} · ${sourceNote}`,
-    metadata: {
-      principalPortion: allocation.principalPaid,
-      interestPortion: allocation.interestPaid,
-      source,
-      ...(input.proofId ? { proofId: input.proofId } : {}),
-    },
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  });
-
-  await audit(
-    ctx,
-    'PAYMENT_RECEIVED',
-    `Received ₱${amount.toLocaleString()} from ${loan.borrowerName} for ${loan.loanNumber}. Receipt ${receiptNumber}.`,
-    'PAYMENT',
-    { targetType: 'Loan', targetId: loan.id },
-  );
-
-  if (isCompleted) {
-    await audit(
-      ctx,
-      'LOAN_COMPLETED',
-      `Loan ${loan.loanNumber} for ${loan.borrowerName} has been fully settled and marked Completed.`,
-      'LOAN',
-      { targetType: 'Loan', targetId: loan.id }
-    );
-
+function repaymentRoute(
+  method: 'get' | 'post',
+  path: string,
+  permissions: SystemPermission[],
+  run: (db: AppDb, staff: LendingStaff, req: Request) => Promise<unknown>,
+  context: string,
+) {
+  branchRouter[method](path, requireBranch(permissions), async (req, res) => {
+    const db = getDb();
+    if (!db) return res.status(503).json({ error: 'Database unavailable' });
     try {
-      await db.insert(schema.branchNotifications).values({
-        id: `NOTIF-COMP-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-        branchId: loan.branchId || 'br-main',
-        type: 'LOAN_COMPLETED',
-        title: '🎉 Loan Fully Settled & Completed',
-        message: `Congratulations! Your loan ${loan.loanNumber} has been fully paid off. Thank you for maintaining a stellar repayment record with HOSCOMO.`,
-        relatedType: 'Loan',
-        relatedId: loan.id,
-        isRead: false,
-        createdAt: nowIso(),
-      });
-    } catch {}
-  }
-
-  return {
-    ok: true,
-    receipt: {
-      id,
-      receiptNumber,
-      loanId: loan.id,
-      loanNumber: loan.loanNumber,
-      clientId: loan.borrowerId,
-      clientName: loan.borrowerName,
-      amount,
-      paymentDate,
-      paymentMethod: String(input.paymentMethod || 'Cash'),
-      transactionReference: String(input.transactionReference || ''),
-      processedBy: ctx.staffName,
-      principalPortion: allocation.principalPaid,
-      interestPortion: allocation.interestPaid,
-      remainingBalance: newRemaining,
-    },
-  };
+      res.json({ success: true, data: await run(db as unknown as AppDb, lendingStaffOf(ctxOf(req)), req) });
+    } catch (err) {
+      sendError(res, err, `branch-${context}`);
+    }
+  });
 }
 
-branchRouter.post('/payments', requireBranch(['process_loan_repayments']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const body = req.body || {};
-  const result = await postLoanPayment(ctx, {
-    loanId: String(body.loanId || ''),
-    amount: Number(body.amount) || 0,
-    date: body.date ? String(body.date) : undefined,
-    paymentMethod: body.paymentMethod ? String(body.paymentMethod) : undefined,
-    transactionReference: body.transactionReference ? String(body.transactionReference) : undefined,
-    notes: body.notes ? String(body.notes) : null,
-    source: 'BRANCH_COLLECTION',
-  });
-  if ('error' in result) return res.status(result.status).json({ error: result.error });
-  await notify(
-    ctx,
-    'PAYMENT',
-    'Payment received',
-    `₱${result.receipt.amount.toLocaleString()} payment received for ${result.receipt.loanNumber}.`,
-    { relatedType: 'Loan', relatedId: result.receipt.loanId },
+const PAYMENT_READ: SystemPermission[] = ['process_loan_repayments', 'monitor_loan_repayment', 'review_client_loan_info', 'view_transaction_records'];
+
+repaymentRoute('get', '/loans/:id/payoff', PAYMENT_READ, (db, s, req) => payoffQuote(db, s, req.params.id), 'payoff');
+repaymentRoute('get', '/loans/:id/payments', PAYMENT_READ, async (db, s, req) => {
+  await loanDetail(db, s, req.params.id);
+  return loanPayments(db, req.params.id);
+}, 'loan-payments');
+repaymentRoute('post', '/loans/:id/payments', ['process_loan_repayments'], (db, s, req) => postPayment(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'post-payment');
+repaymentRoute('get', '/payments/:id/receipt', PAYMENT_READ, (db, s, req) => receiptFor(db, s, req.params.id), 'payment-receipt');
+repaymentRoute('post', '/payments/:id/reverse', ['approve_sensitive_operations'], (db, s, req) => reversePayment(db, s, req.params.id, (req.body || {}).reason), 'reverse-payment');
+
+repaymentRoute('get', '/payment-proofs', ['process_loan_repayments'], async (db, s, req) => {
+  const proofs = await proofQueue(db, s, req.query.status ? String(req.query.status) : undefined);
+  const withFiles = await Promise.all(
+    proofs.map(async (p) => {
+      const m = /^(local|supabase):(.+)$/.exec(p.storageRef ?? '');
+      let fileUrl: string | null = null;
+      if (m) {
+        try {
+          fileUrl = await signedKycUrl({ backend: m[1] as 'local' | 'supabase', path: m[2] });
+        } catch {
+          fileUrl = null;
+        }
+      }
+      return { ...p, storageRef: undefined, fileUrl };
+    }),
   );
-  res.status(201).json({ success: true, data: { receipt: result.receipt } });
-});
+  const counts: Record<string, number> = {};
+  for (const p of await proofQueue(db, s)) counts[p.status] = (counts[p.status] || 0) + 1;
+  return { proofs: withFiles, counts };
+}, 'payment-proofs');
+repaymentRoute('post', '/payment-proofs/:id/claim', ['process_loan_repayments'], (db, s, req) => claimProof(db, s, req.params.id), 'claim-proof');
+repaymentRoute('post', '/payment-proofs/:id/verify', ['process_loan_repayments'], (db, s, req) => verifyProof(db, s, req.params.id, req.body || {}), 'verify-proof');
+repaymentRoute('post', '/payment-proofs/:id/reject', ['process_loan_repayments'], (db, s, req) => rejectProof(db, s, req.params.id, (req.body || {}).reason), 'reject-proof');
+
+repaymentRoute('get', '/collections/overdue', ['monitor_loan_repayment', 'process_loan_repayments', 'view_all_records'], (db, s) => collectionsOverview(db, s), 'collections');
+repaymentRoute('post', '/collections/run-overdue-check', ['monitor_loan_repayment', 'process_loan_repayments'], (db, s) => runOverdueCheck(db, manilaToday(), { branchId: s.viewAll ? null : s.branchId }), 'overdue-check');
 
 // ---------------------------------------------------------------------------
-// Payment proof queue
-//
-// A client paying a loan uploads a receipt, which lands in payment_proofs as a
-// PENDING_REVIEW claim (see clientMobileRoutes). These endpoints are the teller
-// side of that queue: list it, verify it, or reject it.
-//
-// Verification deliberately does NOT re-implement the money path. It calls
-// postLoanPayment, the same function behind POST /payments, so a verified proof
-// produces exactly the ledger a direct collection would: identical schedule
-// allocation, principal/interest split, loan and borrower rollups, financial
-// transaction, and audit entry.
-//
-// Rejection moves no money at all. A rejected proof is a declined CLAIM, not a
-// reversed payment - nothing was ever posted, so there is nothing to reverse.
+// Savings (src/savings/service.ts)
 // ---------------------------------------------------------------------------
 
-/** Loads a proof scoped to the caller's branch, or null. */
-async function loadScopedProof(ctx: BranchCtx, proofId: string) {
-  const db = getDb();
-  if (!db) return null;
-  const rows = await db
-    .select()
-    .from(schema.paymentProofs)
-    .where(
-      and(
-        eq(schema.paymentProofs.id, proofId),
-        scopeCond(ctx, schema.paymentProofs.branchId) as any,
-      ),
-    )
-    .limit(1);
-  return rows.length > 0 ? (rows[0] as any) : null;
-}
+const SAVINGS_READ: SystemPermission[] = ['process_savings_deposits', 'process_savings_withdrawals', 'view_transaction_records', 'view_all_records'];
 
-branchRouter.get('/payment-proofs', requireBranch(['process_loan_repayments']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+// Fixed paths are registered before '/savings/:id' so they are not read as account ids.
+repaymentRoute('get', '/savings/products', SAVINGS_READ, async (db) => (await listSavingsProducts(db)).map(savingsProductToDto), 'savings-products');
+repaymentRoute('get', '/savings/withdrawal-requests', SAVINGS_READ, (db, s, req) => withdrawalRequests(db, s, req.query.status ? String(req.query.status) : 'PENDING'), 'savings-requests');
+repaymentRoute('post', '/savings/withdrawal-requests/:id/decision', ['process_savings_withdrawals'], (db, s, req) => decideWithdrawalRequest(db, s, req.params.id, req.body || {}), 'savings-request-decision');
+repaymentRoute('get', '/savings/reconcile', ['view_all_records', 'approve_sensitive_operations', 'manage_settings'], (db) => reconcileSavings(db), 'savings-reconcile');
+repaymentRoute('post', '/savings/run-interest', ['approve_sensitive_operations', 'manage_settings'], (db) => runInterestPosting(db, manilaToday()), 'savings-interest');
+repaymentRoute('post', '/savings/open', ['process_savings_deposits'], (db, s, req) => openAccount(db, s, req.body || {}, req.get('Idempotency-Key')), 'savings-open');
 
-  const statusFilter = req.query.status ? String(req.query.status) : null;
-  const conditions: any[] = [scopeCond(ctx, schema.paymentProofs.branchId)];
-  if (statusFilter && statusFilter !== 'ALL') conditions.push(eq(schema.paymentProofs.status, statusFilter));
-
-  const rows = await db
-    .select()
-    .from(schema.paymentProofs)
-    .where(and(...conditions))
-    .orderBy(desc(schema.paymentProofs.submittedAt));
-
-  const all = await db
-    .select()
-    .from(schema.paymentProofs)
-    .where(scopeCond(ctx, schema.paymentProofs.branchId) as any);
-
-  const byStatus: Record<string, number> = {};
-  for (const p of all as any[]) byStatus[p.status] = (byStatus[p.status] || 0) + 1;
-
-  res.json({
-    success: true,
-    data: {
-      proofs: rows,
-      counts: {
-        total: (all as any[]).length,
-        byStatus,
-        pending: byStatus.PENDING_REVIEW || 0,
-        underReview: byStatus.UNDER_REVIEW || 0,
-        verified: byStatus.VERIFIED || 0,
-        rejected: byStatus.REJECTED || 0,
-      },
-    },
-  });
-});
-
-/** Marks a proof as picked up so two tellers do not work the same claim. */
-branchRouter.patch('/payment-proofs/:id/claim', requireBranch(['process_loan_repayments']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-
-  const proof = await loadScopedProof(ctx, String(req.params.id || ''));
-  if (!proof) return res.status(404).json({ error: 'Payment proof not found in this branch.' });
-  if (proof.status !== 'PENDING_REVIEW') {
-    return res.status(409).json({
-      error: `This proof is already ${String(proof.status).toLowerCase().replace(/_/g, ' ')}.`,
-      status: proof.status,
-    });
-  }
-
-  const now = nowIso();
-  await db
-    .update(schema.paymentProofs)
-    .set({ status: 'UNDER_REVIEW', reviewedBy: ctx.staffId || ctx.userId, reviewedByName: ctx.staffName, updatedAt: now })
-    .where(eq(schema.paymentProofs.id, proof.id));
-
-  res.json({ success: true, data: { id: proof.id, status: 'UNDER_REVIEW' } });
-});
-
-branchRouter.post('/payment-proofs/:id/verify', requireBranch(['process_loan_repayments']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-
-  const proof = await loadScopedProof(ctx, String(req.params.id || ''));
-  if (!proof) return res.status(404).json({ error: 'Payment proof not found in this branch.' });
-  if (proof.status === 'VERIFIED') {
-    return res.status(409).json({ error: 'This proof has already been verified.', status: proof.status });
-  }
-  if (proof.status === 'REJECTED') {
-    return res.status(409).json({ error: 'This proof was rejected and cannot be verified.', status: proof.status });
-  }
-
-  // The claim's amount is the client's assertion. A teller may correct it - the
-  // receipt can show a different figure than the form - but only ever downward.
-  // Accepting more than claimed would let a client inflate a payment beyond what
-  // they consented to, so that is refused outright.
-  const body = req.body || {};
-  const claimed = Number(proof.amount) || 0;
-  const amount = body.amount === undefined ? claimed : Number(body.amount);
-  if (!(amount > 0)) return res.status(400).json({ error: 'The verified amount must be positive.' });
-  if (amount > claimed + 0.01) {
-    return res.status(400).json({
-      error: `The verified amount (₱${amount.toLocaleString()}) exceeds the amount the member submitted (₱${claimed.toLocaleString()}).`,
-    });
-  }
-
-  // Claim the proof by moving PENDING_REVIEW -> UNDER_REVIEW in a single
-  // conditional UPDATE, and only continue if this statement is the one that
-  // changed the row.
-  //
-  // Without this, two tellers opening the same proof would both pass a plain
-  // status read and both post the money. There is no transaction available here
-  // to make the claim and the posting atomic together (postLoanPayment opens its
-  // own connection and the codebase uses none), so the claim is taken FIRST and
-  // the money is posted second.
-  //
-  // That ordering makes the failure direction safe. If posting then fails, the
-  // worst case is a proof stuck UNDER_REVIEW, which a teller can re-claim - not
-  // money credited twice. The claim is released on failure below so the queue
-  // does not silently strand the item.
-  const myStaffKey = String(ctx.staffId || ctx.userId || '');
-  const claim = await db
-    .update(schema.paymentProofs)
-    .set({ status: 'UNDER_REVIEW', reviewedBy: myStaffKey, reviewedByName: ctx.staffName, updatedAt: nowIso() })
-    .where(and(eq(schema.paymentProofs.id, proof.id), eq(schema.paymentProofs.status, 'PENDING_REVIEW')));
-
-  if (claim.rowCount === 0) {
-    // Not claimable by us. Allow a retry of our own in-flight claim, refuse
-    // anyone else's, and refuse anything already decided.
-    const heldByMe = proof.status === 'UNDER_REVIEW' && String(proof.reviewedBy || '') === myStaffKey;
-    if (!heldByMe) {
-      return res.status(409).json({
-        error:
-          proof.status === 'UNDER_REVIEW'
-            ? 'Another staff member is already reviewing this payment proof.'
-            : `This proof is already ${String(proof.status).toLowerCase().replace(/_/g, ' ')}.`,
-        status: proof.status,
-      });
-    }
-  }
-
-  let posted: Awaited<ReturnType<typeof postLoanPayment>>;
-  try {
-    posted = await postLoanPayment(ctx, {
-      loanId: String(proof.loanId),
-      amount,
-      date: proof.paymentDate ? String(proof.paymentDate) : undefined,
-      paymentMethod: proof.paymentMethod ? String(proof.paymentMethod) : undefined,
-      transactionReference: proof.referenceNumber ? String(proof.referenceNumber) : undefined,
-      notes:
-        body.notes ? String(body.notes) : `Verified payment proof ${proof.id}` +
-        (amount !== claimed ? ` (adjusted from ₱${claimed.toLocaleString()})` : ''),
-      source: 'PROOF_VERIFICATION',
-      proofId: proof.id,
-    });
-  } catch (postErr: any) {
-    // Release the claim so the item returns to the queue instead of being
-    // stranded in UNDER_REVIEW with no money moved.
-    try {
-      await db
-        .update(schema.paymentProofs)
-        .set({ status: 'PENDING_REVIEW', reviewedBy: null, reviewedByName: null, updatedAt: nowIso() })
-        .where(and(eq(schema.paymentProofs.id, proof.id), eq(schema.paymentProofs.status, 'UNDER_REVIEW')));
-    } catch (releaseErr: any) {
-      console.error('[Payment Proof] failed to release claim:', releaseErr?.message || releaseErr);
-    }
-    console.error('[Payment Proof] posting failed:', postErr?.message || postErr);
-    return res.status(500).json({ error: postErr?.message || 'The payment could not be posted.' });
-  }
-
-  if ('error' in posted) {
-    // A validation failure (loan gone, amount now over balance). Nothing was
-    // posted, so release the claim for the same reason.
-    try {
-      await db
-        .update(schema.paymentProofs)
-        .set({ status: 'PENDING_REVIEW', reviewedBy: null, reviewedByName: null, updatedAt: nowIso() })
-        .where(and(eq(schema.paymentProofs.id, proof.id), eq(schema.paymentProofs.status, 'UNDER_REVIEW')));
-    } catch (releaseErr: any) {
-      console.error('[Payment Proof] failed to release claim:', releaseErr?.message || releaseErr);
-    }
-    return res.status(posted.status).json({ error: posted.error });
-  }
-
-  const now = nowIso();
-  await db
-    .update(schema.paymentProofs)
-    .set({
-      status: 'VERIFIED',
-      amount,
-      reviewedBy: ctx.staffId || ctx.userId,
-      reviewedByName: ctx.staffName,
-      reviewedAt: now,
-      paymentId: posted.receipt.id,
-      updatedAt: now,
-    })
-    .where(eq(schema.paymentProofs.id, proof.id));
-
-  // Close out the submission's own document so the two views agree.
-  if (proof.documentId) {
-    try {
-      await db
-        .update(schema.documents)
-        .set({ status: 'Verified' })
-        .where(eq(schema.documents.id, String(proof.documentId)));
-    } catch (docErr: any) {
-      // The proof is the system of record now; a stale document status is not
-      // worth failing a completed verification over.
-      console.error('[Payment Proof] document status update failed:', docErr?.message || docErr);
-    }
-  }
-
-  await notify(
-    ctx,
-    'PAYMENT',
-    'Payment proof verified',
-    `Payment proof ${proof.id} for ${proof.loanNumber || proof.loanId} was verified and credited (${posted.receipt.receiptNumber}).`,
-    { relatedType: 'Loan', relatedId: String(proof.loanId) },
-  );
-  await audit(
-    ctx,
-    'PAYMENT_PROOF_VERIFIED',
-    `Verified payment proof ${proof.id} for ${proof.loanNumber || proof.loanId}. ₱${amount.toLocaleString()} credited as ${posted.receipt.receiptNumber}.`,
-    'PAYMENT',
-    { targetType: 'PaymentProof', targetId: proof.id },
-  );
-
-  res.json({
-    success: true,
-    data: { id: proof.id, status: 'VERIFIED', paymentId: posted.receipt.id, receipt: posted.receipt },
-  });
-});
-
-branchRouter.post('/payment-proofs/:id/reject', requireBranch(['process_loan_repayments']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-
-  const reason = String((req.body || {}).reason || '').trim();
-  if (!reason) return res.status(400).json({ error: 'A rejection reason is required so the member knows what to fix.' });
-
-  const proof = await loadScopedProof(ctx, String(req.params.id || ''));
-  if (!proof) return res.status(404).json({ error: 'Payment proof not found in this branch.' });
-  if (proof.status === 'VERIFIED') {
-    return res.status(409).json({
-      error: 'This proof was already verified and credited. Reverse the payment instead of rejecting the proof.',
-    });
-  }
-  if (proof.status === 'REJECTED') {
-    return res.status(409).json({ error: 'This proof was already rejected.', status: proof.status });
-  }
-
-  const now = nowIso();
-  await db
-    .update(schema.paymentProofs)
-    .set({
-      status: 'REJECTED',
-      rejectionReason: reason,
-      reviewedBy: ctx.staffId || ctx.userId,
-      reviewedByName: ctx.staffName,
-      reviewedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(schema.paymentProofs.id, proof.id));
-
-  if (proof.documentId) {
-    try {
-      await db
-        .update(schema.documents)
-        .set({ status: 'Rejected', notes: reason })
-        .where(eq(schema.documents.id, String(proof.documentId)));
-    } catch (docErr: any) {
-      console.error('[Payment Proof] document status update failed:', docErr?.message || docErr);
-    }
-  }
-
-  await audit(
-    ctx,
-    'PAYMENT_PROOF_REJECTED',
-    `Rejected payment proof ${proof.id} for ${proof.loanNumber || proof.loanId}: ${reason}`,
-    'PAYMENT',
-    { targetType: 'PaymentProof', targetId: proof.id },
-  );
-
-  res.json({ success: true, data: { id: proof.id, status: 'REJECTED', rejectionReason: reason } });
-});
+repaymentRoute('get', '/savings', SAVINGS_READ, (db, s, req) =>
+  listAccounts(db, s, { status: req.query.status ? String(req.query.status) : undefined, search: req.query.search ? String(req.query.search) : undefined }), 'savings-list');
+repaymentRoute('get', '/savings/:id', SAVINGS_READ, (db, s, req) => accountDetail(db, s, req.params.id), 'savings-detail');
+repaymentRoute('get', '/savings/:id/statement', SAVINGS_READ, (db, s, req) =>
+  statement(db, s, req.params.id, { from: req.query.from ? String(req.query.from) : undefined, to: req.query.to ? String(req.query.to) : undefined }), 'savings-statement');
+repaymentRoute('post', '/savings/:id/deposit', ['process_savings_deposits'], (db, s, req) => deposit(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'savings-deposit');
+repaymentRoute('post', '/savings/:id/withdraw', ['process_savings_withdrawals'], (db, s, req) => withdraw(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'savings-withdraw');
+repaymentRoute('post', '/savings/:id/close', ['process_savings_withdrawals'], (db, s, req) => closeAccount(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'savings-close');
+repaymentRoute('post', '/savings/:id/status', ['approve_sensitive_operations', 'process_savings_withdrawals'], (db, s, req) =>
+  changeStatus(db, s, req.params.id, (req.body || {}).action, (req.body || {}).reason), 'savings-status');
 
 // ---------------------------------------------------------------------------
-// Savings
+// Groups and the solidarity fund (src/groups/service.ts)
 // ---------------------------------------------------------------------------
 
-branchRouter.get('/savings', requireBranch(['process_savings_deposits', 'process_savings_withdrawals', 'view_transaction_records']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const data = await loadBranchData(ctx, req);
-  res.json({ success: true, data: data.savingsAccounts });
-});
+const GROUP_READ: SystemPermission[] = ['view_client_info', 'manage_loan_applications', 'process_loan_applications', 'process_loan_repayments', 'view_all_records'];
 
-branchRouter.get('/savings/:accountId/transactions', requireBranch(['process_savings_deposits', 'process_savings_withdrawals', 'view_transaction_records']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.json({ success: true, data: [] });
-  const data = await loadBranchData(ctx, req);
-  const account = (data.savingsAccounts as any[]).find((a: any) => a.id === req.params.accountId);
-  if (!account) return res.status(404).json({ error: 'Savings account not found in this branch.' });
-  const rows = await db.select().from(schema.savingsTransactions).where(eq(schema.savingsTransactions.savingsAccountId, req.params.accountId)).orderBy(desc(schema.savingsTransactions.date));
-  res.json({ success: true, data: rows });
-});
-
-branchRouter.post('/savings/deposit', requireBranch(['process_savings_deposits']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const accountId = String(body.accountId || '');
-  const amount = Number(body.amount) || 0;
-  if (!accountId || amount <= 0) return res.status(400).json({ error: 'accountId and a positive amount are required.' });
-
-  const data = await loadBranchData(ctx, req);
-  const account = (data.savingsAccounts as any[]).find((a: any) => a.id === accountId);
-  if (!account) return res.status(404).json({ error: 'Savings account not found in this branch.' });
-
-  const balanceBefore = account.balance || 0;
-  const balanceAfter = Math.round((balanceBefore + amount) * 100) / 100;
-  const nowDate = todayStr();
-  const txId = genId('stx');
-  const txNumber = `STX-${nowDate.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`;
-
-  await db.update(schema.savingsAccounts).set({ balance: balanceAfter }).where(eq(schema.savingsAccounts.id, accountId));
-  await syncMemberSavingsTotal(db, account.memberId);
-  await db.insert(schema.savingsTransactions).values({
-    id: txId,
-    savingsAccountId: accountId,
-    memberId: account.memberId,
-    memberName: account.memberName,
-    transactionNumber: txNumber,
-    date: nowDate,
-    type: 'Deposit',
-    amount,
-    balanceBefore,
-    balanceAfter,
-    processedBy: ctx.staffName,
-    notes: body.notes ? String(body.notes) : null,
-    officialReceiptNumber: `OR-${nowDate.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`,
-  });
-  await db.insert(schema.financialTransactions).values({
-    id: genId('txn'),
-    referenceNumber: `TX-${txNumber}`,
-    clientId: account.memberId,
-    clientName: account.memberName,
-    accountOrLoanId: accountId,
-    accountOrLoanType: 'Savings',
-    branchId: ctx.branchId || 'br-main',
-    transactionType: 'Savings Deposit',
-    amount,
-    transactionDate: nowDate,
-    paymentMethod: String(body.paymentMethod || 'Cash'),
-    processedBy: `${ctx.staffName} (${ctx.title})`,
-    processedByRole: ctx.staffRole,
-    status: 'Completed',
-    notes: body.notes ? String(body.notes) : null,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  });
-  await audit(ctx, 'SAVINGS_DEPOSIT', `Deposit of ₱${amount.toLocaleString()} to ${account.memberName}'s savings (${accountId}).`, 'SAVINGS', { targetType: 'SavingsAccount', targetId: accountId });
-  await notify(ctx, 'SAVINGS', 'Savings deposit recorded', `₱${amount.toLocaleString()} deposited to ${account.memberName}'s savings account.`, { relatedType: 'SavingsAccount', relatedId: accountId });
-
-  res.status(201).json({ success: true, data: { transactionId: txId, transactionNumber: txNumber, balanceAfter } });
-});
-
-branchRouter.post('/savings/withdrawal', requireBranch(['process_savings_withdrawals']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const accountId = String(body.accountId || '');
-  const amount = Number(body.amount) || 0;
-  const reason = String(body.reason || '');
-  if (!accountId || amount <= 0 || !reason) {
-    return res.status(400).json({ error: 'accountId, a positive amount, and a reason are required.' });
-  }
-
-  const data = await loadBranchData(ctx, req);
-  const account = (data.savingsAccounts as any[]).find((a: any) => a.id === accountId);
-  if (!account) return res.status(404).json({ error: 'Savings account not found in this branch.' });
-
-  const maintaining = account.maintainingBalance ?? 1000;
-  const check = canWithdrawFromSavings(account.balance, amount, maintaining);
-  if (!check.allowed) {
-    return res.status(400).json({
-      error: `Withdrawal exceeds available balance. Balance ₱${(Number(account.balance) || 0).toLocaleString()} must maintain ₱${Number(maintaining).toLocaleString()}, so ₱${check.available.toLocaleString()} is available.`,
-    });
-  }
-
-  const balanceBefore = account.balance;
-  const balanceAfter = check.balanceAfter;
-  const nowDate = todayStr();
-  const txId = genId('stx');
-  const txNumber = `STW-${nowDate.replace(/-/g, '')}-${String(Date.now()).slice(-5)}`;
-
-  await db.update(schema.savingsAccounts).set({ balance: balanceAfter }).where(eq(schema.savingsAccounts.id, accountId));
-  await syncMemberSavingsTotal(db, account.memberId);
-  await db.insert(schema.savingsTransactions).values({
-    id: txId,
-    savingsAccountId: accountId,
-    memberId: account.memberId,
-    memberName: account.memberName,
-    transactionNumber: txNumber,
-    date: nowDate,
-    type: 'Withdrawal',
-    amount,
-    balanceBefore,
-    balanceAfter,
-    processedBy: ctx.staffName,
-    notes: reason,
-    officialReceiptNumber: null,
-  });
-  await db.insert(schema.financialTransactions).values({
-    id: genId('txn'),
-    referenceNumber: `TX-${txNumber}`,
-    clientId: account.memberId,
-    clientName: account.memberName,
-    accountOrLoanId: accountId,
-    accountOrLoanType: 'Savings',
-    branchId: ctx.branchId || 'br-main',
-    transactionType: 'Savings Withdrawal',
-    amount,
-    transactionDate: nowDate,
-    paymentMethod: 'Cash',
-    processedBy: `${ctx.staffName} (${ctx.title})`,
-    processedByRole: ctx.staffRole,
-    status: 'Completed',
-    notes: reason,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  });
-  await audit(ctx, 'SAVINGS_WITHDRAWAL', `Withdrawal of ₱${amount.toLocaleString()} from ${account.memberName}'s savings (${accountId}). Reason: ${reason}`, 'SAVINGS', { targetType: 'SavingsAccount', targetId: accountId });
-
-  res.status(201).json({ success: true, data: { transactionId: txId, transactionNumber: txNumber, balanceAfter } });
-});
-
-// ---------------------------------------------------------------------------
-// Groups
-// ---------------------------------------------------------------------------
-
-branchRouter.get('/groups', requireBranch(['view_client_info', 'manage_loan_applications', 'register_clients']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.json({ success: true, data: [] });
-  const rows = await db.select().from(schema.solidarityGroups).where(scopeCond(ctx, schema.solidarityGroups.branchId, req.query.branchId ? String(req.query.branchId) : undefined)).orderBy(desc(schema.solidarityGroups.createdAt));
-  res.json({ success: true, data: rows });
-});
-
-branchRouter.get('/groups/:id', requireBranch(['view_client_info', 'manage_loan_applications', 'register_clients']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(404).json({ error: 'Group not found' });
-  const rows = await db.select().from(schema.solidarityGroups).where(and(eq(schema.solidarityGroups.id, req.params.id), scopeCond(ctx, schema.solidarityGroups.branchId) as any)).limit(1);
-  if (rows.length === 0) return res.status(404).json({ error: 'Group not found in this branch.' });
-  const group = rows[0] as any;
-  const members = Array.isArray(group.members) ? group.members : [];
-  const memberIds = members.map((m: any) => m.borrowerId).filter(Boolean);
-  const loans = memberIds.length
-    ? await db.select().from(schema.loans).where(inArray(schema.loans.borrowerId, memberIds))
-    : [];
-  const detail = members.map((m: any) => {
-    const memberLoans = loans.filter((l: any) => l.borrowerId === m.borrowerId);
-    const outstanding = memberLoans.reduce((s: number, l: any) => s + (l.remainingBalance || 0), 0);
-    const status = ['Good Standing', 'Due', 'Arrears'].includes(m.status) ? m.status : outstanding > 0 ? 'Good Standing' : m.status || 'Good Standing';
-    return { ...m, activeLoans: memberLoans.length, outstandingBalance: Math.round(outstanding * 100) / 100, repaymentStatus: status };
-  });
-  res.json({ success: true, data: { group, members: detail } });
-});
-
-branchRouter.post('/groups', requireBranch(['register_clients', 'manage_loan_applications']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const id = genId('grp');
-  const dateStr = todayStr();
-  await db.insert(schema.solidarityGroups).values({
-    id,
-    groupCode: String(body.groupCode || `SG-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`),
-    groupName: String(body.groupName || 'New Group'),
-    centerName: String(body.centerName || 'Center 1'),
-    branchId: ctx.branchId || 'br-main',
-    formedDate: String(body.formedDate || dateStr),
-    meetingDay: String(body.meetingDay || 'Saturday'),
-    meetingTime: String(body.meetingTime || '9:00 AM'),
-    meetingLocation: String(body.meetingLocation || 'Branch Hall'),
-    loanOfficerId: ctx.staffId || ctx.userId,
-    loanOfficerName: ctx.staffName,
-    leaderBorrowerId: String(body.leaderBorrowerId || ''),
-    leaderName: String(body.leaderName || ''),
-    leaderPhone: String(body.leaderPhone || ''),
-    members: (body.members || []) as any,
-    totalActiveLoans: 0,
-    totalGroupSavings: 0,
-    repaymentRate: 100,
-    solidarityFundBalance: 0,
-    jointLiabilityAgreed: body.jointLiabilityAgreed !== false,
-    status: 'Active',
-  });
-  await audit(ctx, 'GROUP_CREATED', `Created group ${body.groupName || id}`, 'MEMBERSHIP', { targetType: 'SolidarityGroup', targetId: id });
-  res.status(201).json({ success: true, data: { id } });
-});
-
-branchRouter.post('/groups/:id/members', requireBranch(['register_clients', 'manage_loan_applications']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const rows = await db.select().from(schema.solidarityGroups).where(and(eq(schema.solidarityGroups.id, req.params.id), scopeCond(ctx, schema.solidarityGroups.branchId) as any)).limit(1);
-  if (rows.length === 0) return res.status(404).json({ error: 'Group not found in this branch.' });
-  const group = rows[0] as any;
-  const members = Array.isArray(group.members) ? group.members : [];
-  const member = req.body || {};
-  const { borrowerId } = member;
-  if (!borrowerId || members.some((m: any) => m.borrowerId === borrowerId)) {
-    return res.status(400).json({ error: 'Member already exists or borrowerId is missing.' });
-  }
-  const memberRow = borrowerId ? (await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, String(borrowerId))).limit(1))[0] : undefined;
-  const newMember = {
-    borrowerId: String(borrowerId),
-    borrowerNumber: (memberRow as any)?.borrowerNumber || member.borrowerNumber || '',
-    fullName: (memberRow as any)?.fullName || member.fullName || 'Member',
-    phone: (memberRow as any)?.phone || member.phone || '',
-    role: member.role || 'Member',
-    activeLoanAmount: 0,
-    remainingBalance: 0,
-    savingsBalance: 0,
-    status: 'Good Standing',
-    weeklyDues: Number(member.weeklyDues) || 0,
-  };
-  await db.update(schema.solidarityGroups).set({ members: [...members, newMember] as any }).where(eq(schema.solidarityGroups.id, req.params.id));
-  await audit(ctx, 'GROUP_MEMBER_ADDED', `Added ${newMember.fullName} to group ${group.groupName}`, 'MEMBERSHIP', { targetType: 'SolidarityGroup', targetId: req.params.id });
-  res.status(201).json({ success: true, data: newMember });
-});
-
-branchRouter.delete('/groups/:id/members/:borrowerId', requireBranch(['register_clients', 'manage_loan_applications']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const rows = await db.select().from(schema.solidarityGroups).where(and(eq(schema.solidarityGroups.id, req.params.id), scopeCond(ctx, schema.solidarityGroups.branchId) as any)).limit(1);
-  if (rows.length === 0) return res.status(404).json({ error: 'Group not found in this branch.' });
-  const group = rows[0] as any;
-  const members = Array.isArray(group.members) ? group.members : [];
-  const updated = members.filter((m: any) => m.borrowerId !== req.params.borrowerId);
-  if (updated.length === members.length) return res.status(404).json({ error: 'Member not found in group.' });
-  await db.update(schema.solidarityGroups).set({ members: updated as any }).where(eq(schema.solidarityGroups.id, req.params.id));
-  await audit(ctx, 'GROUP_MEMBER_REMOVED', `Removed member ${req.params.borrowerId} from group ${group.groupName}`, 'MEMBERSHIP', { targetType: 'SolidarityGroup', targetId: req.params.id });
-  res.json({ success: true });
-});
+repaymentRoute('get', '/groups/officers', ['manage_loan_applications'], (db, s, req) => groupOfficers(db, s, req.query.branchId ? String(req.query.branchId) : undefined), 'group-officers');
+repaymentRoute('get', '/groups/reconcile', ['view_all_records', 'approve_sensitive_operations', 'manage_settings'], (db) => reconcileGroupFunds(db), 'group-reconcile');
+repaymentRoute('get', '/groups', GROUP_READ, (db, s, req) =>
+  listGroups(db, s, { status: req.query.status ? String(req.query.status) : undefined, search: req.query.search ? String(req.query.search) : undefined }), 'groups');
+repaymentRoute('post', '/groups', ['manage_loan_applications'], (db, s, req) => createGroup(db, s, req.body || {}), 'group-create');
+repaymentRoute('get', '/groups/:id', GROUP_READ, (db, s, req) => groupDetail(db, s, req.params.id), 'group-detail');
+repaymentRoute('post', '/groups/:id', ['manage_loan_applications'], (db, s, req) => updateGroup(db, s, req.params.id, req.body || {}), 'group-update');
+repaymentRoute('post', '/groups/:id/status', ['manage_loan_applications', 'approve_sensitive_operations'], (db, s, req) =>
+  changeGroupStatus(db, s, req.params.id, (req.body || {}).action, (req.body || {}).reason), 'group-status');
+repaymentRoute('post', '/groups/:id/members', ['manage_loan_applications'], (db, s, req) => addMember(db, s, req.params.id, req.body || {}), 'group-add-member');
+repaymentRoute('post', '/groups/:id/members/:borrowerId/remove', ['manage_loan_applications'], (db, s, req) =>
+  removeMember(db, s, req.params.id, req.params.borrowerId, (req.body || {}).reason), 'group-remove-member');
+repaymentRoute('post', '/groups/:id/members/:borrowerId/role', ['manage_loan_applications'], (db, s, req) =>
+  setRole(db, s, req.params.id, req.params.borrowerId, (req.body || {}).role), 'group-role');
+repaymentRoute('get', '/groups/:id/loans', GROUP_READ, (db, s, req) => pendingGroupLoans(db, s, req.params.id), 'group-loans');
+repaymentRoute('post', '/loans/:id/group-consent', ['manage_loan_applications'], (db, s, req) => recordConsent(db, s, req.params.id, req.body || {}), 'group-consent');
+repaymentRoute('get', '/groups/:id/meetings', GROUP_READ, (db, s, req) => groupMeetings(db, s, req.params.id), 'group-meetings');
+repaymentRoute('post', '/groups/:id/meetings', ['manage_loan_applications'], (db, s, req) => recordMeeting(db, s, req.params.id, req.body || {}), 'group-meeting');
+repaymentRoute('get', '/groups/:id/fund', GROUP_READ, (db, s, req) => fundView(db, s, req.params.id), 'group-fund');
+repaymentRoute('post', '/groups/:id/collections', ['process_loan_repayments'], (db, s, req) => postCollection(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'group-collection');
+repaymentRoute('post', '/groups/:id/covers', ['approve_sensitive_operations'], (db, s, req) => coverFromFund(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'group-cover');
+repaymentRoute('post', '/groups/:id/cover-repayments', ['process_loan_repayments'], (db, s, req) => repayCover(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'group-cover-repay');
+repaymentRoute('post', '/groups/:id/fund-refunds', ['approve_sensitive_operations'], (db, s, req) => refundFund(db, s, req.params.id, req.body || {}, req.get('Idempotency-Key')), 'group-fund-refund');
 
 // ---------------------------------------------------------------------------
 // Transactions ledger
@@ -2438,36 +1043,8 @@ branchRouter.get('/transactions', requireBranch(['view_transaction_records']), a
   res.json({ success: true, data: rows });
 });
 
-branchRouter.post('/transactions', requireBranch(['process_loan_repayments', 'process_savings_deposits', 'process_savings_withdrawals', 'view_transaction_records']), async (req, res) => {
-  const ctx = ctxOf(req);
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const now = nowIso();
-  const dateStr = todayStr();
-  await db.insert(schema.financialTransactions).values({
-    id: genId('txn'),
-    referenceNumber: String(body.referenceNumber || genRef('REF')),
-    clientId: String(body.clientId || ''),
-    clientName: body.clientName ? String(body.clientName) : null,
-    accountOrLoanId: String(body.accountOrLoanId || ''),
-    accountOrLoanType: String(body.accountOrLoanType || 'General'),
-    branchId: ctx.branchId || 'br-main',
-    transactionType: String(body.transactionType || 'Adjustment'),
-    amount: Number(body.amount) || 0,
-    transactionDate: String(body.transactionDate || dateStr),
-    paymentMethod: String(body.paymentMethod || 'Cash'),
-    processedBy: `${ctx.staffName} (${ctx.title})`,
-    processedByRole: ctx.staffRole,
-    status: String(body.status || 'Completed'),
-    notes: body.notes ? String(body.notes) : null,
-    metadata: body.metadata || null,
-    createdAt: now,
-    updatedAt: now,
-  });
-  await audit(ctx, 'TRANSACTION_RECORDED', `Recorded ${body.transactionType} transaction ₱${Number(body.amount) || 0} (${body.referenceNumber || ''})`, 'PAYMENT');
-  res.status(201).json({ success: true });
-});
+// No POST /transactions: register rows are written only by the service that moved the
+// money, with its journal entry (an arbitrary row would show in members' histories).
 
 // ---------------------------------------------------------------------------
 // Documents
@@ -2625,6 +1202,7 @@ branchRouter.get('/notifications', requireBranch([]), async (req, res) => {
     .from(schema.branchNotifications)
     .where(
       and(
+        eq(schema.branchNotifications.audience, 'STAFF'),
         scopeCond(ctx, schema.branchNotifications.branchId, req.query.branchId ? String(req.query.branchId) : undefined) as any,
         or(eq(schema.branchNotifications.targetStaffId, ctx.staffId as string), isNull(schema.branchNotifications.targetStaffId)),
       )
@@ -2638,7 +1216,7 @@ branchRouter.post('/notifications/:id/read', requireBranch([]), async (req, res)
   const ctx = ctxOf(req);
   const db = getDb();
   if (!db) return res.json({ success: true });
-  await db.update(schema.branchNotifications).set({ isRead: true }).where(and(eq(schema.branchNotifications.id, req.params.id), scopeCond(ctx, schema.branchNotifications.branchId) as any));
+  await db.update(schema.branchNotifications).set({ isRead: true }).where(and(eq(schema.branchNotifications.id, req.params.id), eq(schema.branchNotifications.audience, 'STAFF'), scopeCond(ctx, schema.branchNotifications.branchId) as any));
   res.json({ success: true });
 });
 
@@ -2646,7 +1224,7 @@ branchRouter.post('/notifications/read-all', requireBranch([]), async (req, res)
   const ctx = ctxOf(req);
   const db = getDb();
   if (!db) return res.json({ success: true });
-  await db.update(schema.branchNotifications).set({ isRead: true }).where(scopeCond(ctx, schema.branchNotifications.branchId) as any);
+  await db.update(schema.branchNotifications).set({ isRead: true }).where(and(eq(schema.branchNotifications.audience, 'STAFF'), scopeCond(ctx, schema.branchNotifications.branchId) as any));
   res.json({ success: true });
 });
 
@@ -2666,7 +1244,6 @@ branchRouter.get('/reports', requireBranch(['view_transaction_records', 'view_al
   const paymentsArr = data.payments as any[];
   const borrowersArr = data.borrowers as any[];
   const savingsTxArr = data.savingsTransactions as any[];
-  const groupsArr = data.groups as any[];
 
   const inRange = (d: string) => (!from || d >= from) && (!to || d <= to);
   const money = (n: number) => Math.round(n * 100) / 100;
@@ -2689,59 +1266,81 @@ branchRouter.get('/reports', requireBranch(['view_transaction_records', 'view_al
     borrowersArr.forEach((b) => counts.set(String(b.kycStatus), (counts.get(String(b.kycStatus)) || 0) + 1));
     rows = borrowersArr.map((b) => ({ borrowerNumber: b.borrowerNumber, fullName: b.fullName, kycStatus: b.kycStatus, memberStatus: b.memberStatus, phone: b.phone }));
     summary.byStatus = Object.fromEntries(counts);
-  } else if (type === 'portfolio') {
-    const counts = new Map<string, number>();
-    loansArr.forEach((l) => counts.set(String(l.status), (counts.get(String(l.status)) || 0) + 1));
-    rows = loansArr.map((l) => ({
-      loanNumber: l.loanNumber, borrowerName: l.borrowerName, productName: l.productName,
-      principalAmount: l.principalAmount, remainingBalance: l.remainingBalance, status: l.status,
-      nextPaymentDate: l.nextPaymentDate, applicationDate: l.applicationDate, loanOfficerName: l.loanOfficerName,
+  } else if (type === 'portfolio' || type === 'overdue') {
+    // Exact figures from the loan views the member portal uses (src/reports/portfolio.ts).
+    const db = getDb();
+    const branchId = reportBranch(ctx, req);
+    const p = await portfolioSummary(db as unknown as AppDb, { branchId });
+    const loanRows = await (db as unknown as AppDb).select().from(lendingLoans).where(branchId ? eq(lendingLoans.branchId, branchId) : undefined);
+    const views = await loanSummaries(db as unknown as AppDb, loanRows);
+    const today = todayStr();
+    const behind = views.filter((v) => RUNNING_LOAN_STATUSES.includes(v.status) && v.nextDue && v.nextDue.dueDate < today);
+    const list = type === 'overdue' ? behind : views;
+    rows = list.map((v) => ({
+      loanNumber: v.loanNumber, borrowerName: v.borrowerName, productName: v.productName,
+      principalAmount: v.principal, remainingBalance: v.remainingBalance, status: v.status,
+      nextPaymentDate: v.nextDue?.dueDate ?? null, daysBehind: v.nextDue && v.nextDue.dueDate < today ? daysBetween(v.nextDue.dueDate, today) : 0,
+      applicationDate: v.applicationDate,
     }));
-    summary.byStatus = Object.fromEntries(counts);
-    summary.outstanding = money(loansArr.filter((l) => ['Disbursed', 'Active', 'In Arrears'].includes(l.status)).reduce((s, l) => s + l.remainingBalance, 0));
-  } else if (type === 'overdue') {
-    rows = loansArr
-      .filter((l) => l.status === 'In Arrears' || (l.daysInArrears && l.daysInArrears > 0))
-      .map((l) => ({ loanNumber: l.loanNumber, borrowerName: l.borrowerName, remainingBalance: l.remainingBalance, daysInArrears: l.daysInArrears, nextPaymentDate: l.nextPaymentDate, loanOfficerName: l.loanOfficerName }));
-    summary.count = rows.length;
-    summary.outstanding = money(rows.reduce((s, r) => s + r.remainingBalance, 0));
+    if (type === 'portfolio') {
+      const counts = new Map<string, number>();
+      views.forEach((v) => counts.set(v.status, (counts.get(v.status) || 0) + 1));
+      summary.byStatus = Object.fromEntries(counts);
+      summary.outstanding = p.loans.outstanding;
+      summary.running = p.loans.running;
+    } else {
+      summary.count = p.loans.overdue;
+      summary.outstanding = p.loans.overdueOutstanding;
+    }
   } else if (type === 'applications') {
     rows = loansArr
-      .filter((l) => APPLICATION_STATUSES.includes(l.status) && inRange(String(l.applicationDate)))
-      .map((l) => ({ loanNumber: l.loanNumber, borrowerName: l.borrowerName, productName: l.productName, principalAmount: l.principalAmount, termMonths: l.termMonths, applicationDate: l.applicationDate, status: l.status, loanOfficerName: l.loanOfficerName }));
+      .filter((l) => ['Draft', 'Submitted', 'Under Review', 'Approved', 'Rejected', 'Cancelled'].includes(normaliseLoanStatus(l.status)) && inRange(String(l.applicationDate)))
+      .map((l) => ({ loanNumber: l.loanNumber, borrowerName: l.borrowerName, productName: l.productName, principalAmount: l.principalAmount, termMonths: l.termMonths, applicationDate: l.applicationDate, status: normaliseLoanStatus(l.status), loanOfficerName: l.loanOfficerName }));
     summary.count = rows.length;
-    summary.pending = rows.filter((r) => ['Draft', 'Submitted', 'Under Review', 'For Assessment'].includes(r.status)).length;
+    summary.pending = rows.filter((r) => ['Draft', 'Submitted', 'Under Review'].includes(r.status)).length;
   } else if (type === 'repayments' || type === 'collections') {
-    const scoped = paymentsArr.filter((p) => inRange(String(p.paymentDate)));
-    rows = scoped.map((p) => ({ receiptNumber: p.receiptNumber, loanNumber: p.loanNumber, borrowerName: p.borrowerName, amount: p.amount, paymentDate: p.paymentDate, paymentMethod: p.paymentMethod, collectedBy: p.collectedBy }));
-    summary.total = money(scoped.reduce((s, p) => s + p.amount, 0));
-    summary.count = scoped.length;
-    const daily: Record<string, number> = {};
-    scoped.forEach((p) => { daily[String(p.paymentDate)] = money((daily[String(p.paymentDate)] || 0) + p.amount); });
-    summary.daily = daily;
+    // Posted payments only: a reversed payment is not money collected.
+    const db = getDb();
+    const branchId = reportBranch(ctx, req);
+    const posted = (await (db as unknown as AppDb)
+      .select()
+      .from(paymentRows)
+      .where(and(eq(paymentRows.status, 'POSTED'), branchId ? eq(paymentRows.branchId, branchId) : undefined)))
+      .filter((p) => inRange(String(p.paymentDate)));
+    rows = posted.map((p) => ({ receiptNumber: p.receiptNumber, loanNumber: p.loanNumber, borrowerName: p.borrowerName, amount: centsToDecimal(centsFromDb(p.amount)), paymentDate: p.paymentDate, paymentMethod: p.paymentMethod, collectedBy: p.collectedBy }));
+    const sumBy = (key: (p: (typeof posted)[number]) => string) => {
+      const m = new Map<string, number>();
+      posted.forEach((p) => m.set(key(p), (m.get(key(p)) || 0) + centsFromDb(p.amount)));
+      return Object.fromEntries([...m.entries()].sort().map(([k, v]) => [k, centsToDecimal(v)]));
+    };
+    summary.total = centsToDecimal(posted.reduce((t, p) => t + centsFromDb(p.amount), 0));
+    summary.count = posted.length;
+    summary.daily = sumBy((p) => String(p.paymentDate));
     if (type === 'collections') {
-      const weeklyTotals: Record<string, number> = {};
-      scoped.forEach((p) => {
-        const d = new Date(String(p.paymentDate) + 'T00:00:00');
-        const wk = new Date(d); wk.setDate(d.getDate() - d.getDay());
-        const key = wk.toISOString().split('T')[0];
-        weeklyTotals[key] = money((weeklyTotals[key] || 0) + p.amount);
+      summary.weekly = sumBy((p) => {
+        const d = new Date(`${p.paymentDate}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+        return d.toISOString().slice(0, 10);
       });
-      summary.weekly = weeklyTotals;
-      const monthlyTotals: Record<string, number> = {};
-      scoped.forEach((p) => { const key = String(p.paymentDate).slice(0, 7); monthlyTotals[key] = money((monthlyTotals[key] || 0) + p.amount); });
-      summary.monthly = monthlyTotals;
+      summary.monthly = sumBy((p) => String(p.paymentDate).slice(0, 7));
     }
   } else if (type === 'savings') {
-    const scoped = savingsTxArr.filter((t) => inRange(String(t.date)));
-    rows = scoped.map((t) => ({ transactionNumber: t.transactionNumber, memberName: t.memberName, type: t.type, amount: t.amount, balanceAfter: t.balanceAfter, date: t.date, processedBy: t.processedBy }));
-    summary.deposits = money(scoped.filter((t) => t.type === 'Deposit').reduce((s, t) => s + t.amount, 0));
-    summary.withdrawals = money(scoped.filter((t) => t.type === 'Withdrawal').reduce((s, t) => s + t.amount, 0));
-    summary.totalBalances = money(data.savingsAccounts.reduce((s: number, a: any) => s + (a.balance || 0), 0));
+    const scoped = (savingsTxArr as any[]).filter((t) => inRange(String(t.date)));
+    rows = scoped.map((t) => ({ transactionNumber: t.transactionNumber, memberName: t.memberName, type: t.kind, amount: centsToDecimal(centsFromDb(t.amount)), balanceAfter: centsToDecimal(centsFromDb(t.balanceAfter)), date: t.date, processedBy: t.processedBy }));
+    const total = (kind: string) => centsToDecimal(scoped.filter((t) => t.kind === kind).reduce((s: number, t: any) => s + centsFromDb(t.amount), 0));
+    summary.deposits = total('DEPOSIT');
+    summary.withdrawals = total('WITHDRAWAL');
+    summary.interest = total('INTEREST');
+    const db = getDb();
+    summary.totalBalances = (await portfolioSummary(db as unknown as AppDb, { branchId: reportBranch(ctx, req) })).savings.balance;
   } else if (type === 'groups') {
-    rows = groupsArr.map((g) => ({ groupCode: g.groupCode, groupName: g.groupName, centerName: g.centerName, leaderName: g.leaderName, members: Array.isArray(g.members) ? g.members.length : 0, repaymentRate: g.repaymentRate, totalGroupSavings: g.totalGroupSavings, status: g.status }));
+    // Live figures from group_members and the fund ledger (the old cached columns are no longer kept).
+    const db = getDb();
+    const list = db ? await listGroups(db as unknown as AppDb, lendingStaffOf(ctx)) : [];
+    rows = list.map((g) => ({ groupCode: g.groupCode, groupName: g.groupName, centerName: g.centerName, leaderName: g.leaderName ?? '', members: g.memberCount, fundBalance: g.fundBalance, status: g.status, blocked: g.blocked }));
     summary.count = rows.length;
-    summary.repaymentRate = groupsArr.length ? money(groupsArr.reduce((s, g) => s + (g.repaymentRate || 0), 0) / groupsArr.length) : 0;
+    summary.blocked = list.filter((g) => g.blocked).length;
+    summary.fundBalance = centsToDecimal(list.reduce((t, g) => t + centsFromDb(g.fundBalance), 0));
   } else {
     return res.status(400).json({ error: `Unknown report type '${type}'` });
   }

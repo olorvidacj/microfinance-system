@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppButton } from '../../components';
 import { AuthLayout } from './AuthLayout';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
+import { api, messageOf } from '../../services/api';
 import { AuthStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'VerifyOtp'>;
@@ -33,8 +33,8 @@ export const VerifyOtpScreen: React.FC<Props> = ({ navigation, route }) => {
         return;
       }
       navigation.replace('ResetPassword', { email });
-    } catch (err: any) {
-      setError(err?.message || 'Verification failed. Please try again.');
+    } catch (err) {
+      setError(messageOf(err, 'Verification failed. Please try again.'));
     } finally {
       setLoading(false);
     }

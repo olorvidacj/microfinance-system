@@ -1,183 +1,188 @@
-import React, { useState } from 'react';
-import { Banknote, CheckCircle2, AlertCircle, Calendar, Receipt, CreditCard, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, ShieldCheck } from 'lucide-react';
+import {
+  DISBURSEMENT_METHODS,
+  DISBURSEMENT_METHOD_LABELS,
+  FREQUENCY_LABELS,
+  validateDisbursement,
+  type DisbursementErrors,
+  type ReceiptDocument,
+} from '../../../shared/lending';
+import type { LoanDetailView } from '../../lending/service';
 import { Modal } from '../../portal/components/ui/Modal';
 import { Button } from '../../portal/components/ui/Button';
 import { Field, Input, Select, Textarea } from '../../portal/components/ui/Field';
+import { LoadingState, ErrorState } from '../../portal/components/ui/States';
 import { useToast } from '../../portal/components/ui/Toast';
+import { ReceiptModal } from '../../components/ReceiptModal';
+import { manilaToday, peso } from '../../components/lending';
 import { loansService } from '../services';
-import { BranchLoan } from '../types';
-import { formatCurrency } from '../../utils/loanMath';
+import { BranchApiError } from '../services/api';
 
 interface LoanDisbursementModalProps {
-  loan: BranchLoan | null;
+  /** The approved loan to release, or null when closed. */
+  loanId: string | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export const LoanDisbursementModal: React.FC<LoanDisbursementModalProps> = ({
-  loan,
-  onClose,
-  onSuccess,
-}) => {
+const newKey = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+export const LoanDisbursementModal: React.FC<LoanDisbursementModalProps> = ({ loanId, onClose, onSuccess }) => {
   const toast = useToast();
-  const [loading, setLoading] = useState(false);
-  const [method, setMethod] = useState('Cash');
-  const [account, setAccount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [voucher, setVoucher] = useState(`DISB-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`);
-  const [deductFee, setDeductFee] = useState(true);
+  const [loan, setLoan] = useState<LoanDetailView | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [method, setMethod] = useState('CASH');
+  const [referenceNumber, setReferenceNumber] = useState('');
+  const [destinationAccount, setDestinationAccount] = useState('');
+  const [date, setDate] = useState(manilaToday());
   const [notes, setNotes] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [serverErrors, setServerErrors] = useState<DisbursementErrors>({});
+  const [saving, setSaving] = useState(false);
+  const [receipt, setReceipt] = useState<ReceiptDocument | null>(null);
+  // One key per opened form: retries and double clicks reuse it, so funds are released once.
+  const [idempotencyKey, setIdempotencyKey] = useState(newKey);
 
-  if (!loan) return null;
+  useEffect(() => {
+    if (!loanId) return;
+    setLoan(null);
+    setLoadError('');
+    setMethod('CASH');
+    setReferenceNumber('');
+    setDestinationAccount('');
+    setDate(manilaToday());
+    setNotes('');
+    setTouched(false);
+    setServerErrors({});
+    setIdempotencyKey(newKey());
+    loansService
+      .get(loanId)
+      .then((d) => setLoan(d.view))
+      .catch((err) => setLoadError(err?.message || 'The loan could not be loaded.'));
+  }, [loanId]);
 
-  const principal = Number(loan.principalAmount) || 0;
-  const processingFee = Number(loan.processingFee) || Math.round(principal * 0.02);
-  const netProceeds = deductFee ? Math.max(0, principal - processingFee) : principal;
+  const today = manilaToday();
+  const validation = useMemo(
+    () => validateDisbursement({ method, referenceNumber, destinationAccount, disbursementDate: date, notes }, today),
+    [method, referenceNumber, destinationAccount, date, notes, today],
+  );
+  const errors: DisbursementErrors = { ...(touched ? validation.errors : {}), ...serverErrors };
 
-  const handleDisburse = async () => {
-    if (!voucher.trim()) {
-      toast.error('Voucher / Reference number is required.');
-      return;
-    }
-    setLoading(true);
+  if (!loanId && !receipt) return null;
+
+  const release = async () => {
+    setTouched(true);
+    setServerErrors({});
+    if (!validation.ok || !loan) return;
+    setSaving(true);
     try {
-      await loansService.disburse(loan.id, {
-        disbursementMethod: method,
-        disbursementAccount: account.trim() || undefined,
-        disbursementDate: date,
-        voucherNumber: voucher.trim(),
-        deductProcessingFee: deductFee,
-        notes: notes.trim() || undefined,
-      });
-      toast.success(`Loan ${loan.loanNumber} successfully disbursed! Financial ledger updated.`);
+      const result = await loansService.disburse(
+        loan.id,
+        { method, referenceNumber: referenceNumber.trim() || undefined, destinationAccount: destinationAccount.trim() || undefined, disbursementDate: date, notes: notes.trim() || undefined },
+        idempotencyKey,
+      );
+      toast.success(`${loan.loanNumber} released. Receipt ${result.receipt.receiptNumber}.`);
+      setReceipt(result.receipt);
       onSuccess();
       onClose();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to disburse loan.');
+    } catch (err) {
+      if (err instanceof BranchApiError) setServerErrors(err.fieldErrors as DisbursementErrors);
+      toast.error(err instanceof Error ? err.message : 'The loan could not be released.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  const nonCash = method !== 'CASH';
+
   return (
-    <Modal
-      open={!!loan}
-      onClose={onClose}
-      title="Disburse Loan Funds"
-      size="lg"
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button variant="brand" onClick={handleDisburse} loading={loading}>
-            <CheckCircle2 className="h-4 w-4" /> Confirm & Post Disbursement
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-5">
-        {/* Loan & Client Details */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-          <div className="flex items-start justify-between">
-            <div>
+    <>
+      <Modal
+        open={!!loanId}
+        onClose={onClose}
+        title="Release loan funds"
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="brand" onClick={release} loading={saving} disabled={!loan || loan.status !== 'Approved'}>
+              <CheckCircle2 className="h-4 w-4" /> Release {loan?.netProceeds ? peso(loan.netProceeds) : ''}
+            </Button>
+          </>
+        }
+      >
+        {loadError ? (
+          <ErrorState message={loadError} />
+        ) : !loan ? (
+          <LoadingState label="Loading loan…" />
+        ) : (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Borrower</p>
               <h4 className="text-base font-bold text-slate-900">{loan.borrowerName}</h4>
               <p className="text-xs text-slate-500">
-                Loan #{loan.loanNumber} · {loan.productName}
+                {loan.loanNumber} · {loan.productName} · {loan.termMonths} months, {FREQUENCY_LABELS[loan.frequency as keyof typeof FREQUENCY_LABELS] ?? loan.frequency} payments
               </p>
+              {loan.status !== 'Approved' && <p className="mt-2 text-sm font-semibold text-rose-700">This loan is {loan.status.toLowerCase()}; only approved loans can be released.</p>}
+              <table className="mt-4 w-full border-t border-slate-200 text-sm">
+                <tbody className="tabular-nums">
+                  <tr>
+                    <td className="py-1.5 text-slate-500">Approved principal</td>
+                    <td className="py-1.5 text-right font-semibold text-slate-800">{peso(loan.principal)}</td>
+                  </tr>
+                  {loan.fees.map((f) => (
+                    <tr key={f.code}>
+                      <td className="py-1.5 text-slate-500">Less {f.label.toLowerCase()}</td>
+                      <td className="py-1.5 text-right text-rose-700">- {peso(f.amount)}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-slate-200">
+                    <td className="py-2 font-semibold text-slate-900">Net amount to release</td>
+                    <td className="py-2 text-right text-lg font-extrabold text-emerald-700">{peso(loan.netProceeds)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-              Approved
-            </span>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Method" required error={errors.method}>
+                <Select id="disb-method" value={method} onChange={(e) => setMethod(e.target.value)}>
+                  {DISBURSEMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {DISBURSEMENT_METHOD_LABELS[m]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Release date" required error={errors.disbursementDate} hint="The schedule is counted from this date">
+                <Input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
+              </Field>
+              <Field label="Transfer reference number" required={nonCash} error={errors.referenceNumber} hint={nonCash ? 'From the bank or e-wallet confirmation' : 'Optional for cash; the receipt number identifies the release'}>
+                <Input id="disb-reference" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} placeholder={nonCash ? 'e.g. GC-1234567' : ''} />
+              </Field>
+              <Field label={method === 'E_WALLET' ? 'E-wallet number' : 'Bank account'} required={nonCash} error={errors.destinationAccount}>
+                <Input id="disb-destination" value={destinationAccount} disabled={!nonCash} onChange={(e) => setDestinationAccount(e.target.value)} placeholder={nonCash ? (method === 'E_WALLET' ? '0917 123 4567' : 'Account number') : 'Not needed for cash'} />
+              </Field>
+            </div>
+
+            <Field label="Notes" error={errors.notes}>
+              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </Field>
+
+            <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+              <span>
+                Releasing stores the installment schedule from {date}, posts the ledger entry (loans receivable against {nonCash ? 'cash in bank' : 'cash on hand'} and fee income),
+                issues the release receipt and notifies the member, all at once. Pressing the button twice cannot release twice.
+              </span>
+            </div>
           </div>
-
-          <div className="mt-4 grid grid-cols-3 gap-3 border-t border-slate-200/80 pt-3 text-xs">
-            <div>
-              <p className="text-slate-400 font-medium">Approved Principal</p>
-              <p className="text-sm font-bold text-slate-800">{formatCurrency(principal)}</p>
-            </div>
-            <div>
-              <p className="text-slate-400 font-medium">Processing Fee</p>
-              <p className="text-sm font-bold text-slate-800">{formatCurrency(processingFee)}</p>
-            </div>
-            <div>
-              <p className="text-slate-400 font-medium">Net Release Amount</p>
-              <p className="text-base font-extrabold text-emerald-700">{formatCurrency(netProceeds)}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Disbursement Parameters Form */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Disbursement Method" required>
-            <Select value={method} onChange={(e) => setMethod(e.target.value)}>
-              <option value="Cash">Cash (Teller Vault Release)</option>
-              <option value="Bank Transfer">Bank Transfer (Direct Deposit)</option>
-              <option value="GCash / E-Wallet">GCash / E-Wallet</option>
-              <option value="Check">Check (Manager's / Crossed Check)</option>
-            </Select>
-          </Field>
-
-          <Field label="Disbursement Date" required>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-
-          <Field label="Voucher / Reference Number" required hint="Unique disbursement voucher code">
-            <Input
-              placeholder="e.g. DISB-2026-00101"
-              value={voucher}
-              onChange={(e) => setVoucher(e.target.value)}
-            />
-          </Field>
-
-          <Field
-            label={method === 'Cash' ? 'Cash Release Note' : 'Account / Reference Details'}
-            hint={method === 'Cash' ? 'Counter / Teller window' : 'Account number or mobile number'}
-          >
-            <Input
-              placeholder={method === 'Cash' ? 'Main teller release' : 'Account / E-wallet number'}
-              value={account}
-              onChange={(e) => setAccount(e.target.value)}
-            />
-          </Field>
-        </div>
-
-        {/* Processing Fee Deduction Toggle */}
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={deductFee}
-            onChange={(e) => setDeductFee(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-          />
-          <div>
-            <span className="font-semibold text-slate-900">Deduct processing fee from gross release</span>
-            <p className="text-slate-500">
-              {deductFee
-                ? `Net cash out: ${formatCurrency(netProceeds)} (Principal ${formatCurrency(principal)} - Fee ${formatCurrency(processingFee)})`
-                : `Gross cash out: ${formatCurrency(principal)} (Member pays fee separately)`}
-            </p>
-          </div>
-        </label>
-
-        <Field label="Disbursement Remarks / Officer Notes">
-          <Textarea
-            rows={2}
-            placeholder="Optional remarks regarding the disbursement verification..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </Field>
-
-        <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-          <span>
-            Confirming this disbursement will immediately transition the loan to <strong>Active</strong>, record a real
-            atomic financial transaction in the ledger, recalculate amortization dates from {date}, and notify the borrower.
-          </span>
-        </div>
-      </div>
-    </Modal>
+        )}
+      </Modal>
+      <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
+    </>
   );
 };

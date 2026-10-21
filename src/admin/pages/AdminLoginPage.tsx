@@ -26,7 +26,6 @@ export const AdminLoginPage: React.FC = () => {
     setLoading(true);
     try {
       await login(email.trim(), password);
-      sessionStorage.setItem('HOSCOMCO_admin_session', '1');
       navigate('/admin');
     } catch (err: any) {
       setError(err?.message || 'Invalid email/username or password.');

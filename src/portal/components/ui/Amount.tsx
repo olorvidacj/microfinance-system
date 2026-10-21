@@ -2,7 +2,8 @@ import React from 'react';
 import { formatCurrency } from '../../../utils/loanMath';
 
 export const Amount: React.FC<{
-  value: number | undefined | null;
+  /** Decimal pesos from the API ("1234.50") or a peso number. */
+  value: number | string | undefined | null;
   className?: string;
   positive?: boolean;
   negative?: boolean;

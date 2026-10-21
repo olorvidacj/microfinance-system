@@ -1,154 +1,122 @@
-import React, { useCallback, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppButton, AppCard, AppModal, AppTextInput, LoadingView, ScreenHeader } from '../../components';
+import { AppButton, AppCard, AppModal, AppTextInput, Badge, ErrorView, LoadingView, ScreenHeader } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
-import { LoanItem, PaymentMethod, PaymentReceipt } from '../../types';
-import { formatCurrency } from '../../utils/format';
-import { validators } from '../../utils/validation';
+import { pickImage, type PickedImage } from '../../utils/pickImage';
+import { api, fieldErrorsOf, messageOf } from '../../services/api';
+import type { LoanSummaryView, ProofView } from '../../shared/client';
+import { manilaToday } from '../../shared/client';
+import { PAYMENT_METHOD_LABELS, validatePayment } from '../../shared/lending';
+import { formatCurrency, formatDate } from '../../utils/format';
 import { LoansStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<LoansStackParamList, 'Payments'>;
 
-const METHODS: { key: PaymentMethod; icon: keyof typeof Ionicons.glyphMap; hint: string }[] = [
-  { key: 'GCASH', icon: 'phone-portrait-outline', hint: 'GCash transfer or cash-in' },
-  { key: 'MAYA', icon: 'wallet-outline', hint: 'Maya transfer' },
-  { key: 'BANK_TRANSFER', icon: 'business-outline', hint: 'Bank transfer (InstaPay/PESONet)' },
-  { key: 'OVER_THE_COUNTER', icon: 'storefront-outline', hint: 'Pay at any HOSCOMCO branch' },
+// Cash is paid at the branch counter; a proof is only for a transfer.
+const METHODS: { key: 'BANK_TRANSFER' | 'E_WALLET'; icon: keyof typeof Ionicons.glyphMap; hint: string }[] = [
+  { key: 'E_WALLET', icon: 'phone-portrait-outline', hint: 'GCash, Maya or another e-wallet transfer' },
+  { key: 'BANK_TRANSFER', icon: 'business-outline', hint: 'Bank transfer (InstaPay or PESONet)' },
 ];
+const PROOF_LABEL: Record<string, string> = { PENDING_REVIEW: 'Waiting for verification', UNDER_REVIEW: 'Being checked', VERIFIED: 'Verified and posted', REJECTED: 'Not accepted' };
 
 export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
   const selectedLoanId = route.params?.loanId;
-
-  const [loans, setLoans] = useState<LoanItem[]>([]);
+  const [loans, setLoans] = useState<LoanSummaryView[]>([]);
+  const [proofs, setProofs] = useState<Omit<ProofView, 'storageRef'>[]>([]);
+  const [loadError, setLoadError] = useState('');
   const [loaded, setLoaded] = useState(false);
-  const [loan, setLoan] = useState<LoanItem | null>(null);
+  const [loan, setLoan] = useState<LoanSummaryView | null>(null);
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<PaymentMethod>('GCASH');
+  const [method, setMethod] = useState<'BANK_TRANSFER' | 'E_WALLET'>('E_WALLET');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [notes, setNotes] = useState('');
-  const [proof, setProof] = useState<{ uri: string; name: string; mime: string } | null>(null);
+  const [proof, setProof] = useState<PickedImage | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [loanPickerVisible, setLoanPickerVisible] = useState(false);
 
-  useCallback(async () => {}, []);
-  const loadLoans = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoadError('');
     try {
-      const res = await api.getLoans();
-      const active = res.activeLoans;
-      setLoans(active);
-      if (selectedLoanId) {
-        const found = active.find((l) => l.id === selectedLoanId);
-        if (found) setLoan(found);
+      const [res, sent] = await Promise.all([api.getLoans(), api.getPaymentProofs()]);
+      setLoans(res.running);
+      setProofs(sent);
+      const preset = res.running.find((l) => l.id === selectedLoanId) ?? (res.running.length === 1 ? res.running[0] : null);
+      if (preset) {
+        setLoan(preset);
+        if (preset.nextDue) setAmount(preset.nextDue.amount);
       }
-      if (active.length === 1) setLoan(active[0]);
+    } catch (err) {
+      setLoadError(messageOf(err, 'Your loans could not be loaded.'));
     } finally {
       setLoaded(true);
     }
   }, [selectedLoanId]);
 
-  React.useEffect(() => {
-    loadLoans();
-  }, [loadLoans]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const pickProof = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.7,
-    });
-    if (res.canceled) return;
-    setErrors((e) => ({ ...e, proof: '' }));
-    setProof({
-      uri: res.assets[0].uri,
-      name: res.assets[0].fileName || `proof-${Date.now()}.jpg`,
-      mime: res.assets[0].mimeType || 'image/jpeg',
-    });
+    try {
+      const picked = await pickImage('library');
+      if (!picked) return;
+      setErrors((e) => ({ ...e, fileBase64: '' }));
+      setProof(picked);
+    } catch (err) {
+      setErrors((e) => ({ ...e, fileBase64: messageOf(err, 'The photo could not be attached.') }));
+    }
   };
 
+  // The same rules the server applies (shared/lending validatePayment).
   const validate = (): boolean => {
-    const e: Record<string, string> = {};
-    if (!loan) e.loan = 'Select the loan you are paying for.';
-    const amt = Number(amount);
-    if (!amount || isNaN(amt) || amt <= 0) e.amount = 'Enter a valid payment amount.';
-    if (!referenceNumber.trim()) e.referenceNumber = 'Enter the reference number of your payment.';
-    // The backend rejects a submission with no receipt, so require it here rather
-    // than letting the member fill in the form and hit an error at the end.
-    if (!proof) e.proof = 'Attach a photo of your payment receipt.';
+    const v = validatePayment({ amount, method, referenceNumber, paymentDate: manilaToday(), notes }, manilaToday(), 30);
+    const e: Record<string, string> = { ...v.errors };
+    if (!loan) e.loan = 'Choose the loan you paid.';
+    if (!proof) e.fileBase64 = 'Attach a photo of the transfer receipt.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const submit = async () => {
-    if (!loan) return;
+    if (!loan || !proof) return;
     setSubmitting(true);
     try {
-      // Send the receipt bytes, not the local file:// uri. A device-local path
-      // is meaningless to the server, so the proof has to be encoded first.
-      let receiptProofBase64: string | undefined;
-      let receiptProofMime: string | undefined;
-      if (proof?.uri) {
-        const raw = await FileSystem.readAsStringAsync(proof.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        receiptProofMime = proof.mime || 'image/jpeg';
-        receiptProofBase64 = `data:${receiptProofMime};base64,${raw}`;
-      }
-      const res = await api.submitPaymentProof({
+      const sent = await api.submitPaymentProof({
         loanId: loan.id,
-        amount: Number(amount),
-        paymentMethod: method,
+        amount,
+        method,
         referenceNumber: referenceNumber.trim(),
-        receiptProofBase64,
-        receiptProofName: proof?.name,
-        receiptProofMime,
-        paymentDate: new Date().toISOString(),
-        notes: notes || undefined,
+        paymentDate: manilaToday(),
+        notes: notes.trim() || undefined,
+        fileBase64: proof.dataUrl,
+        fileName: proof.fileName,
       });
-      const receipt: PaymentReceipt = {
-        id: `rcpt-${Date.now()}`,
-        referenceNumber: referenceNumber.trim(),
-        amount: Number(amount),
-        paymentDate: new Date().toISOString(),
-        loanId: loan.id,
-        loanNumber: loan.loanNumber,
-        loanProduct: loan.productName,
-        paymentMethod: method,
-        status: 'PENDING_TELLER_VERIFICATION',
-        remainingBalance: Math.max(0, loan.remainingBalance - Number(amount)),
-        notes: res.message,
-      };
       setConfirmVisible(false);
-      navigation.replace('PaymentReceipt', { receipt });
-    } catch (err: any) {
-      setErrors({ submit: err?.message || 'Unable to submit payment proof. Please try again.' });
+      setProofs((p) => [sent, ...p]);
+      setAmount('');
+      setReferenceNumber('');
+      setNotes('');
+      setProof(null);
+      setErrors({ done: `Sent. ${formatCurrency(sent.amount)} for ${loan.loanNumber} is waiting for the branch to verify it; your balance changes once it is posted.` });
+    } catch (err) {
+      setConfirmVisible(false);
+      setErrors({ ...fieldErrorsOf(err), submit: messageOf(err, 'Your proof could not be sent. Please try again.') });
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Make a Payment" /><LoadingView /></SafeAreaView>;
+  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Send payment proof" /><LoadingView text="Loading your loans…" /></SafeAreaView>;
+  if (loadError) return <SafeAreaView style={styles.safe}><ScreenHeader title="Send payment proof" /><ErrorView message={loadError} onRetry={load} /></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title="Make a Payment" subtitle="Submit your payment for verification" />
+      <ScreenHeader title="Send payment proof" subtitle="For a bank or e-wallet transfer you already made" />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {errors.submit ? (
@@ -157,116 +125,101 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
               <Text style={styles.submitErrorText}>{errors.submit}</Text>
             </View>
           ) : null}
+          {errors.done ? (
+            <View style={[styles.submitError, { backgroundColor: colors.greenSoft }]}>
+              <Ionicons name="checkmark-circle" size={15} color={colors.green} />
+              <Text style={[styles.submitErrorText, { color: colors.greenDark }]}>{errors.done}</Text>
+            </View>
+          ) : null}
 
-          <Text style={styles.sectionLabel}>1. Select Loan</Text>
-          <TouchableOpacity onPress={() => setLoanPickerVisible(true)} activeOpacity={0.85}>
+          <Text style={styles.sectionLabel}>1. Loan</Text>
+          <TouchableOpacity onPress={() => setLoanPickerVisible(true)} activeOpacity={0.85} accessibilityLabel="Choose loan">
             <AppCard style={styles.fieldCard}>
               <View style={styles.flex1}>
                 <Text style={styles.fieldLabel}>Loan</Text>
-                <Text style={[styles.fieldValue, !loan && styles.fieldPlaceholder]}>
-                  {loan ? `${loan.productName} · ${loan.loanNumber}` : 'Tap to choose a loan'}
-                </Text>
-                {loan ? <Text style={styles.fieldSub}>{loan.termMonths} mo · Rate {loan.interestRate}%/mo</Text> : null}
+                <Text style={[styles.fieldValue, !loan && styles.fieldPlaceholder]}>{loan ? `${loan.productName} · ${loan.loanNumber}` : 'Tap to choose a loan'}</Text>
+                {loan?.nextDue ? <Text style={styles.fieldSub}>Due {formatDate(loan.nextDue.dueDate)}: {formatCurrency(loan.nextDue.amount)}</Text> : null}
               </View>
               <Ionicons name="chevron-down" size={18} color={colors.textFaint} />
             </AppCard>
           </TouchableOpacity>
           {errors.loan ? <Text style={styles.fieldError}>{errors.loan}</Text> : null}
 
-          <Text style={styles.sectionLabel}>2. Payment Method</Text>
+          <Text style={styles.sectionLabel}>2. How you paid</Text>
           <View style={styles.methodRow}>
             {METHODS.map((m) => {
               const active = method === m.key;
               return (
-                <TouchableOpacity key={m.key} style={[styles.methodChip, active && styles.methodChipActive]} onPress={() => setMethod(m.key)} activeOpacity={0.85}>
+                <TouchableOpacity key={m.key} style={[styles.methodChip, active && styles.methodChipActive]} onPress={() => setMethod(m.key)} activeOpacity={0.85} accessibilityLabel={PAYMENT_METHOD_LABELS[m.key]}>
                   <Ionicons name={m.icon} size={22} color={active ? colors.white : colors.textMuted} />
-                  <Text style={[styles.methodText, active && styles.methodTextActive]}>{m.key.replace('_', ' ')}</Text>
+                  <Text style={[styles.methodText, active && styles.methodTextActive]}>{PAYMENT_METHOD_LABELS[m.key]}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
-          <Text style={styles.methodHint}>
-            {METHODS.find((m) => m.key === method)?.hint}
-          </Text>
+          <Text style={styles.methodHint}>{METHODS.find((m) => m.key === method)?.hint}. Cash is paid at the branch counter.</Text>
+          {errors.method ? <Text style={styles.fieldError}>{errors.method}</Text> : null}
 
-          <Text style={styles.sectionLabel}>3. Amount & Reference</Text>
+          <Text style={styles.sectionLabel}>3. Amount and reference</Text>
           <AppTextInput
-            label="Payment Amount (₱)"
-            placeholder="e.g. 1500"
+            label="Amount you sent (₱)"
+            placeholder="0.00"
             value={amount}
             onChangeText={(v) => { setAmount(v); setErrors((e) => ({ ...e, amount: '' })); }}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
             error={errors.amount}
-            hint={loan ? `Suggested: ${formatCurrency(loan.monthlyInstallment)} monthly installment` : undefined}
           />
           <AppTextInput
-            label="Reference Number *"
-            placeholder="e.g. GCash Ref 1234 5678 9012"
+            label="Transfer reference"
+            placeholder="e.g. 1234 5678 9012"
             value={referenceNumber}
             onChangeText={(v) => { setReferenceNumber(v); setErrors((e) => ({ ...e, referenceNumber: '' })); }}
             error={errors.referenceNumber}
-            hint="Use the transaction reference shown by your payment channel."
+            hint="The reference shown by your bank or e-wallet."
           />
 
-          <Text style={styles.sectionLabel}>4. Payment Proof (Required)</Text>
-          <TouchableOpacity onPress={pickProof} activeOpacity={0.85}>
+          <Text style={styles.sectionLabel}>4. Receipt</Text>
+          <TouchableOpacity onPress={pickProof} activeOpacity={0.85} accessibilityLabel="Attach receipt">
             <AppCard style={{ ...styles.fieldCard, ...styles.uploadCard }}>
-              {proof ? (
-                <View style={styles.flex1}>
-                  <View style={styles.proofCheckRow}>
-                    <Ionicons name="checkmark-circle" size={20} color={colors.green} />
-                    <Text style={styles.proofName} numberOfLines={1}>{proof.name}</Text>
-                  </View>
-                  <Text style={styles.fieldSub}>Receipt photo attached. Tap to replace.</Text>
+              <View style={styles.flex1}>
+                <View style={styles.proofCheckRow}>
+                  <Ionicons name={proof ? 'checkmark-circle' : 'cloud-upload-outline'} size={20} color={proof ? colors.green : colors.primary} />
+                  <Text style={styles.proofName} numberOfLines={1}>{proof ? proof.fileName : 'Attach a photo or screenshot of the transfer'}</Text>
                 </View>
-              ) : (
-                <View style={styles.flex1}>
-                  <View style={styles.proofCheckRow}>
-                    <Ionicons name="cloud-upload-outline" size={20} color={colors.primary} />
-                    <Text style={styles.proofName}>Attach a photo of the payment proof</Text>
-                  </View>
-                  <Text style={styles.fieldSub}>Speeds up verification by our tellers.</Text>
-                </View>
-              )}
+                <Text style={styles.fieldSub}>{proof ? 'Tap to replace.' : 'JPEG, PNG or WebP, up to 10 MB.'}</Text>
+              </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
             </AppCard>
           </TouchableOpacity>
+          {errors.fileBase64 ? <Text style={styles.fieldError}>{errors.fileBase64}</Text> : null}
 
-          <AppTextInput
-            label="Notes (Optional)"
-            placeholder="Any remarks for the teller"
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={2}
-          />
+          <AppTextInput label="Notes (optional)" placeholder="Anything the teller should know" value={notes} onChangeText={setNotes} multiline numberOfLines={2} />
 
           <View style={styles.actions}>
-            <AppButton
-              title="Continue"
-              onPress={() => {
-                if (!validate()) return;
-                setConfirmVisible(true);
-              }}
-              size="lg"
-              icon={<Ionicons name="arrow-forward" size={18} color={colors.white} />}
-            />
+            <AppButton title="Continue" onPress={() => validate() && setConfirmVisible(true)} size="lg" icon={<Ionicons name="arrow-forward" size={18} color={colors.white} />} />
           </View>
 
-          <Text style={styles.secureNote}>
-            <Ionicons name="lock-closed" size={12} color={colors.green} /> Your payment details are encrypted. Verified payments update your loan balance within 24 hours.
-          </Text>
+          {proofs.length ? (
+            <>
+              <Text style={styles.sectionLabel}>Proofs you sent</Text>
+              {proofs.slice(0, 10).map((p) => (
+                <AppCard key={p.id} style={styles.fieldCard}>
+                  <View style={styles.flex1}>
+                    <Text style={styles.fieldValue}>{formatCurrency(p.amount)} · {p.loanNumber}</Text>
+                    <Text style={styles.fieldSub}>{formatDate(p.paymentDate)} · {PAYMENT_METHOD_LABELS[p.method as 'BANK_TRANSFER'] ?? p.method} · {p.referenceNumber}</Text>
+                    {p.rejectionReason ? <Text style={styles.fieldError}>{p.rejectionReason}</Text> : null}
+                  </View>
+                  <Badge status={PROOF_LABEL[p.status] ?? p.status} />
+                </AppCard>
+              ))}
+            </>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <AppModal
-        visible={loanPickerVisible}
-        onClose={() => setLoanPickerVisible(false)}
-        title="Select Loan"
-        subtitle="Which loan are you paying?"
-      >
+      <AppModal visible={loanPickerVisible} onClose={() => setLoanPickerVisible(false)} title="Choose loan" subtitle="Which loan did you pay?">
         {loans.length === 0 ? (
-          <Text style={styles.noLoans}>You have no active loans to pay right now.</Text>
+          <Text style={styles.noLoans}>You have no running loans.</Text>
         ) : (
           loans.map((l) => {
             const active = loan?.id === l.id;
@@ -274,7 +227,12 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
               <TouchableOpacity
                 key={l.id}
                 style={[styles.loanOption, active && styles.loanOptionActive]}
-                onPress={() => { setLoan(l); setLoanPickerVisible(false); setErrors((e) => ({ ...e, loan: '' })); }}
+                onPress={() => {
+                  setLoan(l);
+                  if (l.nextDue && !amount) setAmount(l.nextDue.amount);
+                  setLoanPickerVisible(false);
+                  setErrors((e) => ({ ...e, loan: '' }));
+                }}
               >
                 <View style={styles.flex1}>
                   <Text style={styles.loanOptionName}>{l.productName}</Text>
@@ -290,12 +248,12 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
       <AppModal
         visible={confirmVisible}
         onClose={() => setConfirmVisible(false)}
-        title="Confirm Payment Submission"
-        subtitle="Your payment will be verified by a teller before it is posted."
+        title="Send this proof?"
+        subtitle="The branch checks it against their records before the payment is posted."
         icon="cash-outline"
         iconColor={colors.green}
         iconBg={colors.greenSoft}
-        confirmText="Submit for Verification"
+        confirmText="Send"
         onConfirm={submit}
         confirmLoading={submitting}
       >
@@ -305,21 +263,16 @@ export const PaymentsScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
         <View style={styles.confirmLine}>
           <Text style={styles.confirmKey}>Amount</Text>
-          <Text style={styles.confirmValue}>{formatCurrency(Number(amount))}</Text>
+          <Text style={styles.confirmValue}>{formatCurrency(amount)}</Text>
         </View>
         <View style={styles.confirmLine}>
           <Text style={styles.confirmKey}>Method</Text>
-          <Text style={styles.confirmVal}>{method.replace('_', ' ')}</Text>
+          <Text style={styles.confirmVal}>{PAYMENT_METHOD_LABELS[method]}</Text>
         </View>
         <View style={styles.confirmLine}>
           <Text style={styles.confirmKey}>Reference</Text>
           <Text style={styles.confirmVal}>{referenceNumber}</Text>
         </View>
-        {!proof ? (
-          <Text style={styles.confirmWarn}>
-            <Ionicons name="alert-circle" size={12} color={colors.danger} /> A photo of your receipt is required before this payment can be submitted.
-          </Text>
-        ) : null}
       </AppModal>
     </SafeAreaView>
   );

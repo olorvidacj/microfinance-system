@@ -9,7 +9,9 @@ export interface BrandProps {
   showStatusDot?: boolean;
   collapsed?: boolean;
   className?: string;
-  onLogoClick?: () => void;
+  /** Keep the text mounted and fade it with `collapsed` instead of unmounting it. */
+  fadeLabel?: boolean;
+  onLogoClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 export const Brand: React.FC<BrandProps> = ({
@@ -20,9 +22,14 @@ export const Brand: React.FC<BrandProps> = ({
   showStatusDot = false,
   collapsed = false,
   className = '',
+  fadeLabel = false,
   onLogoClick,
 }) => (
-  <div className={`flex items-center gap-3 overflow-hidden ${collapsed ? 'justify-center' : ''} ${className}`}>
+  <div
+    className={`flex items-center overflow-hidden ${fadeLabel ? '' : 'gap-3'} ${
+      collapsed && !fadeLabel ? 'justify-center' : ''
+    } ${className}`}
+  >
     <button
       type="button"
       onClick={onLogoClick}
@@ -40,8 +47,16 @@ export const Brand: React.FC<BrandProps> = ({
       )}
     </button>
 
-    {!collapsed && (
-      <div className="min-w-0">
+    {(!collapsed || fadeLabel) && (
+      <div
+        className={
+          fadeLabel
+            ? `whitespace-nowrap overflow-hidden transition-all duration-300 ${
+                collapsed ? 'opacity-0 w-0' : 'opacity-100 ml-3'
+              }`
+            : 'min-w-0'
+        }
+      >
         <div className="flex items-center gap-1.5">
           <span className="truncate text-sm font-bold leading-tight tracking-tight text-white">{name}</span>
           {tag && (

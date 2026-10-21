@@ -1,224 +1,209 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Banknote, CheckCircle2, Crown, MapPin, ReceiptText, Users } from 'lucide-react';
-import { groupService } from '../services/groups';
-import { ClientGroup } from '../types';
-import { formatCurrency, formatDate } from '../../utils/loanMath';
-import {
-  Amount,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  CardTitle,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  ProgressBar,
-  StatusBadge,
-  Table,
-  Td,
-  Tr,
-} from '../components/ui';
+import React, { useCallback, useEffect, useState } from 'react';
+import { CalendarCheck, Crown, HandCoins, ShieldAlert, Users } from 'lucide-react';
+import { GROUP_ROLE_LABELS, GROUP_STATUS_LABELS, MEETING_FREQUENCY_LABELS, centsFromDb, centsToDecimal, type GroupRole, type MeetingFrequency } from '../../../shared/lending';
+import { groupService, type MyGroup } from '../services/groups';
+import { Button, Card, CardBody, CardHeader, CardTitle, EmptyState, ErrorState, Field, Input, LoadingState, Modal, StatusBadge } from '../components/ui';
+import { useToast } from '../components/ui/Toast';
+import { peso } from '../../components/lending';
+import { formatDate } from '../../utils/loanMath';
 
 const GroupsPage: React.FC = () => {
-  const [group, setGroup] = useState<ClientGroup | null>(null);
+  const toast = useToast();
+  const [group, setGroup] = useState<MyGroup | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [declining, setDeclining] = useState<{ id: string; loanNumber: string } | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const g = await groupService.myGroup();
-      setGroup(g);
-    } catch (err: any) {
-      setError(err.message || 'Unable to load your group.');
+      setGroup(await groupService.myGroup());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load your group.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
+
+  const consent = async (loanId: string) => {
+    try {
+      setGroup(await groupService.consent(loanId, 'CONSENT'));
+      toast.success('Thank you. Your consent is recorded.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Your consent could not be recorded.');
+    }
+  };
 
   if (loading) return <LoadingState label="Loading your group…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
-
-  if (!group || !group.id || !group.name) {
+  if (!group) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Group Lending</h1>
-          <p className="text-sm text-slate-500">Solidarity circles and mutual guarantee loans.</p>
-        </div>
-        <Card>
-          <EmptyState
-            icon={<Users className="h-6 w-6" />}
-            title="You are not in a solidarity group yet"
-            description="Group lending lets you and your peers guarantee each other for larger, zero-collateral loans. Visit your branch to join or form a circle."
-            action={
-              <Link to="/portal/support">
-                <Button size="sm">Contact us about group lending</Button>
-              </Link>
-            }
-          />
-        </Card>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">My group</h1>
+        <EmptyState icon={<Users className="h-6 w-6" />} title="You are not in a lending group" description="Ask your branch's loan officer about joining a solidarity group for group loans." />
       </div>
     );
   }
 
-  const gl = group.groupLoan;
-  const members = Array.isArray(group.members) ? group.members : [];
-  const schedule = Array.isArray(gl?.schedule) ? gl.schedule : [];
+  const g = group.group;
+  const waiting = group.pendingLoans.filter((l) => !l.mine);
+  const owed = group.fund.myCovers.reduce((s, c) => s + centsFromDb(c.outstanding), 0);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Group Lending</h1>
-        <p className="text-sm text-slate-500">Solidarity circles and mutual guarantee loans.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{g.groupName}</h1>
+          <p className="text-sm text-slate-500">{g.groupCode} · {g.centerName}{group.me ? ` · you are the ${GROUP_ROLE_LABELS[group.me.role as GroupRole].toLowerCase()}` : ''}</p>
+        </div>
+        <StatusBadge status={GROUP_STATUS_LABELS[g.status]} tone={g.status === 'ACTIVE' ? 'green' : g.status === 'SUSPENDED' ? 'red' : 'amber'} />
       </div>
 
-      {/* Group header */}
-      <Card className="overflow-hidden">
-        <div className="h-20 bg-gradient-to-r from-violet-600 to-emerald-600" />
-        <CardBody className="-mt-10">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white bg-violet-50 text-violet-600 shadow-md">
-                  <Users className="h-7 w-7" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">{group.name}</h2>
-                  <p className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                    <span className="inline-flex items-center gap-1">
-                      <Crown className="h-3.5 w-3.5 text-amber-500" /> {group.leaderName || 'Group Leader'}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5" /> {group.centerName || group.branch || '—'}
-                    </span>
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pb-1">
-              <StatusBadge status={group.status || 'ACTIVE'} />
-              <span className="text-sm text-slate-500">{group.memberCount || members.length} members</span>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      {group.blocked && (
+        <div className="flex gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+          <p>Your group cannot take new loans until a member's overdue payments, or what the solidarity fund paid for them, are settled.</p>
+        </div>
+      )}
 
-      {gl && (
+      {owed > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Group loan</CardTitle>
-            <StatusBadge status={(Number(gl.outstandingBalance) || 0) > 0 ? 'ACTIVE' : 'COMPLETED'} />
-          </CardHeader>
-          <CardBody>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <Stat label="Total loan" value={formatCurrency(gl.totalAmount || 0)} icon={Banknote} />
-              <Stat label="Outstanding" value={formatCurrency(gl.outstandingBalance || 0)} icon={ReceiptText} />
-              <Stat label="Paid" value={formatCurrency(gl.paidAmount || 0)} icon={CheckCircle2} />
-              <Stat
-                label="Next payment"
-                value={formatCurrency(gl.nextPayment || 0)}
-                icon={Users}
-                sub={gl.nextPaymentDate ? `Due ${formatDate(gl.nextPaymentDate)}` : undefined}
-              />
-            </div>
-            <div className="mt-5">
-              <ProgressBar value={gl.repaymentProgress || 0} max={100} showLabel label="Repayment progress" />
+          <CardBody className="flex items-start gap-3">
+            <HandCoins className="mt-0.5 h-5 w-5 text-amber-600" />
+            <div className="text-sm">
+              <p className="font-semibold text-slate-800">You owe your group's solidarity fund {peso(centsToDecimal(owed))}</p>
+              <p className="text-slate-500">The fund paid your overdue installment. Pay it back at the next meeting or at the branch.</p>
+              <ul className="mt-2 text-xs text-slate-500">
+                {group.fund.myCovers.map((c) => (
+                  <li key={c.id}>{c.coverNumber}: {peso(c.amount)} for {c.loanNumber}, {peso(c.outstanding)} still owed</li>
+                ))}
+              </ul>
             </div>
           </CardBody>
         </Card>
       )}
 
-      {/* Members */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Circle members</CardTitle>
-        </CardHeader>
-        {members.length === 0 ? (
-          <CardBody>
-            <p className="text-sm text-slate-500">No member records listed for this circle.</p>
-          </CardBody>
-        ) : (
-          <Table headers={['Member', 'Role', 'Contribution', 'Loan status']}>
-            {members.map((m, idx) => {
-              const memberName = m.name || (m as any).fullName || (m as any).borrowerName || `Member ${idx + 1}`;
-              const initials = memberName
-                .split(' ')
-                .filter(Boolean)
-                .map((p: string) => p[0])
-                .slice(0, 2)
-                .join('')
-                .toUpperCase() || 'M';
-
-              return (
-                <Tr key={m.borrowerId || idx}>
-                  <Td>
-                    <span className="flex items-center gap-2.5">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">
-                        {initials}
-                      </span>
-                      <span className="font-medium text-slate-800">{memberName}</span>
-                      {m.role === 'Leader' && <Crown className="h-3.5 w-3.5 text-amber-500" />}
-                    </span>
-                  </Td>
-                  <Td className="text-slate-500">{m.role || 'Member'}</Td>
-                  <Td>
-                    <StatusBadge
-                      status={m.contributionStatus || 'PAID'}
-                      tone={m.contributionStatus === 'PAID' ? 'green' : m.contributionStatus === 'LATE' ? 'red' : 'amber'}
-                    />
-                  </Td>
-                  <Td className="text-slate-500">{m.loanStatus || '—'}</Td>
-                </Tr>
-              );
-            })}
-          </Table>
-        )}
-      </Card>
-
-      {/* Group loan schedule */}
-      {gl && schedule.length > 0 && (
+      {waiting.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Group loan schedule</CardTitle>
+            <CardTitle>Loans waiting for your consent</CardTitle>
           </CardHeader>
-          <Table headers={['#', 'Due date', 'Amount due', 'Balance', 'Status']}>
-            {schedule.map((s) => (
-              <Tr key={s.installmentNumber}>
-                <Td className="text-slate-400">{String(s.installmentNumber).padStart(2, '0')}</Td>
-                <Td>{formatDate(s.dueDate)}</Td>
-                <Td>
-                  <Amount value={s.amountDue} />
-                </Td>
-                <Td className="text-slate-500">{formatCurrency(s.remainingBalance)}</Td>
-                <Td>
-                  <StatusBadge status={s.status} tone={s.status === 'DUE' ? 'red' : s.status === 'UPCOMING' ? 'slate' : 'green'} />
-                </Td>
-              </Tr>
+          <CardBody className="space-y-3">
+            <p className="text-sm text-slate-500">Members are jointly liable: if a member cannot pay, the group helps cover it. Consent only if you support this loan.</p>
+            {waiting.map((l) => (
+              <div key={l.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm" data-testid="consent-request">
+                <div>
+                  <p className="font-semibold text-slate-800">{l.borrowerName}: {peso(l.principalAmount)} over {l.termMonths} months</p>
+                  <p className="text-xs text-slate-500">{l.loanNumber} · {l.consented} of {l.required} members have consented</p>
+                </div>
+                {l.myDecision === 'CONSENT' ? (
+                  <StatusBadge status="You consented" tone="green" />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {l.myDecision === 'DECLINE' && <StatusBadge status="You declined" tone="red" />}
+                    <Button size="sm" onClick={() => consent(l.id)}>I consent</Button>
+                    {l.myDecision !== 'DECLINE' && <Button size="sm" variant="outline" onClick={() => setDeclining({ id: l.id, loanNumber: l.loanNumber })}>Decline</Button>}
+                  </div>
+                )}
+              </div>
             ))}
-          </Table>
+          </CardBody>
         </Card>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Members ({group.members.length})</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <ul className="divide-y divide-slate-100 text-sm">
+              {group.members.map((m) => (
+                <li key={m.borrowerId} className="flex items-center justify-between py-2">
+                  <span className="flex items-center gap-2">
+                    {m.role === 'LEADER' && <Crown className="h-4 w-4 text-amber-500" />}
+                    {m.fullName}
+                    <span className="text-xs text-slate-400">{GROUP_ROLE_LABELS[m.role as GroupRole]}</span>
+                  </span>
+                  <StatusBadge status={m.standing === 'GOOD' ? 'Up to date' : 'Behind'} tone={m.standing === 'GOOD' ? 'green' : 'amber'} />
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><CalendarCheck className="h-4 w-4" /> Meetings</CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-2 text-sm">
+            <p>{g.meetingDay}s at {g.meetingTime}, {MEETING_FREQUENCY_LABELS[g.meetingFrequency as MeetingFrequency]?.toLowerCase() ?? g.meetingFrequency}, {g.meetingLocation}</p>
+            <p className="text-slate-500">Loan officer: {g.loanOfficerName}</p>
+            <p className="text-slate-500">Solidarity fund: <strong className="text-slate-800">{peso(group.fund.balance)}</strong></p>
+            {group.meetings.length > 0 && (
+              <ul className="mt-2 divide-y divide-slate-100 text-xs text-slate-600">
+                {group.meetings.map((m) => (
+                  <li key={m.meetingDate} className="flex justify-between py-1.5">
+                    <span>{formatDate(m.meetingDate)} · {m.present} of {m.total} present</span>
+                    <span>{m.me ? `You: ${m.me.toLowerCase()}` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
+      {declining && (
+        <DeclineModal
+          loanNumber={declining.loanNumber}
+          onClose={() => setDeclining(null)}
+          onSubmit={async (note) => {
+            try {
+              setGroup(await groupService.consent(declining.id, 'DECLINE', note));
+              setDeclining(null);
+              toast.success('Your answer is recorded. The loan officer will follow up.');
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : 'Your answer could not be recorded.');
+            }
+          }}
+        />
       )}
     </div>
   );
 };
 
-const Stat: React.FC<{ label: string; value: string; icon: React.ElementType; sub?: string }> = ({ label, value, icon: Icon, sub }) => (
-  <div className="rounded-xl border border-slate-200 p-4">
-    <div className="flex items-center gap-2 text-slate-400">
-      <Icon className="h-4 w-4" />
-      <p className="text-[11px] uppercase tracking-wide">{label}</p>
-    </div>
-    <p className="mt-1 text-sm font-bold tabular-nums text-slate-800">{value}</p>
-    {sub && <p className="text-xs text-slate-400">{sub}</p>}
-  </div>
-);
+const DeclineModal: React.FC<{ loanNumber: string; onClose: () => void; onSubmit: (note: string) => Promise<void> }> = ({ loanNumber, onClose, onSubmit }) => {
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  return (
+    <Modal open onClose={onClose} title={`Decline ${loanNumber}`} size="sm">
+      <div className="space-y-4">
+        <Field label="Why do you not support this loan?" required error={error}>
+          <Input value={note} onChange={(e) => setNote(e.target.value)} aria-label="Reason" />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            loading={saving}
+            onClick={async () => {
+              if (note.trim().length < 3) return setError('Tell the group why.');
+              setSaving(true);
+              await onSubmit(note.trim());
+              setSaving(false);
+            }}
+          >
+            Decline
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
 
 export default GroupsPage;

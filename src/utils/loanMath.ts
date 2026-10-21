@@ -1,28 +1,15 @@
 import { InstallmentScheduleItem, InterestType, RepaymentFrequency } from '../types';
+import { formatDisplayDate, formatMoney } from '../../shared/client/format';
 
-export function formatCurrency(amount: number | undefined | null): string {
-  if (amount === undefined || amount === null || isNaN(amount)) return '₱0.00';
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+/** Pesos as "₱1,234.50", the same text the mobile app shows (shared/client/format.ts). */
+export function formatCurrency(amount: number | string | undefined | null): string {
+  if (amount === undefined || amount === null || amount === '' || (typeof amount === 'number' && isNaN(amount))) return '₱0.00';
+  return formatMoney(amount);
 }
 
-export function formatDate(dateString: string | undefined): string {
-  if (!dateString) return '—';
-  try {
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return dateString;
-    return d.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return dateString;
-  }
+/** Calendar dates as that date on any device; timestamps in Philippine time (shared/client/format.ts). */
+export function formatDate(dateString: string | undefined | null): string {
+  return formatDisplayDate(dateString);
 }
 
 export function addMonths(date: Date, months: number): Date {

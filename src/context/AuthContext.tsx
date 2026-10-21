@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import type { RegistrationInput } from '../../shared/kyc-core';
 
 export interface AuthUser {
   id: string;
@@ -12,25 +13,24 @@ export interface AuthUser {
   branchId?: string | null;
 }
 
-export interface RegisterData {
-  fullName?: string;
-  firstName?: string;
-  middleName?: string;
-  lastName?: string;
-  suffix?: string;
-  hasNoMiddleName?: boolean;
-  email?: string;
-  phone?: string;
+/** Self-registration payload; validated by shared/kyc-core on both sides. */
+export interface RegisterData extends RegistrationInput {
+  branchId?: string;
   password?: string;
   confirmPassword?: string;
-  agreeTerms?: boolean;
-  borrowerNumber?: string;
-  address?: string;
-  occupation?: string;
-  employerOrBusiness?: string;
-  monthlyIncome?: number;
-  dateOfBirth?: string;
-  civilStatus?: string;
+  emailVerificationToken?: string;
+}
+
+/** A refused registration, with the server's per-field messages when it sent them. */
+export class RegistrationError extends Error {
+  constructor(
+    message: string,
+    readonly fieldErrors: Record<string, string> = {},
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'RegistrationError';
+  }
 }
 
 interface AuthContextType {
@@ -189,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     const data = await parseJson(res);
     if (!res.ok || !data.success) {
-      throw new Error(data.error || 'Registration failed');
+      throw new RegistrationError(data.error || 'Registration failed', data.errors || {}, data.code);
     }
     persistSession(data.token, data.user);
     return data.user;

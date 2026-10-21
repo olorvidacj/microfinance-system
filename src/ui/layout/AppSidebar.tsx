@@ -39,6 +39,8 @@ export interface AppSidebarProps {
   open: boolean;
   onClose: () => void;
   onNavigate?: () => void;
+  /** Render the static desktop sidebar. Set false when another desktop sidebar is used. */
+  showDesktop?: boolean;
 }
 
 const itemClassName = (isActive: boolean, collapsed: boolean) =>
@@ -183,20 +185,28 @@ const SidebarContent: React.FC<Omit<AppSidebarProps, 'open' | 'onClose'>> = ({
   </div>
 );
 
-export const AppSidebar: React.FC<AppSidebarProps> = ({ open, onClose, collapsed = false, ...rest }) => (
+export const AppSidebar: React.FC<AppSidebarProps> = ({
+  open,
+  onClose,
+  collapsed = false,
+  showDesktop = true,
+  ...rest
+}) => (
   <>
     {/* Desktop sidebar */}
-    <aside
-      className={`hidden shrink-0 transition-all duration-300 ease-in-out lg:block ${
-        collapsed ? 'w-[72px]' : 'w-64'
-      }`}
-    >
-      <div className="sticky top-0 h-screen">
-        <div className="h-full">
-          <SidebarContent collapsed={collapsed} {...rest} />
+    {showDesktop && (
+      <aside
+        className={`hidden shrink-0 transition-all duration-300 ease-in-out lg:block ${
+          collapsed ? 'w-[72px]' : 'w-64'
+        }`}
+      >
+        <div className="sticky top-0 h-screen">
+          <div className="h-full">
+            <SidebarContent collapsed={collapsed} {...rest} />
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    )}
 
     {/* Mobile drawer */}
     {open && (

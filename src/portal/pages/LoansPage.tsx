@@ -64,6 +64,9 @@ const LoansPage: React.FC = () => {
   const [inspectPayments, setInspectPayments] = useState<ClientPaymentRow[]>([]);
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectApp, setInspectApp] = useState<LoanApplication | null>(null);
+  const [withdrawReason, setWithdrawReason] = useState('');
+  const [appBusy, setAppBusy] = useState(false);
+  const [appError, setAppError] = useState('');
 
   const initialTab = params.get('tab');
   useEffect(() => {
@@ -116,6 +119,22 @@ const LoansPage: React.FC = () => {
   const openAppDetailsModal = (app: LoanApplication) => {
     setInspectApp(app);
     setInspectLoan(null);
+    setWithdrawReason('');
+    setAppError('');
+  };
+
+  const appAction = async (fn: () => Promise<unknown>) => {
+    setAppBusy(true);
+    setAppError('');
+    try {
+      await fn();
+      setInspectApp(null);
+      await load();
+    } catch (err: any) {
+      setAppError(err?.message || 'The request failed.');
+    } finally {
+      setAppBusy(false);
+    }
   };
 
   if (loading) return <LoadingState label="Loading your loan portfolio and applications…" />;
@@ -483,7 +502,7 @@ const LoansPage: React.FC = () => {
                 <p className="text-base font-bold text-emerald-700">{formatCurrency(inspectLoan.paidAmount || 0)}</p>
               </div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <p className="text-[10px] uppercase font-bold text-slate-400">Monthly Installment</p>
+                <p className="text-[10px] uppercase font-bold text-slate-400">{inspectLoan.frequency || 'Regular'} installment</p>
                 <p className="text-base font-bold text-slate-900">{formatCurrency(inspectLoan.monthlyInstallment)}</p>
               </div>
             </div>
@@ -522,7 +541,7 @@ const LoansPage: React.FC = () => {
                         <Td className="text-slate-500">{formatCurrency(s.interest)}</Td>
                         <Td className="text-slate-500">{formatCurrency(s.remainingBalance)}</Td>
                         <Td>
-                          <StatusBadge status={s.status} tone={s.status === 'PAID' ? 'green' : s.status === 'DUE' ? 'red' : 'slate'} />
+                          <StatusBadge status={s.status} tone={s.status === 'PAID' ? 'green' : s.status === 'OVERDUE' ? 'red' : s.status === 'DUE' || s.status === 'PARTIAL' ? 'amber' : 'slate'} />
                         </Td>
                       </Tr>
                     ))}
@@ -581,12 +600,18 @@ const LoansPage: React.FC = () => {
               </div>
             )}
 
-            {inspectApp.notes && !inspectApp.rejectionReason && (
+            {inspectApp.returnedReason && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                 <p className="font-bold flex items-center gap-1.5 text-amber-800">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" /> Staff Action Note
+                  <AlertTriangle className="h-4 w-4 text-amber-600" /> Returned for changes
                 </p>
-                <p className="mt-1">{inspectApp.notes}</p>
+                <p className="mt-1">{inspectApp.returnedReason}</p>
+              </div>
+            )}
+            {inspectApp.decisionReason && inspectApp.status === 'APPROVED' && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                <p className="font-bold">Approved</p>
+                <p className="mt-1">{inspectApp.decisionReason} The branch will release the funds and your payment schedule will appear under Active Loans.</p>
               </div>
             )}
 
@@ -598,10 +623,42 @@ const LoansPage: React.FC = () => {
               <InfoRow label="Purpose" value={inspectApp.purpose || 'Business / Personal expansion'} />
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+            {(inspectApp.status === 'DRAFT' || inspectApp.status === 'SUBMITTED') && (
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <label className="block text-xs font-semibold text-slate-600" htmlFor="withdraw-reason">
+                  Reason for withdrawing{inspectApp.status === 'DRAFT' ? ' (optional)' : ''}
+                </label>
+                <textarea
+                  id="withdraw-reason"
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={withdrawReason}
+                  onChange={(e) => setWithdrawReason(e.target.value)}
+                />
+              </div>
+            )}
+            {appError && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{appError}</p>}
+
+            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
               <Button variant="outline" onClick={() => setInspectApp(null)}>
                 Close
               </Button>
+              {(inspectApp.status === 'DRAFT' || inspectApp.status === 'SUBMITTED') && (
+                <Button
+                  variant="outline"
+                  className="text-rose-600 hover:bg-rose-50"
+                  loading={appBusy}
+                  disabled={inspectApp.status === 'SUBMITTED' && withdrawReason.trim().length < 3}
+                  onClick={() => appAction(() => loanService.cancel(inspectApp.id, withdrawReason.trim()))}
+                >
+                  Withdraw application
+                </Button>
+              )}
+              {inspectApp.status === 'DRAFT' && (
+                <Button variant="brand" loading={appBusy} onClick={() => appAction(() => loanService.submit(inspectApp.id))}>
+                  Submit for review
+                </Button>
+              )}
             </div>
           </div>
         </Modal>
@@ -672,7 +729,7 @@ const ActiveLoanCard: React.FC<ActiveLoanCardProps> = ({ loan, completed, onView
             <span className="font-mono text-xs font-bold text-slate-400">{loan.loanNumber}</span>
             <h3 className="text-base font-bold text-slate-900">{loan.productName}</h3>
           </div>
-          <StatusBadge status={completed ? 'COMPLETED' : loan.status} />
+          <StatusBadge status={loan.status} />
         </div>
 
         {/* Figures */}
@@ -682,7 +739,7 @@ const ActiveLoanCard: React.FC<ActiveLoanCardProps> = ({ loan, completed, onView
             <p className="text-sm font-bold text-slate-900">{formatCurrency(loan.principalAmount)}</p>
           </div>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Monthly</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{loan.frequency || 'Installment'}</p>
             <p className="text-sm font-bold text-slate-900">{formatCurrency(loan.monthlyInstallment)}</p>
           </div>
           <div>
@@ -702,7 +759,7 @@ const ActiveLoanCard: React.FC<ActiveLoanCardProps> = ({ loan, completed, onView
               <span>Repayment Progress</span>
               <span>{progress}%</span>
             </div>
-            <ProgressBar value={progress} max={100} barClassName={loan.status === 'OVERDUE' || loan.status === 'IN_ARREARS' ? 'bg-rose-500' : undefined} />
+            <ProgressBar value={progress} max={100} barClassName={loan.overdue ? 'bg-rose-500' : undefined} />
           </div>
         )}
 
@@ -718,7 +775,7 @@ const ActiveLoanCard: React.FC<ActiveLoanCardProps> = ({ loan, completed, onView
               <CheckCircle2 className="h-3.5 w-3.5" /> Fully Settled & Closed
             </span>
           ) : (
-            <span className="text-slate-400 font-medium">Standard monthly cycle</span>
+            <span className="text-slate-400 font-medium">{loan.frequency} payments</span>
           )}
 
           <span className="text-slate-400">Tenor: {loan.termMonths} mo</span>
@@ -758,7 +815,7 @@ interface ApplicationCardProps {
 const ApplicationCard: React.FC<ApplicationCardProps> = ({ app, onViewDetails }) => {
   const normStatus = String(app.status || '').toUpperCase();
   const isRejected = normStatus === 'REJECTED' || normStatus === 'DECLINED';
-  const isCorrection = normStatus === 'CORRECTION_REQUIRED' || normStatus === 'CORRECTION_REQUESTED' || normStatus === 'DRAFT';
+  const isCorrection = normStatus === 'DRAFT' && !!app.returnedReason;
 
   return (
     <Card className="overflow-hidden border-slate-200 shadow-sm transition-all hover:border-slate-300">
@@ -797,15 +854,13 @@ const ApplicationCard: React.FC<ApplicationCardProps> = ({ app, onViewDetails })
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
               <div>
-                <p className="font-bold text-amber-900">Action Required: Correction Requested</p>
-                <p className="mt-0.5">{app.notes || 'Please update and clarify your application details.'}</p>
+                <p className="font-bold text-amber-900">Changes requested</p>
+                <p className="mt-0.5">{app.returnedReason}</p>
               </div>
             </div>
-            <Link to="/portal/apply">
-              <Button size="sm" variant="brand" className="h-7 text-xs shrink-0">
-                Update & Resubmit
-              </Button>
-            </Link>
+            <Button size="sm" variant="brand" className="h-7 text-xs shrink-0" onClick={onViewDetails}>
+              Review & resubmit
+            </Button>
           </div>
         )}
 
@@ -838,29 +893,24 @@ const StatusPipelineVisualizer: React.FC<{ status: string; coopStep?: string }> 
   const norm = String(status || '').toUpperCase();
   const step = String(coopStep || '').toUpperCase();
 
-  const isRejected = norm === 'REJECTED' || norm === 'DECLINED' || step === 'REJECTED';
-  const isCorrection = norm === 'CORRECTION_REQUIRED' || norm === 'DRAFT' || step === 'CORRECTION_REQUIRED';
+  const isRejected = norm === 'REJECTED' || norm === 'CANCELLED';
+  const isCorrection = norm === 'DRAFT' && step === 'RETURNED';
 
-  let currentStep = 1; // 1: Submitted, 2: Under Review, 3: Approved, 4: Disbursed
-  if (norm === 'APPROVED' || step === 'FOR_DISBURSEMENT' || step === 'CREDIT_COMMITTEE_APPROVED') {
-    currentStep = 3;
-  } else if (norm === 'ACTIVE' || norm === 'DISBURSED' || norm === 'COMPLETED') {
-    currentStep = 4;
-  } else if (norm === 'UNDER_REVIEW' || norm === 'FOR_ASSESSMENT' || step === 'CREDIT_INVESTIGATION' || step === 'CREDIT_COMMITTEE_REVIEW') {
-    currentStep = 2;
-  } else {
-    currentStep = 1;
-  }
+  // 1: Submitted, 2: Under Review, 3: Approved, 4: Released
+  let currentStep = 1;
+  if (norm === 'APPROVED') currentStep = 3;
+  else if (norm === 'DISBURSED' || norm === 'ACTIVE' || norm === 'CLOSED' || norm === 'WRITTEN_OFF') currentStep = 4;
+  else if (norm === 'UNDER_REVIEW' || isRejected || isCorrection) currentStep = isRejected ? 3 : 2;
 
   const pipelineSteps = [
     { num: 1, label: 'Submitted' },
     { num: 2, label: 'Under Review' },
     {
       num: 3,
-      label: isRejected ? 'Declined' : isCorrection ? 'Correction Needed' : 'Approved',
+      label: isRejected ? (norm === 'CANCELLED' ? 'Withdrawn' : 'Declined') : isCorrection ? 'Changes needed' : 'Approved',
       tone: isRejected ? 'rose' : isCorrection ? 'amber' : 'emerald',
     },
-    { num: 4, label: 'Disbursed' },
+    { num: 4, label: 'Released' },
   ];
 
   return (

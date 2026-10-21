@@ -73,7 +73,7 @@ const TREND_DATA: { month: string; applications: number; approved: number; colle
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const { personnel, ctx } = useBranchContext();
-  const [kycReviewTarget, setKycReviewTarget] = useState<ClientDetail | null>(null);
+  const [kycReviewTarget, setKycReviewTarget] = useState<string | null>(null);
 
   // Core dashboard summary
   const fetcher = useCallback(() => dashboardService.get(), []);
@@ -86,7 +86,7 @@ export const DashboardPage: React.FC = () => {
   const clientsFetcher = useCallback(() => clientsService.list(), []);
   const recentClients = useBranchData(clientsFetcher);
 
-  const kycFetcher = useCallback(() => kycService.queue(), []);
+  const kycFetcher = useCallback(() => kycService.queue({ status: 'AWAITING' }), []);
   const kycQueue = useBranchData(kycFetcher);
 
   const loansFetcher = useCallback(() => loansService.applications(), []);
@@ -105,13 +105,9 @@ export const DashboardPage: React.FC = () => {
   if (error || !data) return <ErrorState message={error} onRetry={reload} />;
 
   const s = data.summary;
-  const totalGroupsCount = groupsData.data?.length ?? 6;
-  const pendingKycCount = kycQueue.data?.counts?.pending ?? kycQueue.data?.data?.length ?? s.pendingVerification;
+  const totalGroupsCount = groupsData.data ? groupsData.data.filter((g) => g.status === 'ACTIVE').length : '—';
+  const pendingKycCount = kycQueue.data ? kycQueue.data.counts.pending + kycQueue.data.counts.underReview : s.pendingVerification;
 
-  // Daily target calculation
-  const dailyTarget = 150000;
-  const collectedToday = s.todayCollections || 0;
-  const collectionPercent = Math.min(100, Math.round((collectedToday / dailyTarget) * 100));
 
   return (
     <div className="space-y-6">
@@ -221,7 +217,7 @@ export const DashboardPage: React.FC = () => {
           <SummaryCard
             title="Active Loans"
             value={s.activeLoans}
-            subtitle={`₱${(s.outstandingBalance || 0).toLocaleString()} current book`}
+            subtitle={`${formatCurrency(s.outstandingBalance)} outstanding`}
             icon={HandCoins}
             tone="emerald"
             onClick={() => navigate('/staff/app/loans')}
@@ -241,7 +237,7 @@ export const DashboardPage: React.FC = () => {
           <SummaryCard
             title="Total Savings Deposit"
             value={<Amount value={s.totalSavings} />}
-            subtitle={`Today: ₱${(s.todayDeposits || 0).toLocaleString()}`}
+            subtitle={`Today: ${formatCurrency(s.todayDeposits)}`}
             icon={PiggyBank}
             tone="indigo"
             onClick={() => navigate('/staff/app/savings')}
@@ -251,7 +247,7 @@ export const DashboardPage: React.FC = () => {
           <SummaryCard
             title="Today's Transactions"
             value={s.todayTransactionCount}
-            subtitle={`₱${(s.todayCollections || 0).toLocaleString()} collections`}
+            subtitle={`${formatCurrency(s.todayCollections)} collected`}
             icon={ReceiptText}
             tone="amber"
             onClick={() => navigate('/staff/app/transactions')}
@@ -339,7 +335,7 @@ export const DashboardPage: React.FC = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight">Today's Collections Desk</h3>
-                <p className="text-xs text-slate-500">Branch quota progress</p>
+                <p className="text-xs text-slate-500">Posted loan payments today</p>
               </div>
               <Link to="/staff/app/collections" className="text-xs font-semibold text-amber-600 hover:text-amber-700">
                 View desk →
@@ -354,19 +350,7 @@ export const DashboardPage: React.FC = () => {
                 </span>
               </div>
               <div className="mt-2 text-2xl font-extrabold text-slate-900 tabular-nums">
-                {formatCurrency(collectedToday)}
-              </div>
-              <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
-                <span>Daily Target: {formatCurrency(dailyTarget)}</span>
-                <span className="font-bold text-amber-700">{collectionPercent}%</span>
-              </div>
-
-              {/* Progress bar */}
-              <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-amber-200/60">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-600 transition-all duration-500"
-                  style={{ width: `${collectionPercent}%` }}
-                />
+                {formatCurrency(s.todayCollections)}
               </div>
             </div>
 
@@ -375,13 +359,13 @@ export const DashboardPage: React.FC = () => {
                 <span className="text-slate-600 flex items-center gap-1.5">
                   <Coins className="h-4 w-4 text-emerald-600" /> Savings Deposits Today
                 </span>
-                <span className="font-bold text-slate-800 tabular-nums">{formatCurrency(s.todayDeposits || 0)}</span>
+                <span className="font-bold text-slate-800 tabular-nums">{formatCurrency(s.todayDeposits)}</span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
                 <span className="text-slate-600 flex items-center gap-1.5">
                   <AlertTriangle className="h-4 w-4 text-rose-500" /> Overdue Amount
                 </span>
-                <span className="font-bold text-rose-600 tabular-nums">{formatCurrency(s.overdueOutstanding || 0)}</span>
+                <span className="font-bold text-rose-600 tabular-nums">{formatCurrency(s.overdueOutstanding)}</span>
               </div>
             </div>
           </div>
@@ -416,7 +400,7 @@ export const DashboardPage: React.FC = () => {
               to="/staff/app/kyc"
               className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
             >
-              View Queue ({kycQueue.data?.counts?.pending ?? kycQueue.data?.data?.length ?? 0}) <ChevronRight className="h-3.5 w-3.5" />
+              View Queue ({pendingKycCount}) <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
@@ -428,7 +412,7 @@ export const DashboardPage: React.FC = () => {
               </div>
             ) : (
               kycQueue.data.data.slice(0, 4).map((client) => (
-                <div key={client.id} className="p-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                <div key={client.borrowerId} className="p-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">
                       {client.fullName.split(' ').map((p) => p[0]).slice(0, 2).join('')}
@@ -443,10 +427,10 @@ export const DashboardPage: React.FC = () => {
 
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-semibold text-amber-800">
-                      {(client as any).submittedDocuments || 2} Docs
+                      {client.statusLabel}
                     </span>
                     <button
-                      onClick={() => setKycReviewTarget(client)}
+                      onClick={() => setKycReviewTarget(client.borrowerId)}
                       className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-amber-400 hover:bg-slate-800 transition-colors"
                     >
                       Verify
@@ -696,7 +680,7 @@ export const DashboardPage: React.FC = () => {
       {/* KYC Quick Review Modal */}
       {kycReviewTarget && (
         <KycReviewPanel
-          clientId={kycReviewTarget.id}
+          clientId={kycReviewTarget}
           onClose={() => setKycReviewTarget(null)}
           onDone={() => {
             setKycReviewTarget(null);

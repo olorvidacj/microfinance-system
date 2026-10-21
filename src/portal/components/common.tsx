@@ -1,21 +1,6 @@
 import React from 'react';
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Banknote,
-  Building2,
-  CheckCircle2,
-  Clock,
-  Landmark,
-  RefreshCw,
-  Repeat,
-  Smartphone,
-  TrendingDown,
-  TrendingUp,
-  Wallet,
-} from 'lucide-react';
+import { Banknote, Building2, Landmark, Smartphone, Wallet } from 'lucide-react';
 import { Card } from './ui/Card';
-import { TransactionType } from '../types';
 
 export const StatCard: React.FC<{
   label: string;
@@ -89,66 +74,6 @@ export const PaymentMethodBadge: React.FC<{ method?: string; className?: string 
       {String(method || 'Cash').replace(/_/g, ' ')}
     </span>
   );
-};
-
-export const transactionIcon = (type?: TransactionType | string, className = 'h-4 w-4') => {
-  const norm = String(type || '').toUpperCase();
-  switch (norm) {
-    case 'REPAYMENT':
-      return <Repeat className={`${className} text-emerald-600`} />;
-    case 'LOAN_DISBURSEMENT':
-      return <ArrowUpRight className={`${className} text-gold-600`} />;
-    case 'LOAN_APPROVAL':
-      return <CheckCircle2 className={`${className} text-gold-600`} />;
-    case 'SAVINGS_DEPOSIT':
-      return <TrendingUp className={`${className} text-emerald-600`} />;
-    case 'SAVINGS_WITHDRAWAL':
-      return <TrendingDown className={`${className} text-rose-500`} />;
-    case 'FEE':
-      return <Clock className={`${className} text-amber-500`} />;
-    case 'ADJUSTMENT':
-      return <RefreshCw className={`${className} text-slate-400`} />;
-    default:
-      return <Wallet className={`${className} text-slate-400`} />;
-  }
-};
-
-export const transactionTone = (type?: TransactionType | string): 'positive' | 'negative' | 'neutral' => {
-  const norm = String(type || '').toUpperCase();
-  switch (norm) {
-    case 'REPAYMENT':
-    case 'SAVINGS_DEPOSIT':
-      return 'positive';
-    case 'LOAN_DISBURSEMENT':
-    case 'SAVINGS_WITHDRAWAL':
-    case 'FEE':
-      return 'negative';
-    default:
-      return 'neutral';
-  }
-};
-
-export const transactionDirection = (tone: 'positive' | 'negative') =>
-  tone === 'positive' ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />;
-
-export const typeLabel = (type?: string): string => {
-  if (!type) return 'General';
-  return String(type)
-    .toLowerCase()
-    .split('_')
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ') || 'General';
-};
-
-export const typeColor: Record<string, string> = {
-  REPAYMENT: 'text-emerald-600',
-  SAVINGS_DEPOSIT: 'text-emerald-600',
-  LOAN_DISBURSEMENT: 'text-gold-600',
-  SAVINGS_WITHDRAWAL: 'text-rose-500',
-  FEE: 'text-amber-500',
-  LOAN_APPROVAL: 'text-gold-600',
-  ADJUSTMENT: 'text-slate-400',
 };
 
 export const savingsTypeLabel = (t?: string) => {

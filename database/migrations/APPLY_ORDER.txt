@@ -1,0 +1,33 @@
+# The migrations a database is built from, in order (npm run db:migrate).
+# One file per line; '#' starts a comment. The runner applies each listed file
+# once, in its own transaction, and records it in schema_migrations.
+#
+# A fresh environment is:   npm run db:migrate   then   npm run db:seed
+#
+# Files in this folder that are NOT listed, and why:
+#   0003-0010  A second data model (clients, loan_applications, lending_groups,
+#              accounts, journal_entries...) the application never used. They
+#              create tables whose names collide with the baseline (savings_accounts,
+#              loans, audit_logs...). 0025-0028 build the ledger, loan, savings and
+#              group schema the code uses.
+#   0017       Draft RLS for the legacy tables; never applied anywhere.
+#   0019-0022  An alternative KYC model that 0023 replaced (see 0023's header).
+# They stay in the folder for history only.
+
+0000_application_baseline.sql
+0001_extensions_and_enums.sql
+0002_identity_and_clients.sql
+0011_kyc_full_schema.sql
+0012_borrower_profile_and_income.sql
+0013_borrower_email_verification.sql
+0014_remove_demo_and_zero_defaults.sql
+0015_savings_withdrawal_account_and_document_paths.sql
+0016_payment_proofs.sql
+0018_private_kyc_document_bucket.sql
+0023_kyc_workflow_hardening.sql
+0024_client_onboarding.sql
+0025_loan_lifecycle.sql
+0026_loan_repayment.sql
+0027_savings.sql
+0028_group_lending.sql
+0029_ledger_immutable.sql

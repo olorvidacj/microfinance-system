@@ -56,7 +56,7 @@ import {
   InstallmentScheduleItem,
   MemberUpdateRequest,
 } from '../types';
-import { ReceiptModal } from './ReceiptModal';
+import { ReceiptModal, receiptFromPayment } from './ReceiptModal';
 import { SavingsReceiptModal } from './SavingsReceiptModal';
 import { ClientNotificationDrawer } from './portal/ClientNotificationDrawer';
 import { ClientKycModal } from './portal/ClientKycModal';
@@ -2007,11 +2007,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
       {/* Official Payment Receipt Modal */}
       {activePaymentReceipt && (
-        <ReceiptModal
-          payment={activePaymentReceipt}
-          isOpen={!!activePaymentReceipt}
-          onClose={() => setActivePaymentReceipt(null)}
-        />
+        <ReceiptModal receipt={receiptFromPayment(activePaymentReceipt)} onClose={() => setActivePaymentReceipt(null)} />
       )}
 
       {/* Official Savings Slip Modal */}

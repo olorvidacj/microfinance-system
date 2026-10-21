@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppButton, AppTextInput } from '../../components';
 import { AuthLayout } from './AuthLayout';
 import { colors } from '../../theme';
-import { api } from '../../services/api';
+import { api, messageOf } from '../../services/api';
 import { validators } from '../../utils/validation';
 import { AuthStackParamList } from '../../navigation/types';
 
@@ -31,8 +31,8 @@ export const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
       const res = await api.forgotPassword(email.trim());
       setInfo(`A verification code was sent to ${email.trim()}.`);
       navigation.navigate('VerifyOtp', { email: email.trim(), mode: 'reset' });
-    } catch (err: any) {
-      setServerError(err?.message || 'Unable to send reset code. Please try again.');
+    } catch (err) {
+      setServerError(messageOf(err, 'Unable to send reset code. Please try again.'));
     } finally {
       setLoading(false);
     }

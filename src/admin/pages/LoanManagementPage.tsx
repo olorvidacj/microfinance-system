@@ -6,15 +6,16 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
 import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
-import { Modal, ConfirmDialog } from '../components/Modal';
+import { Modal } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AdminLoan, formatPHP, formatDate } from '../data/mockData';
 import { adminApi, LoanDetail } from '../services/adminApi';
+import { LOAN_STATUSES } from '../../../shared/lending';
 
-const STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Active', 'Completed', 'Disbursed'];
-const PRODUCTS = ['Regular Microloan', 'Livelihood Loan', 'Emergency Loan', 'Agricultural Loan', 'Business Loan'];
+const STATUSES = [...LOAN_STATUSES];
 
-type LoanAction = 'approve' | 'reject' | 'disburse';
+// Decisions and releases happen in the branch workspace, where the server checks limits and posts the ledger.
+const workspaceLink = (id: string) => `/staff/app/loans/${encodeURIComponent(id)}`;
 
 export const LoanManagementPage: React.FC = () => {
   const [loans, setLoans] = useState<AdminLoan[]>([]);
@@ -24,8 +25,6 @@ export const LoanManagementPage: React.FC = () => {
   const [selected, setSelected] = useState<AdminLoan | null>(null);
   const [detail, setDetail] = useState<LoanDetail | null>(null);
   const [detailTab, setDetailTab] = useState<'overview' | 'schedule' | 'history'>('overview');
-  const [action, setAction] = useState<{ type: LoanAction; loan: AdminLoan } | null>(null);
-  const [toast, setToast] = useState('');
 
   useEffect(() => {
     adminApi.loans().then(setLoans).catch(() => setLoans([]));
@@ -46,22 +45,14 @@ export const LoanManagementPage: React.FC = () => {
     });
   }, [loans, search, statusFilter, productFilter]);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
-
-  const performAction = () => {
-    if (!action) return;
-    const nextStatus = action.type === 'approve' ? 'Approved' : action.type === 'reject' ? 'Rejected' : 'Disbursed';
-    setLoans(loans.map((l) => l.id === action.loan.id ? { ...l, status: nextStatus } : l));
-    setSelected(loans.find((l) => l.id === action.loan.id) ? { ...action.loan, status: nextStatus } : null);
-    showToast(`Loan ${action.loan.loanId} ${action.type === 'approve' ? 'approved' : action.type === 'reject' ? 'rejected' : 'marked for disbursement'}.`);
-  };
+  const products = useMemo(() => Array.from(new Set(loans.map((l) => l.loanProduct))).sort(), [loans]);
 
   const totals = {
     count: loans.length,
-    pending: loans.filter((l) => l.status === 'Pending' || l.status === 'Under Review').length,
+    pending: loans.filter((l) => l.status === 'Submitted' || l.status === 'Under Review').length,
     approved: loans.filter((l) => l.status === 'Approved').length,
     active: loans.filter((l) => l.status === 'Active').length,
-    completed: loans.filter((l) => l.status === 'Completed').length,
+    completed: loans.filter((l) => l.status === 'Closed').length,
     rejected: loans.filter((l) => l.status === 'Rejected').length,
     totalAmount: loans.reduce((s, l) => s + l.loanAmount, 0),
     outstanding: loans.reduce((s, l) => s + l.outstandingBalance, 0),
@@ -113,7 +104,7 @@ export const LoanManagementPage: React.FC = () => {
         <div className="flex flex-col md:flex-row gap-3 mb-5">
           <SearchInput value={search} onChange={setSearch} placeholder="Search by loan ID, borrower name, or member ID..." className="flex-1" />
           <FilterSelect value={statusFilter} onChange={setStatusFilter} options={STATUSES.map((s) => ({ value: s, label: s }))} placeholder="All Loan Statuses" className="w-full md:w-48" />
-          <FilterSelect value={productFilter} onChange={setProductFilter} options={PRODUCTS.map((p) => ({ value: p, label: p }))} placeholder="All Loan Products" className="w-full md:w-52" />
+          <FilterSelect value={productFilter} onChange={setProductFilter} options={products.map((p) => ({ value: p, label: p }))} placeholder="All Loan Products" className="w-full md:w-52" />
         </div>
 
         <DataTable
@@ -185,21 +176,21 @@ export const LoanManagementPage: React.FC = () => {
                   >
                     <Eye className="w-3.5 h-3.5 text-slate-500" /> View
                   </button>
-                  {l.status === 'Under Review' && (
-                    <button
-                      onClick={() => setAction({ type: 'approve', loan: l })}
+                  {(l.status === 'Submitted' || l.status === 'Under Review') && (
+                    <a
+                      href={workspaceLink(l.id)}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Approve
-                    </button>
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Review
+                    </a>
                   )}
                   {l.status === 'Approved' && (
-                    <button
-                      onClick={() => setAction({ type: 'disburse', loan: l })}
+                    <a
+                      href={workspaceLink(l.id)}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-white bg-[#091527] hover:bg-[#132c52] rounded-lg transition shadow-xs"
                     >
-                      <Wallet className="w-3.5 h-3.5 text-amber-400" /> Disburse
-                    </button>
+                      <Wallet className="w-3.5 h-3.5 text-amber-400" /> Release
+                    </a>
                   )}
                 </div>
               ),
@@ -338,57 +329,19 @@ export const LoanManagementPage: React.FC = () => {
               <button className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
                 <Download className="w-4 h-4 text-slate-500" /> Export Dossier
               </button>
-              {selected.status === 'Pending' || selected.status === 'Under Review' ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setAction({ type: 'reject', loan: selected }); }}
-                    className="px-4 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition"
-                  >
-                    Decline Facility
-                  </button>
-                  <button
-                    onClick={() => { setAction({ type: 'approve', loan: selected }); }}
-                    className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-sm"
-                  >
-                    Approve Application
-                  </button>
-                </div>
-              ) : selected.status === 'Approved' ? (
-                <button
-                  onClick={() => { setAction({ type: 'disburse', loan: selected }); }}
+              {['Submitted', 'Under Review', 'Approved'].includes(selected.status) && (
+                <a
+                  href={workspaceLink(selected.id)}
                   className="px-4 py-2 text-xs font-bold text-white bg-[#091527] hover:bg-[#132c52] rounded-xl transition shadow-sm flex items-center gap-1.5"
                 >
-                  <Wallet className="w-4 h-4 text-amber-400" /> Release Disbursement
-                </button>
-              ) : null}
+                  <ArrowUpRight className="w-4 h-4 text-amber-400" /> {selected.status === 'Approved' ? 'Release in branch workspace' : 'Review in branch workspace'}
+                </a>
+              )}
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Confirm action */}
-      <ConfirmDialog
-        isOpen={!!action}
-        onClose={() => setAction(null)}
-        onConfirm={performAction}
-        title={action?.type === 'approve' ? 'Approve Loan Facility?' : action?.type === 'reject' ? 'Reject Loan Application?' : 'Disburse Approved Facility?'}
-        message={
-          action?.type === 'approve'
-            ? `Approve ${action?.loan.loanId} for ${action?.loan.clientName} for the amount of ${formatPHP(action?.loan.loanAmount || 0)}?`
-            : action?.type === 'reject'
-              ? `Reject loan application ${action?.loan.loanId} for ${action?.loan.clientName}? This decision will be logged to audit.`
-              : `Disburse loan capital for ${action?.loan.loanId} (${formatPHP(action?.loan.loanAmount || 0)}) to ${action?.loan.clientName}?`
-        }
-        confirmLabel={action?.type === 'approve' ? 'Approve Loan' : action?.type === 'reject' ? 'Reject Loan' : 'Confirm Disbursement'}
-        variant={action?.type === 'approve' ? 'info' : action?.type === 'reject' ? 'danger' : 'warning'}
-      />
-
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#091527] border border-amber-500/40 text-white text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-amber-400" />
-          {toast}
-        </div>
-      )}
     </div>
   );
 };

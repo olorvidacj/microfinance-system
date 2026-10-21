@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { getDb, schema } from '../db/index';
-import { createClientProfile, findBorrowerByContact } from '../db/clientProvisioning';
+import { createClientProfile, findUnlinkedBorrowerByEmail } from '../db/clientProvisioning';
 import { getServerSupabase } from '../db/supabaseServer';
 import { authStore, hashPassword } from './index';
 import { sendOtpEmail, isDirectSmtpConfigured } from '../services/emailService';
@@ -495,7 +495,7 @@ function toDisplayPhone(phone: string | null | undefined): string {
  * so the rest of the system (drizzle queries, RBAC, portal) works unchanged.
  *
  * - Existing local account (by email) is reused when present.
- * - Otherwise links an existing borrower by phone/email when a match exists.
+ * - Otherwise links a branch-registered member with exactly this verified email.
  * - Otherwise provisions a COMPLETE borrower profile from the registration input
  *   with all financials at zero and KYC/member status Pending.
  *
@@ -516,7 +516,7 @@ export async function ensureLocalClientUser(input: LocalClientUserInput): Promis
     // Self-heal missing borrowerId on existing client accounts
     if (existing.role === 'CLIENT' && !existing.borrowerId && db) {
       try {
-        let match = await findBorrowerByContact(phone, normalizedEmail);
+        let match = await findUnlinkedBorrowerByEmail(normalizedEmail);
         let bId = match?.id || null;
         if (!bId) {
           const provisioned = await createClientProfile({
@@ -542,14 +542,12 @@ export async function ensureLocalClientUser(input: LocalClientUserInput): Promis
   let borrowerId: string | null = null;
   let borrowerNumber: string | null = null;
   if (db) {
-    // Match an existing borrower by phone or email first (e.g. staff pre-registered members).
-    try {
-      const match = await findBorrowerByContact(phone, normalizedEmail);
-      if (match) {
-        borrowerId = match.id;
-        borrowerNumber = match.borrowerNumber;
-      }
-    } catch {}
+    // A member the branch registered with this exact (Supabase-verified) email.
+    const match = await findUnlinkedBorrowerByEmail(normalizedEmail);
+    if (match) {
+      borrowerId = match.id;
+      borrowerNumber = match.borrowerNumber;
+    }
 
     if (!borrowerId) {
       try {

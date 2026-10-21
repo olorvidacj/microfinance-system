@@ -1,0 +1,292 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { and, eq } from 'drizzle-orm';
+import type { PGlite } from '@electric-sql/pglite';
+import * as schema from '../db/schema';
+import { createLocalDatabase, localDrizzle } from '../db/testing/localDatabase';
+import type { AppDb } from './errors';
+import { HttpError } from './errors';
+import {
+  assertKycVerified,
+  claimApplication,
+  clientKycView,
+  decideApplication,
+  kycDossier,
+  kycQueue,
+  runFaceCheck,
+  runIdScan,
+  saveDraft,
+  submitApplication,
+  uploadDocument,
+  type ClientActor,
+  type StaffActor,
+} from './service';
+import { verifyLocalToken } from './storage';
+import { ID_FRONT_B64, SELFIE_B64, completeApplication, fakeAutomation, seedBranch, seedMember, textJpeg } from './testFixtures';
+
+let pg: PGlite;
+let db: AppDb;
+let storageDir: string;
+
+const officer: StaffActor = { kind: 'staff', userId: 'u-staff-a', staffId: 'st-a', name: 'Officer A', role: 'CLIENT_SERVICES_STAFF', branchId: 'br-a', viewAll: false };
+const otherOfficer: StaffActor = { ...officer, userId: 'u-staff-a2', staffId: 'st-a2', name: 'Officer A2' };
+const outsider: StaffActor = { ...officer, userId: 'u-staff-b', staffId: 'st-b', name: 'Officer B', branchId: 'br-b' };
+
+const client = (borrowerId: string): ClientActor => ({ kind: 'client', userId: `u-${borrowerId}`, name: 'Juan', borrowerId });
+
+async function expectHttp(p: Promise<unknown>, status: number, code?: string) {
+  try {
+    await p;
+  } catch (e) {
+    expect(e).toBeInstanceOf(HttpError);
+    expect((e as HttpError).status).toBe(status);
+    if (code) expect((e as HttpError).code).toBe(code);
+    return e as HttpError;
+  }
+  throw new Error(`expected HTTP ${status}`);
+}
+
+/** Uploads ID + selfie, runs both checks and submits. */
+async function prepareAndSubmit(borrowerId: string, opts: { idNumber?: string; mobile?: string } = {}) {
+  const c = client(borrowerId);
+  await saveDraft(db, c, completeApplication(opts.idNumber, opts.mobile));
+  await uploadDocument(db, c, { kind: 'ID_FRONT', base64: ID_FRONT_B64() });
+  await uploadDocument(db, c, { kind: 'SELFIE', base64: SELFIE_B64() });
+  await runIdScan(db, fakeAutomation(), c);
+  await runFaceCheck(db, fakeAutomation(), c);
+  return submitApplication(db, c);
+}
+
+async function auditActions(borrowerId: string) {
+  const rows = await db.select().from(schema.kycAuditLog).where(eq(schema.kycAuditLog.borrowerId, borrowerId));
+  return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((r) => r.action);
+}
+
+beforeAll(async () => {
+  storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kyc-test-'));
+  process.env.KYC_LOCAL_STORAGE_DIR = storageDir;
+  pg = await createLocalDatabase();
+  db = localDrizzle(pg) as unknown as AppDb;
+  await seedBranch(db, 'br-a');
+  await seedBranch(db, 'br-b');
+  // Only the government ID is configured; ID front and selfie are always required.
+  // (0011 seeds further requirements; they are switched off here.)
+  await pg.query(`UPDATE kyc_required_documents SET is_active = false`);
+  await db.insert(schema.kycRequiredDocuments).values({ id: 'REQ-VALID_ID', documentType: 'VALID_ID', documentName: 'Government ID', isActive: true, sortOrder: 1, createdAt: '2026-01-01' });
+}, 120_000);
+
+afterAll(async () => {
+  await pg?.close();
+  fs.rmSync(storageDir, { recursive: true, force: true });
+});
+
+describe('member application', () => {
+  let borrowerId: string;
+  beforeEach(async () => {
+    borrowerId = await seedMember(db);
+  });
+
+  it('runs draft -> upload -> scan -> face check -> submit and records every step', async () => {
+    const result = await prepareAndSubmit(borrowerId, { idNumber: '0111-2345678-1', mobile: '09170000001' });
+    expect(result.status).toBe('SUBMITTED');
+    expect(result.referenceNumber).toMatch(/^KYC-\d{4}-[0-9A-F]{8}$/);
+
+    const [member] = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId));
+    expect(member.kycStatus).toBe('SUBMITTED');
+    expect(member.idType).toBe('UMID');
+    expect(member.cityCode).toBe('083747');
+    expect(member.phone).toBe('+63 917 000 0001');
+
+    expect(await auditActions(borrowerId)).toEqual(['STARTED', 'DOCUMENT_UPLOADED', 'DOCUMENT_UPLOADED', 'ID_SCANNED', 'FACE_CHECKED', 'SUBMITTED']);
+
+    const snaps = await db.select().from(schema.kycSubmissionSnapshots).where(eq(schema.kycSubmissionSnapshots.borrowerId, borrowerId));
+    expect(snaps).toHaveLength(1);
+    expect(snaps[0].sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    const notes = await db.select().from(schema.branchNotifications).where(eq(schema.branchNotifications.relatedId, borrowerId));
+    expect(notes.map((n) => `${n.audience}:${n.type}`).sort()).toEqual(['CLIENT:KYC_SUBMITTED', 'STAFF:KYC_SUBMITTED']);
+  });
+
+  it('never stores scan or face results sent by the client', async () => {
+    const c = client(borrowerId);
+    await saveDraft(db, c, completeApplication());
+    const [app] = await db.select().from(schema.kycSubmissions).where(eq(schema.kycSubmissions.borrowerId, borrowerId));
+    expect(app.governmentId).not.toHaveProperty('ocrData');
+    expect(app.governmentId).not.toHaveProperty('faceMatchResult');
+    expect(app.faceCheck).toBeNull();
+  });
+
+  it('refuses to submit until documents and the face check exist', async () => {
+    const c = client(borrowerId);
+    await saveDraft(db, c, completeApplication('0111-2345678-2', '09170000002'));
+    const err = await expectHttp(submitApplication(db, c), 422, 'INCOMPLETE');
+    const fields = ((err.details as any).issues as Array<{ field: string }>).map((i) => i.field);
+    expect(fields).toEqual(expect.arrayContaining(['documents.ID_FRONT', 'documents.SELFIE']));
+    expect((err.details as any).requiredStep).toBe('ID_UPLOAD');
+  });
+
+  it('blocks submission when the selfie clearly does not match, and requires a re-check after a new selfie', async () => {
+    const c = client(borrowerId);
+    await saveDraft(db, c, completeApplication('0111-2345678-3', '09170000003'));
+    await uploadDocument(db, c, { kind: 'ID_FRONT', base64: ID_FRONT_B64() });
+    await uploadDocument(db, c, { kind: 'SELFIE', base64: SELFIE_B64() });
+    await runIdScan(db, fakeAutomation(), c);
+    await runFaceCheck(db, fakeAutomation({ face: 'NO_MATCH', confidence: 20 }), c);
+    await expectHttp(submitApplication(db, c), 422, 'INCOMPLETE');
+
+    await uploadDocument(db, c, { kind: 'SELFIE', base64: SELFIE_B64() });
+    const err = await expectHttp(submitApplication(db, c), 422);
+    expect(JSON.stringify(err.details)).toMatch(/face verification/);
+    await runFaceCheck(db, fakeAutomation({ face: 'UNAVAILABLE', confidence: undefined }), c);
+    expect((await submitApplication(db, c)).status).toBe('SUBMITTED');
+  });
+
+  it('rejects a blurred ID photo and a disguised file before storing anything', async () => {
+    const c = client(borrowerId);
+    const blurred = `data:image/jpeg;base64,${textJpeg(1000, 630, { blur: 6 }).toString('base64')}`;
+    const err = await expectHttp(uploadDocument(db, c, { kind: 'ID_FRONT', base64: blurred }), 422, 'POOR_QUALITY');
+    expect(err.message).toMatch(/blurry/);
+    const fakePng = `data:image/png;base64,${Buffer.from('<html>not an image</html>'.repeat(10)).toString('base64')}`;
+    await expectHttp(uploadDocument(db, c, { kind: 'ID_FRONT', base64: fakePng }), 415);
+    const docs = await db.select().from(schema.kycDocuments).where(eq(schema.kycDocuments.borrowerId, borrowerId));
+    expect(docs).toHaveLength(0);
+  });
+
+  it('keeps every upload: a replacement supersedes the old file instead of deleting it', async () => {
+    const c = client(borrowerId);
+    await uploadDocument(db, c, { kind: 'ID_FRONT', base64: ID_FRONT_B64() });
+    await uploadDocument(db, c, { kind: 'ID_FRONT', base64: ID_FRONT_B64() });
+    const docs = await db.select().from(schema.kycDocuments).where(and(eq(schema.kycDocuments.borrowerId, borrowerId), eq(schema.kycDocuments.documentKind, 'ID_FRONT')));
+    expect(docs).toHaveLength(2);
+    expect(docs.filter((d) => d.supersededAt === null)).toHaveLength(1);
+    expect(fs.readdirSync(path.join(storageDir, 'kyc', borrowerId, 'id-front'))).toHaveLength(2);
+  });
+
+  it('serves documents only through signed, expiring links', async () => {
+    const c = client(borrowerId);
+    const view = await uploadDocument(db, c, { kind: 'ID_FRONT', base64: ID_FRONT_B64() });
+    expect(view.url).toMatch(/^\/api\/kyc\/files\//);
+    const token = view.url!.split('/').pop()!;
+    expect(verifyLocalToken(token)).toMatch(new RegExp(`^kyc/${borrowerId}/id-front/`));
+    expect(verifyLocalToken(token.slice(0, -2) + 'xx')).toBeNull();
+    expect(verifyLocalToken(token, Date.now() + 10 * 60 * 1000)).toBeNull();
+  });
+});
+
+describe('staff review', () => {
+  it('approves with a reason: member verified, savings opened, member notified, all audited', async () => {
+    const borrowerId = await seedMember(db);
+    await prepareAndSubmit(borrowerId, { idNumber: '0111-2345678-4', mobile: '09170000004' });
+    await expectHttp(assertKycVerified(db, borrowerId), 403, 'KYC_REQUIRED');
+
+    const r = await decideApplication(db, officer, borrowerId, { decision: 'approve', reason: 'ID and selfie verified in person.' });
+    expect(r.status).toBe('APPROVED');
+
+    const [member] = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId));
+    expect(member.kycStatus).toBe('APPROVED');
+    const savings = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.memberId, borrowerId));
+    expect(savings).toHaveLength(1);
+    await assertKycVerified(db, borrowerId);
+
+    const view = await clientKycView(db, borrowerId);
+    expect(view.statusLabel).toBe('Verified');
+    expect(view.decisionReason).toBe('ID and selfie verified in person.');
+
+    expect((await auditActions(borrowerId)).slice(-2)).toEqual(['CLAIMED', 'APPROVED']);
+    const general = await db.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.targetId, borrowerId), eq(schema.auditLogs.action, 'KYC_APPROVED')));
+    expect(general[0].performedBy).toBe(officer.userId);
+    const memberNotes = await db.select().from(schema.branchNotifications).where(and(eq(schema.branchNotifications.borrowerId, borrowerId), eq(schema.branchNotifications.type, 'KYC_APPROVED')));
+    expect(memberNotes[0].audience).toBe('CLIENT');
+  });
+
+  it('rejection with a reason lets the member restart and resubmit as version 2', async () => {
+    const borrowerId = await seedMember(db);
+    const c = client(borrowerId);
+    await prepareAndSubmit(borrowerId, { idNumber: '0111-2345678-5', mobile: '09170000005' });
+    await expectHttp(decideApplication(db, officer, borrowerId, { decision: 'reject', reason: '' }), 400, 'REASON_REQUIRED');
+    await decideApplication(db, officer, borrowerId, { decision: 'reject', reason: 'The ID photo is of a different person.' });
+    expect((await clientKycView(db, borrowerId)).rejectionReason).toBe('The ID photo is of a different person.');
+
+    await saveDraft(db, c, { currentStep: 1 });
+    expect((await clientKycView(db, borrowerId)).kycStatus).toBe('IN_PROGRESS');
+    await uploadDocument(db, c, { kind: 'SELFIE', base64: SELFIE_B64() });
+    await runFaceCheck(db, fakeAutomation(), c);
+    const again = await submitApplication(db, c);
+    expect(again.version).toBe(2);
+    expect((await auditActions(borrowerId)).slice(-5)).toEqual(['REJECTED', 'RESTARTED', 'DOCUMENT_UPLOADED', 'FACE_CHECKED', 'RESUBMITTED']);
+  });
+
+  it('a resubmission request returns the application for changes', async () => {
+    const borrowerId = await seedMember(db);
+    const c = client(borrowerId);
+    await prepareAndSubmit(borrowerId, { idNumber: '0111-2345678-6', mobile: '09170000006' });
+    await decideApplication(db, officer, borrowerId, { decision: 'resubmission_required', reason: 'Upload a clearer proof of address.', sections: ['DOCUMENTS'] });
+    const view = await clientKycView(db, borrowerId);
+    expect(view.kycStatus).toBe('CORRECTION_REQUIRED');
+    expect(view.statusLabel).toBe('Resubmission required');
+    expect(view.correctionSections).toEqual(['DOCUMENTS']);
+    expect((await submitApplication(db, c)).status).toBe('SUBMITTED');
+  });
+
+  it('enforces branch scope, single reviewer, legal states and idempotent decisions', async () => {
+    const borrowerId = await seedMember(db);
+    await expectHttp(decideApplication(db, officer, borrowerId, { decision: 'approve', reason: 'ok ok' }), 409, 'BAD_STATE');
+    await prepareAndSubmit(borrowerId, { idNumber: '0111-2345678-7', mobile: '09170000007' });
+
+    await expectHttp(claimApplication(db, outsider, borrowerId), 404);
+    await claimApplication(db, officer, borrowerId);
+    await expectHttp(decideApplication(db, otherOfficer, borrowerId, { decision: 'approve', reason: 'looks fine' }), 409, 'CLAIMED');
+
+    const first = await decideApplication(db, officer, borrowerId, { decision: 'approve', reason: 'Verified.', idempotencyKey: 'k-1' });
+    const replay = await decideApplication(db, officer, borrowerId, { decision: 'approve', reason: 'Verified.', idempotencyKey: 'k-1' });
+    expect(first.replayed).toBe(false);
+    expect(replay).toEqual({ status: 'APPROVED', replayed: true });
+    await expectHttp(decideApplication(db, officer, borrowerId, { decision: 'reject', reason: 'changed my mind' }), 409, 'BAD_STATE');
+    expect((await auditActions(borrowerId)).filter((a) => a === 'APPROVED')).toHaveLength(1);
+  });
+
+  it('refuses a reviewer acting on their own application', async () => {
+    const borrowerId = await seedMember(db);
+    await prepareAndSubmit(borrowerId, { idNumber: '0111-2345678-8', mobile: '09170000008' });
+    const self: StaffActor = { ...officer, userId: `u-${borrowerId}` };
+    await expectHttp(decideApplication(db, self, borrowerId, { decision: 'approve', reason: 'Approving my own application.' }), 403, 'SELF_REVIEW');
+  });
+
+  it('rejects a government ID number already registered to another member', async () => {
+    const first = await seedMember(db);
+    await prepareAndSubmit(first, { idNumber: '0111-2345678-9', mobile: '09170000009' });
+    const second = await seedMember(db);
+    const err = await expectHttp(prepareAndSubmit(second, { idNumber: '0111 2345678 9', mobile: '09170000010' }), 409, 'DUPLICATE');
+    expect(err.message).toMatch(/already registered/);
+  });
+
+  it('lists the queue for the officer branch only, waiting applications first', async () => {
+    const borrowerId = await seedMember(db);
+    await prepareAndSubmit(borrowerId, { idNumber: '0111-2345679-0', mobile: '09170000011' });
+    const { items, counts } = await kycQueue(db, { branchId: 'br-a', viewAll: false }, { status: 'pending' });
+    expect(items.every((i) => i.kycStatus === 'SUBMITTED' && i.branchId === 'br-a')).toBe(true);
+    expect(counts.pending).toBeGreaterThanOrEqual(1);
+    const outside = await kycQueue(db, { branchId: 'br-b', viewAll: false }, {});
+    expect(outside.items).toHaveLength(0);
+
+    const dossier = await kycDossier(db, { branchId: 'br-a', viewAll: false }, borrowerId);
+    expect(dossier.documents.every((d) => d.url?.startsWith('/api/kyc/files/'))).toBe(true);
+    expect(dossier.snapshots).toHaveLength(1);
+    await expectHttp(kycDossier(db, { branchId: 'br-b', viewAll: false }, borrowerId), 404);
+  });
+});
+
+describe('database guards from 0023', () => {
+  it('refuses a status change made outside the KYC service', async () => {
+    const borrowerId = await seedMember(db);
+    await saveDraft(db, client(borrowerId), completeApplication('0111-2345679-1', '09170000012'));
+    await expect(pg.query(`UPDATE kyc_submissions SET status = 'APPROVED' WHERE borrower_id = $1`, [borrowerId])).rejects.toThrow(/KYC service/);
+  });
+
+  it('keeps the KYC audit log append-only', async () => {
+    await expect(pg.query(`UPDATE kyc_audit_log SET reason = 'edited'`)).rejects.toThrow(/append-only/);
+    await expect(pg.query(`DELETE FROM kyc_audit_log`)).rejects.toThrow(/append-only/);
+  });
+});

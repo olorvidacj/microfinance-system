@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
-  ArrowUpRight,
   BadgeCheck,
   Bell,
   ChevronRight,
@@ -13,260 +12,227 @@ import {
   PiggyBank,
   ReceiptText,
   ShieldCheck,
+  UsersRound,
   Wallet,
   XCircle,
 } from 'lucide-react';
-import { dashboardService } from '../services/dashboard';
+import { dashboardService, type ClientDashboardView } from '../services/dashboard';
 import { profileService } from '../services/profile';
-import { ClientDashboard, KYCStatus, KycStatusData } from '../types';
+import { KYCStatus, KycStatusData } from '../types';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate } from '../../utils/loanMath';
-import {
-  Amount,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  CardTitle,
-  ErrorState,
-  LoadingState,
-  ProgressBar,
-  StatusBadge,
-  AreaChartCard,
-} from '../components/ui';
-import { InfoRow, StatCard, transactionIcon, transactionTone } from '../components/common';
+import { formatDate } from '../../utils/loanMath';
+import { Button, Card, CardBody, CardHeader, CardTitle, ErrorState, LoadingState, StatusBadge, AreaChartCard } from '../components/ui';
+import { StatCard } from '../components/common';
+import { KycStatusBadge } from '../../components/KycStatusBadge';
+import { isKycVerified } from '../../../shared/kyc-core';
+import { GROUP_ROLE_LABELS, centsFromDb, type GroupRole } from '../../../shared/lending';
+import { peso } from '../../components/lending';
+
+const monthLabel = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString('en-PH', { month: 'short', timeZone: 'UTC' });
 
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
-  const [dashboard, setDashboard] = useState<ClientDashboard | null>(null);
+  const [dashboard, setDashboard] = useState<ClientDashboardView | null>(null);
   const [kyc, setKyc] = useState<KycStatusData | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const [d, k] = await Promise.all([dashboardService.get(), profileService.kycStatus()]);
       setDashboard(d);
       setKyc(k);
-    } catch (err: any) {
-      setError(err.message || 'Unable to load dashboard.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load your dashboard.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   if (loading) return <LoadingState label="Loading your dashboard…" />;
-  if (error || !dashboard)
-    return <ErrorState message={error || 'No data available.'} onRetry={load} />;
+  if (error || !dashboard) return <ErrorState message={error || 'No data available.'} onRetry={load} />;
 
-  const firstName = (user?.fullName || dashboard.borrowerName).split(' ')[0];
-  const kycStatus = kyc?.kycStatus || 'NOT_STARTED';
-
-  const repaymentData = [
-    { name: 'Feb', value: 4850 },
-    { name: 'Mar', value: 4850 },
-    { name: 'Apr', value: 4850 },
-    { name: 'May', value: 4850 },
-    { name: 'Jun', value: 4850 },
-    { name: 'Jul', value: 4850 },
-  ];
-
-  const totalDisbursed = dashboard.totalActiveLoan || 0;
-  const totalPaid = dashboard.totalPaid || 0;
-  const loanProgress = totalDisbursed > 0 ? Math.min(100, Math.round((totalPaid / (totalPaid + dashboard.remainingBalance)) * 100)) : 0;
+  const firstName = (dashboard.member.fullName || user?.fullName || '').split(' ')[0];
+  const kycStatus = (kyc?.kycStatus || dashboard.member.kycStatus || 'NOT_STARTED') as KYCStatus;
+  const { loans, savings } = dashboard;
+  const chart = dashboard.repayments.map((r) => ({ name: monthLabel(r.month), value: centsFromDb(r.amount) / 100 }));
+  const repaidAny = dashboard.repayments.some((r) => centsFromDb(r.amount) > 0);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Hi, {firstName} 👋</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Hi, {firstName}</h1>
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-            Member <span className="font-mono text-xs font-medium text-slate-600">{dashboard.memberNumber}</span>
-            <StatusBadge status={kycStatus} />
+            Member <span className="font-mono text-xs font-medium text-slate-600">{dashboard.member.memberNumber}</span>
+            <KycStatusBadge status={kycStatus} size="sm" />
           </p>
         </div>
         <KycApplyButton status={kycStatus} />
       </div>
 
-      {/* KYC alert card */}
-      {kycStatus !== 'VERIFIED' && <KycAlertCard kyc={kyc} status={kycStatus} />}
+      {!isKycVerified(kycStatus) && <KycAlertCard kyc={kyc} status={kycStatus} />}
+      {loans.overdueCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+          <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {loans.overdueCount === 1 ? 'One of your loans is' : `${loans.overdueCount} of your loans are`} behind. Paying now stops further penalties.</span>
+          <Link to="/portal/payments"><Button size="sm" variant="outline">Pay now</Button></Link>
+        </div>
+      )}
 
-      {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Active loan balance"
-          value={<Amount value={dashboard.remainingBalance} />}
-          sub={`of ${formatCurrency(dashboard.totalActiveLoan)} total`}
-          icon={HandCoins}
-          tone="emerald"
-        />
+        <StatCard label="Loan balance" value={peso(loans.outstanding)} sub={`${loans.running.length} running loan${loans.running.length === 1 ? '' : 's'}`} icon={HandCoins} tone="emerald" />
         <StatCard
           label="Next payment"
-          value={<Amount value={dashboard.nextPayment} />}
-          sub={dashboard.nextPaymentDueDate ? `Due ${formatDate(dashboard.nextPaymentDueDate)}` : undefined}
+          value={loans.nextDue ? peso(loans.nextDue.amount) : '—'}
+          sub={loans.nextDue ? `Due ${formatDate(loans.nextDue.dueDate)}${loans.nextDue.loanNumber ? ` · ${loans.nextDue.loanNumber}` : ''}` : 'Nothing due'}
           icon={Wallet}
           tone="blue"
         />
-        <StatCard
-          label="Savings balance"
-          value={<Amount value={dashboard.savingsBalance} />}
-          sub={<Link to="/portal/savings" className="text-emerald-600 hover:underline">View savings</Link>}
-          icon={PiggyBank}
-          tone="violet"
-        />
-        <StatCard
-          label="Loan status"
-          value={<StatusBadge status={dashboard.loanStatus} />}
-          sub={`${dashboard.activeLoansCount} active loan${dashboard.activeLoansCount === 1 ? '' : 's'}`}
-          icon={ReceiptText}
-          tone="amber"
-        />
+        <StatCard label="Savings" value={peso(savings.total)} sub={`${savings.accounts.length} account${savings.accounts.length === 1 ? '' : 's'}`} icon={PiggyBank} tone="violet" />
+        <StatCard label="Applications" value={loans.pendingApplications.length} sub={loans.pendingApplications.length ? 'Waiting for a decision' : 'None pending'} icon={ReceiptText} tone="amber" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Main column */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Loan progress */}
           <Card>
             <CardHeader>
-              <CardTitle>Loan repayment progress</CardTitle>
-              <Link to="/portal/loans" className="text-xs font-medium text-emerald-700 hover:underline">
-                View loans <ChevronRight className="inline h-3.5 w-3.5" />
-              </Link>
+              <CardTitle>My loans</CardTitle>
+              <Link to="/portal/loans" className="text-xs font-medium text-emerald-700 hover:underline">View all <ChevronRight className="inline h-3.5 w-3.5" /></Link>
             </CardHeader>
-            <CardBody>
-              <div className="grid grid-cols-3 gap-4">
-                <InfoRow label="Total loan" value={formatCurrency(totalDisbursed)} />
-                <InfoRow label="Paid so far" value={formatCurrency(totalPaid)} />
-                <InfoRow label="Remaining" value={formatCurrency(dashboard.remainingBalance)} />
-              </div>
-              <div className="mt-3">
-                <ProgressBar value={loanProgress} max={100} showLabel label="Repaid" />
-              </div>
-              {dashboard.remainingBalance > 0 && dashboard.nextPaymentDueDate && (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3">
-                  <div className="text-sm">
-                    <span className="text-slate-500">Next payment:</span>{' '}
-                    <span className="font-semibold text-emerald-700">{formatCurrency(dashboard.nextPayment)}</span>
-                    <span className="text-slate-400"> due {formatDate(dashboard.nextPaymentDueDate)}</span>
-                  </div>
-                  <Link to="/portal/payments">
-                    <Button size="sm" variant="secondary">
-                      Make a payment
-                    </Button>
-                  </Link>
-                </div>
+            <CardBody className="space-y-3">
+              {loans.running.length === 0 && loans.pendingApplications.length === 0 ? (
+                <p className="py-4 text-center text-sm text-slate-400">You have no loans yet.</p>
+              ) : (
+                <>
+                  {loans.running.map((l) => (
+                    <Link key={l.id} to={`/portal/loans/${l.id}`} className="block rounded-xl border border-slate-100 p-3 hover:border-emerald-200" data-testid="dashboard-loan">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-800">{l.productName} <span className="font-mono text-xs text-slate-400">{l.loanNumber}</span></p>
+                        <StatusBadge status={l.daysBehind > 0 ? 'Overdue' : l.status} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-500">
+                        <span>Balance <strong className="tabular-nums text-slate-800">{peso(l.remainingBalance)}</strong></span>
+                        <span>Paid <strong className="tabular-nums text-slate-800">{peso(l.totalPaid)}</strong> of {peso(l.totalPayable)}</span>
+                        {l.nextDue && <span>Next <strong className="tabular-nums text-slate-800">{peso(l.nextDue.amount)}</strong> on {formatDate(l.nextDue.dueDate)}</span>}
+                      </div>
+                    </Link>
+                  ))}
+                  {loans.pendingApplications.map((l) => (
+                    <Link key={l.id} to={`/portal/loans/${l.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-slate-200 p-3 text-sm hover:border-emerald-200">
+                      <span>{l.productName} · {peso(l.principal)} <span className="text-xs text-slate-400">applied {formatDate(l.applicationDate)}</span></span>
+                      <StatusBadge status={l.status} />
+                    </Link>
+                  ))}
+                </>
               )}
             </CardBody>
           </Card>
 
-          {/* Repayment chart */}
-          <AreaChartCard
-            title="Repayments · last 6 months"
-            subtitle="Your monthly installment payments"
-            data={repaymentData}
-            height={200}
-          />
+          {repaidAny ? (
+            <AreaChartCard title="Repayments · last 6 months" subtitle="What you paid on your loans each month" data={chart} height={200} />
+          ) : (
+            <Card>
+              <CardBody className="text-sm text-slate-400">Your repayments will be charted here once you start paying.</CardBody>
+            </Card>
+          )}
 
-          {/* Recent transactions */}
           <Card>
             <CardHeader>
               <CardTitle>Recent activity</CardTitle>
-              <Link to="/portal/transactions" className="text-xs font-medium text-emerald-700 hover:underline">
-                View all <ChevronRight className="inline h-3.5 w-3.5" />
-              </Link>
+              <Link to="/portal/transactions" className="text-xs font-medium text-emerald-700 hover:underline">View all <ChevronRight className="inline h-3.5 w-3.5" /></Link>
             </CardHeader>
             <CardBody className="px-2 pb-2">
-              {dashboard.recentTransactions.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-slate-400">No recent activity yet.</p>
+              {dashboard.recentActivity.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-slate-400">No activity yet.</p>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {dashboard.recentTransactions.map((t) => {
-                    const tone = transactionTone(t.type);
-                    return (
-                      <li key={t.id} className="flex items-center gap-3 px-3 py-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50">
-                          {transactionIcon(t.type)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-slate-800">{t.description || t.type}</p>
-                          <p className="text-xs text-slate-400">{formatDate(t.date)} · {t.referenceNumber}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`text-sm font-semibold tabular-nums ${tone === 'positive' ? 'text-emerald-600' : tone === 'negative' ? 'text-slate-800' : 'text-slate-700'}`}>
-                            {tone === 'negative' ? '−' : tone === 'positive' ? '' : ''}
-                            {formatCurrency(t.amount)}
-                          </span>
-                          <p className="text-[11px] text-slate-400">{t.type.replace(/_/g, ' ')}</p>
-                        </div>
-                      </li>
-                    );
-                  })}
+                  {dashboard.recentActivity.map((t) => (
+                    <li key={t.id} className="flex items-center gap-3 px-3 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-800">{t.label}</p>
+                        <p className="text-xs text-slate-400">{formatDate(t.date)} · {t.reference}</p>
+                      </div>
+                      <span className={`text-sm font-semibold tabular-nums ${t.direction === 'OUT' ? 'text-slate-800' : 'text-emerald-600'}`}>
+                        {t.direction === 'OUT' ? '−' : '+'}{peso(t.amount)}
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               )}
             </CardBody>
           </Card>
         </div>
 
-        {/* Side column */}
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Savings</CardTitle>
+              <Link to="/portal/savings" className="text-xs font-medium text-emerald-700 hover:underline">Open <ChevronRight className="inline h-3.5 w-3.5" /></Link>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              {savings.accounts.length === 0 ? (
+                <p className="text-sm text-slate-400">No savings account yet. One is opened when your KYC is approved.</p>
+              ) : (
+                savings.accounts.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm" data-testid="dashboard-savings">
+                    <span>{a.productName} <span className="block text-xs text-slate-400">{a.passbookNumber}</span></span>
+                    <span className="font-semibold tabular-nums text-slate-800">{peso(a.balance)}</span>
+                  </div>
+                ))
+              )}
+            </CardBody>
+          </Card>
+
+          {dashboard.group && (
+            <Card>
+              <CardBody className="flex items-center gap-3">
+                <UsersRound className="h-5 w-5 text-emerald-600" />
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="font-semibold text-slate-800">{dashboard.group.name}</p>
+                  <p className="text-xs text-slate-500">You are the {GROUP_ROLE_LABELS[dashboard.group.role as GroupRole]?.toLowerCase() ?? 'member'}</p>
+                </div>
+                <Link to="/portal/groups" className="text-xs font-medium text-emerald-700 hover:underline">Open</Link>
+              </CardBody>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Bell className="h-4 w-4" /> Notifications{dashboard.notifications.unread ? ` (${dashboard.notifications.unread} new)` : ''}</CardTitle>
+              <Link to="/portal/notifications" className="text-xs font-medium text-emerald-700 hover:underline">Open <ChevronRight className="inline h-3.5 w-3.5" /></Link>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              {dashboard.notifications.latest.length === 0 ? (
+                <p className="text-sm text-slate-400">Nothing yet.</p>
+              ) : (
+                dashboard.notifications.latest.map((n) => (
+                  <div key={n.id} className={`rounded-xl border px-3 py-2 text-xs ${n.isRead ? 'border-slate-100 text-slate-600' : 'border-emerald-100 bg-emerald-50 text-emerald-900'}`}>
+                    <p className="font-semibold">{n.title}</p>
+                    <p className="mt-0.5 line-clamp-2">{n.message}</p>
+                  </div>
+                ))
+              )}
+            </CardBody>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Quick actions</CardTitle>
             </CardHeader>
             <CardBody className="space-y-2">
-              {kycStatus === 'VERIFIED' ? (
+              {isKycVerified(kycStatus) ? (
                 <QuickLink to="/portal/apply" icon={FilePlus2} label="Apply for a loan" desc="Start a new application" />
               ) : (
                 <QuickLink to="/portal/kyc" icon={ShieldCheck} label="Complete KYC first" desc="Verification required to apply" />
               )}
-              <QuickLink to="/portal/payments" icon={ReceiptText} label="Make a payment" desc="Submit payment proof" />
-              <QuickLink to="/portal/savings" icon={PiggyBank} label="Manage savings" desc="Deposits & withdrawals" />
-              <QuickLink to="/portal/documents" icon={Bell} label="Documents" desc="Statements & receipts" />
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Notifications</CardTitle>
-              <Link to="/portal/notifications" className="text-xs font-medium text-emerald-700 hover:underline">
-                Open <ChevronRight className="inline h-3.5 w-3.5" />
-              </Link>
-            </CardHeader>
-            <CardBody className="space-y-3">
-              <div className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5">
-                <Bell className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <p className="text-xs text-amber-800">
-                  <span className="font-semibold">Payment reminder</span> — your installment is due soon.
-                </p>
-              </div>
-              <div className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
-                <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                <p className="text-xs text-emerald-800">
-                  <span className="font-semibold">Savings deposit</span> — a recent deposit was posted to your account.
-                </p>
-              </div>
-            </CardBody>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-emerald-700 to-teal-800 text-white">
-            <CardBody>
-              <p className="text-sm font-semibold">Need help with your account?</p>
-              <p className="mt-1 text-xs text-emerald-100/80">
-                Our support team is available Mon–Sat, 8 AM to 6 PM.
-              </p>
-              <Link to="/portal/support">
-                <Button size="sm" className="mt-3 bg-white/15 text-white hover:bg-white/25">
-                  Contact support
-                </Button>
-              </Link>
+              <QuickLink to="/portal/payments" icon={ReceiptText} label="Send payment proof" desc="For a GCash or bank transfer" />
+              <QuickLink to="/portal/savings" icon={PiggyBank} label="Savings" desc="Statements and withdrawals" />
             </CardBody>
           </Card>
         </div>

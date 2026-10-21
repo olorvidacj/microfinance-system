@@ -8,6 +8,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { KycStatus } from '../types';
+import { KYC_STATUS_LABELS, normaliseKycStatus, type KycStatus as CanonicalKycStatus } from '../../shared/kyc-core';
 
 export type KycStatusTone = 'green' | 'red' | 'yellow' | 'orange' | 'slate';
 
@@ -23,143 +24,33 @@ export interface KycStatusConfig {
   IconComponent: React.ComponentType<{ className?: string }>;
 }
 
+const STYLES: Record<KycStatusTone, Omit<KycStatusConfig, 'key' | 'tone' | 'label' | 'IconComponent'>> = {
+  green: { bgClass: 'bg-emerald-50', textClass: 'text-emerald-700', borderClass: 'border-emerald-200', ringClass: 'ring-emerald-500/20', dotClass: 'bg-emerald-500' },
+  red: { bgClass: 'bg-rose-50', textClass: 'text-rose-700', borderClass: 'border-rose-200', ringClass: 'ring-rose-500/20', dotClass: 'bg-rose-500' },
+  orange: { bgClass: 'bg-orange-50', textClass: 'text-orange-700', borderClass: 'border-orange-200', ringClass: 'ring-orange-500/20', dotClass: 'bg-orange-500' },
+  yellow: { bgClass: 'bg-amber-50', textClass: 'text-amber-700', borderClass: 'border-amber-200', ringClass: 'ring-amber-500/20', dotClass: 'bg-amber-500' },
+  slate: { bgClass: 'bg-slate-100', textClass: 'text-slate-600', borderClass: 'border-slate-200', ringClass: 'ring-slate-500/20', dotClass: 'bg-slate-400' },
+};
+
+const TONES: Record<CanonicalKycStatus, { tone: KycStatusTone; IconComponent: React.ComponentType<{ className?: string }> }> = {
+  APPROVED: { tone: 'green', IconComponent: CheckCircle2 },
+  REJECTED: { tone: 'red', IconComponent: XCircle },
+  SUSPENDED: { tone: 'red', IconComponent: AlertCircle },
+  CORRECTION_REQUIRED: { tone: 'orange', IconComponent: AlertTriangle },
+  SUBMITTED: { tone: 'yellow', IconComponent: Clock },
+  UNDER_REVIEW: { tone: 'yellow', IconComponent: Clock },
+  IN_PROGRESS: { tone: 'yellow', IconComponent: Clock },
+  NOT_STARTED: { tone: 'slate', IconComponent: MinusCircle },
+};
+
 /**
- * Resolves comprehensive styling, semantic color tones, labels, and icons
- * for any KYC status string (case-insensitive and alias-tolerant).
+ * Styling and label for any stored KYC status. Spellings are normalised by
+ * shared/kyc-core, so an unknown value shows as Not started, never as verified.
  */
 export function getKycStatusConfig(status?: KycStatus | string | null): KycStatusConfig {
-  const normalized = (status || '').toString().trim().toUpperCase().replace(/[\s-]+/g, '_');
-
-  // 1. APPROVED / VERIFIED -> GREEN
-  if (
-    [
-      'APPROVED',
-      'VERIFIED',
-      'PASSED',
-      'ACCEPTED',
-      'COMPLETED',
-      'ACTIVE',
-      'VERIFIED_PMES_COMPLETED',
-    ].includes(normalized) ||
-    normalized.includes('APPROV') ||
-    normalized.includes('VERIF')
-  ) {
-    const isVerifiedLabel = normalized.includes('VERIF');
-    return {
-      key: 'APPROVED',
-      tone: 'green',
-      label: isVerifiedLabel ? 'Verified' : 'Approved',
-      bgClass: 'bg-emerald-50',
-      textClass: 'text-emerald-700',
-      borderClass: 'border-emerald-200',
-      ringClass: 'ring-emerald-500/20',
-      dotClass: 'bg-emerald-500',
-      IconComponent: CheckCircle2,
-    };
-  }
-
-  // 2. REJECTED / SUSPENDED / FAILED / EXPIRED -> RED
-  if (
-    [
-      'REJECTED',
-      'FAILED',
-      'SUSPENDED',
-      'EXPIRED',
-      'DENIED',
-      'BLOCKED',
-      'DECLINED',
-    ].includes(normalized) ||
-    normalized.includes('REJECT')
-  ) {
-    let label = 'Rejected';
-    if (normalized.includes('SUSPEND')) label = 'Suspended';
-    if (normalized.includes('EXPIR')) label = 'Expired';
-    return {
-      key: 'REJECTED',
-      tone: 'red',
-      label,
-      bgClass: 'bg-rose-50',
-      textClass: 'text-rose-700',
-      borderClass: 'border-rose-200',
-      ringClass: 'ring-rose-500/20',
-      dotClass: 'bg-rose-500',
-      IconComponent: XCircle,
-    };
-  }
-
-  // 3. CORRECTION REQUIRED -> ORANGE
-  if (
-    [
-      'CORRECTION_REQUIRED',
-      'CORRECTION_REQUESTED',
-      'REQUIRES_CORRECTION',
-      'ACTION_REQUIRED',
-      'CHANGES_REQUESTED',
-      'RESUBMIT',
-    ].includes(normalized) ||
-    normalized.includes('CORRECT')
-  ) {
-    return {
-      key: 'CORRECTION_REQUIRED',
-      tone: 'orange',
-      label: 'Correction Required',
-      bgClass: 'bg-orange-50',
-      textClass: 'text-orange-700',
-      borderClass: 'border-orange-200',
-      ringClass: 'ring-orange-500/20',
-      dotClass: 'bg-orange-500',
-      IconComponent: AlertTriangle,
-    };
-  }
-
-  // 4. PENDING / UNDER REVIEW / SUBMITTED / IN PROGRESS -> YELLOW / AMBER
-  if (
-    [
-      'PENDING',
-      'UNDER_REVIEW',
-      'IN_REVIEW',
-      'SUBMITTED',
-      'IN_PROGRESS',
-      'PROCESSING',
-      'AWAITING_REVIEW',
-      'INVESTIGATION',
-    ].includes(normalized) ||
-    normalized.includes('PENDING') ||
-    normalized.includes('REVIEW')
-  ) {
-    let label = 'Pending';
-    if (normalized.includes('UNDER_REVIEW') || normalized.includes('IN_REVIEW')) {
-      label = 'Under Review';
-    } else if (normalized.includes('IN_PROGRESS')) {
-      label = 'In Progress';
-    } else if (normalized.includes('SUBMIT')) {
-      label = 'Submitted';
-    }
-    return {
-      key: 'PENDING',
-      tone: 'yellow',
-      label,
-      bgClass: 'bg-amber-50',
-      textClass: 'text-amber-800',
-      borderClass: 'border-amber-200',
-      ringClass: 'ring-amber-500/20',
-      dotClass: 'bg-amber-500',
-      IconComponent: Clock,
-    };
-  }
-
-  // 5. NOT STARTED / INCOMPLETE / DRAFT / DEFAULT -> SLATE / GRAY
-  return {
-    key: 'NOT_STARTED',
-    tone: 'slate',
-    label: normalized ? (normalized === 'NOT_STARTED' ? 'Not Started' : normalized.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())) : 'Not Started',
-    bgClass: 'bg-slate-100',
-    textClass: 'text-slate-600',
-    borderClass: 'border-slate-200',
-    ringClass: 'ring-slate-400/20',
-    dotClass: 'bg-slate-400',
-    IconComponent: MinusCircle,
-  };
+  const key = normaliseKycStatus(status);
+  const { tone, IconComponent } = TONES[key];
+  return { key, tone, label: KYC_STATUS_LABELS[key], IconComponent, ...STYLES[tone] };
 }
 
 export interface KycStatusBadgeProps {

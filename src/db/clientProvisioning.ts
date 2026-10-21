@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { sql } from 'drizzle-orm';
 import { getDb, getPool, schema } from './index';
 
 export interface ClientProfileInput {
@@ -130,7 +131,7 @@ export async function createClientProfile(
     creditScore: 0,
     creditTier: 'PENDING',
     kycStatus: 'NOT_STARTED',
-    memberStatus: 'Active',
+    memberStatus: 'Pending',
     membershipDate: today,
     profileCompleted: false,
     barangay: input.barangay ? String(input.barangay) : null,
@@ -152,70 +153,41 @@ export async function createClientProfile(
       'Account created via client registration — KYC verification not yet started.',
   });
 
-  await db.insert(schema.savingsAccounts).values({
-    id: genId('sav'),
-    memberId: id,
-    memberName: fullName,
-    passbookNumber: `PB-${borrowerNumber}`,
-    balance: 0,
-    maintainingBalance: 1000,
-    interestRate: 1.0,
-  });
-
-  // Create initial kyc_submissions draft entry
-  try {
-    await db.insert(schema.kycSubmissions).values({
+  // No savings account here: accounts open when KYC is approved (src/kyc/service.ts).
+  await db
+    .insert(schema.kycSubmissions)
+    .values({
       id: genId('kyc'),
       borrowerId: id,
       status: 'NOT_STARTED',
-      personalInfo: {
-        firstName: input.firstName || '',
-        middleName: input.middleName || '',
-        hasNoMiddleName: Boolean(input.hasNoMiddleName),
-        lastName: input.lastName || '',
-        suffix: input.suffix || '',
-        phone: input.phone || '',
-        email: input.email || '',
-        dateOfBirth: input.dateOfBirth || '',
-        gender: input.gender || '',
-        civilStatus: input.civilStatus || '',
-        nationality: 'Filipino',
-        citizenship: 'Filipino',
-      },
       currentStep: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
-  } catch (kycErr) {
-    console.warn('[Provisioning] Initial KYC submission creation warning:', kycErr);
-  }
+    })
+    .onConflictDoNothing();
 
   return { id, borrowerNumber, fullName };
 }
 
 /**
- * Finds an existing borrower that shares the given phone/email so newly
- * registered auth accounts link to staff pre-registered members instead of
- * creating duplicates.
+ * Finds the member a branch registered with exactly this email that no login
+ * is attached to yet. Only an email the auth provider has verified may be
+ * passed here; matching by phone number is deliberately not supported, since
+ * registration does not prove ownership of a phone.
  */
-export async function findBorrowerByContact(
-  phone?: string | null,
+export async function findUnlinkedBorrowerByEmail(
   email?: string | null
 ): Promise<{ id: string; borrowerNumber: string } | null> {
   const db = getDb();
-  if (!db) return null;
-  const cleanPhone = String(phone || '').replace(/\D/g, '');
   const normEmail = String(email || '').toLowerCase().trim();
-  try {
-    const rows = await db.select().from(schema.borrowers);
-    const match = rows.find((b) => {
-      if (cleanPhone && String(b.phone).replace(/\D/g, '').endsWith(cleanPhone.slice(-10))) {
-        return true;
-      }
-      return Boolean(b.email) && String(b.email).toLowerCase() === normEmail;
-    });
-    return match ? { id: match.id, borrowerNumber: match.borrowerNumber } : null;
-  } catch {
-    return null;
-  }
+  if (!db || !normEmail) return null;
+  const rows = await db
+    .select({ id: schema.borrowers.id, borrowerNumber: schema.borrowers.borrowerNumber })
+    .from(schema.borrowers)
+    .where(
+      sql`lower(btrim(${schema.borrowers.email})) = ${normEmail}
+          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.borrower_id = ${schema.borrowers.id})`
+    )
+    .limit(1);
+  return rows[0] ?? null;
 }

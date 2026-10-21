@@ -3,32 +3,29 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppCard, Avatar, Badge, EmptyState, LoadingView, ProgressBar, ScreenHeader, SectionHeader } from '../../components';
+import { AppButton, AppCard, AppModal, AppTextInput, Avatar, Badge, EmptyState, ErrorView, InfoRow, LoadingView, ScreenHeader, SectionHeader } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
-import { ClientGroup } from '../../types';
+import { api, messageOf } from '../../services/api';
+import type { MyGroupView } from '../../shared/client';
+import { GROUP_ROLE_LABELS, GROUP_STATUS_LABELS, MEETING_FREQUENCY_LABELS, centsFromDb, centsToDecimal, type MeetingFrequency } from '../../shared/lending';
 import { formatCurrency, formatDate } from '../../utils/format';
 
-const STATUS_COLORS: Record<string, string> = {
-  PAID: colors.green,
-  PENDING: colors.warning,
-  LATE: colors.danger,
-};
-
+/** The member's solidarity group: members' standing, consent requests, fund covers and meetings (same data as the web portal). */
 export const GroupLendingScreen: React.FC = () => {
-  const [group, setGroup] = useState<ClientGroup | null>(null);
+  const [group, setGroup] = useState<MyGroupView | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  const [declining, setDeclining] = useState<{ id: string; loanNumber: string } | null>(null);
+  const [busy, setBusy] = useState('');
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoaded(false);
-    setError(null);
+  const load = useCallback(async () => {
     try {
-      const res = await api.getMyGroup();
-      setGroup(res);
-    } catch (err: any) {
-      setError(err?.message || 'Unable to load your group.');
+      setGroup(await api.getMyGroup());
+      setError('');
+    } catch (err) {
+      setError(messageOf(err, 'Your group could not be loaded.'));
     } finally {
       setLoaded(true);
       setRefreshing(false);
@@ -38,32 +35,36 @@ export const GroupLendingScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
-  if (!loaded) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <ScreenHeader title="Group Lending" />
-        <LoadingView />
-      </SafeAreaView>
-    );
-  }
+  const decide = async (loanId: string, decision: 'CONSENT' | 'DECLINE', note?: string) => {
+    setBusy(loanId);
+    setNotice(null);
+    try {
+      setGroup(await api.consentToGroupLoan(loanId, decision, note));
+      setDeclining(null);
+      setNotice({ ok: true, text: decision === 'CONSENT' ? 'Thank you. Your consent is recorded.' : 'Your answer is recorded. The loan officer will follow up.' });
+    } catch (err) {
+      setNotice({ ok: false, text: messageOf(err, 'Your answer could not be recorded.') });
+    } finally {
+      setBusy('');
+    }
+  };
+
+  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Group Lending" /><LoadingView text="Loading your group…" /></SafeAreaView>;
+  if (error) return <SafeAreaView style={styles.safe}><ScreenHeader title="Group Lending" /><ErrorView message={error} onRetry={() => { setLoaded(false); load(); }} /></SafeAreaView>;
 
   if (!group) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <ScreenHeader title="Group Lending" />
         <ScrollView contentContainerStyle={styles.content}>
-          <EmptyState
-            icon="people-outline"
-            title="You are not in a group yet"
-            message="HOSCOMCO uses solidarity group lending — members mutually guarantee each other's loans. Ask your branch how to join a group near you."
-          />
+          <EmptyState icon="people-outline" title="You are not in a lending group" message="Ask your branch's loan officer about joining a solidarity group for group loans." />
           <AppCard style={styles.infoCard}>
-            <Text style={styles.infoTitle}>What is Group Lending?</Text>
+            <Text style={styles.infoTitle}>What is group lending?</Text>
             <Text style={styles.infoText}>
-              A solidarity group is a small circle of members who meet regularly, save together, and support each other's repayment. Groups open access to group loans and help build a strong repayment record.
+              A solidarity group is a small circle of members who meet regularly and are jointly liable for each other's loans. If a member cannot pay, the group's solidarity fund covers the installment and the member pays it back.
             </Text>
           </AppCard>
         </ScrollView>
@@ -71,164 +72,174 @@ export const GroupLendingScreen: React.FC = () => {
     );
   }
 
-  // groupLoan.paidAmount and groupLoan.schedule are optional on the wire, so
-  // default them instead of dividing by / dereferencing undefined.
-  const paidAmount = group.groupLoan?.paidAmount ?? 0;
-  const schedule = group.groupLoan?.schedule ?? [];
-  const progress =
-    group.groupLoan && group.groupLoan.totalAmount > 0
-      ? Math.round((paidAmount / group.groupLoan.totalAmount) * 100)
-      : 0;
+  const g = group.group;
+  const waiting = group.pendingLoans.filter((l) => !l.mine);
+  const owed = group.fund.myCovers.reduce((s, c) => s + centsFromDb(c.outstanding), 0);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title={group.name} subtitle={group.branch ? `Branch: ${group.branch}` : undefined} />
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
-      >
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+      <ScreenHeader title={g.groupName} subtitle={`${g.groupCode} · ${g.centerName}`} />
+      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}>
+        {notice ? <Text style={[styles.notice, !notice.ok && styles.noticeError]}>{notice.text}</Text> : null}
 
         <View style={styles.groupHero}>
           <View style={styles.groupHeroTop}>
             <View style={styles.flex1}>
-              <Text style={styles.groupName}>{group.name}</Text>
+              <Text style={styles.groupName}>{g.groupName}</Text>
               <Text style={styles.groupMeta}>
-                {group.memberCount} members · {group.centerName ? `Center: ${group.centerName}` : `Led by ${group.leaderName}`}
+                {group.members.length} members{group.me ? ` · you are the ${GROUP_ROLE_LABELS[group.me.role].toLowerCase()}` : ''}
               </Text>
               <View style={{ marginTop: 8 }}>
-                <Badge status={group.status} size="md" dot />
+                <Badge label={GROUP_STATUS_LABELS[g.status]} status={g.status} size="md" dot />
               </View>
             </View>
             <Ionicons name="people" size={38} color="rgba(255,255,255,0.4)" />
           </View>
         </View>
 
-        {group.groupLoan ? (
-          <>
-            <AppCard style={styles.loanCard}>
-              <View style={styles.loanHeader}>
-                <Text style={styles.loanTitle}>Group Loan</Text>
-                <Text style={styles.loanBalance}>{formatCurrency(group.groupLoan.outstandingBalance)}</Text>
-                <Text style={styles.loanSub}>outstanding of {formatCurrency(group.groupLoan.totalAmount)}</Text>
-              </View>
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>{progress}% repaid</Text>
-                <Text style={styles.progressAmount}>{formatCurrency(paidAmount)} paid</Text>
-              </View>
-              <ProgressBar progress={progress} color={colors.green} height={9} animated />
-              <View style={styles.nextPay}>
-                <Ionicons name="calendar-outline" size={15} color={colors.danger} />
-                <Text style={styles.nextPayText}>
-                  Next payment: {formatCurrency(group.groupLoan.nextPayment)} due {formatDate(group.groupLoan.nextPaymentDate)}
-                </Text>
-              </View>
-            </AppCard>
+        {group.blocked ? (
+          <View style={styles.alert}>
+            <Ionicons name="shield-outline" size={18} color={colors.danger} />
+            <Text style={styles.alertText}>Your group cannot take new loans until a member's overdue payments, or what the solidarity fund paid for them, are settled.</Text>
+          </View>
+        ) : null}
 
-            {schedule.length ? (
-              <>
-                <SectionHeader title="Contribution Schedule" subtitle="Group repayments by installment" />
-                  <AppCard padded={false} style={{ marginBottom: 16 }}>
-                    {schedule.slice(0, 6).map((item, i) => (
-                      <View key={String(item.installmentNumber)} style={[styles.schedRow, i < 5 && styles.schedRowBorder]}>
-                        <View style={styles.schedNum}>
-                          <Text style={styles.schedNumText}>{item.installmentNumber}</Text>
-                        </View>
-                        <View style={styles.flex1}>
-                          <Text style={styles.schedAmt}>{formatCurrency(item.amountDue)}</Text>
-                          <Text style={styles.schedDate}>{formatDate(item.dueDate)}</Text>
-                        </View>
-                        <Badge status={item.status} />
-                      </View>
-                    ))}
-                  </AppCard>
-              </>
-            ) : null}
+        {owed > 0 ? (
+          <AppCard style={styles.card}>
+            <Text style={styles.cardTitle}>You owe your group's solidarity fund {formatCurrency(centsToDecimal(owed))}</Text>
+            <Text style={styles.muted}>The fund paid your overdue installment. Pay it back at the next meeting or at the branch.</Text>
+            {group.fund.myCovers.map((c) => (
+              <Text key={c.id} style={styles.muted}>
+                {c.coverNumber}: {formatCurrency(c.amount)} for {c.loanNumber}, {formatCurrency(c.outstanding)} still owed
+              </Text>
+            ))}
+          </AppCard>
+        ) : null}
+
+        {group.me && group.me.loans.length ? (
+          <>
+            <SectionHeader title="My group loans" />
+            <AppCard style={styles.card}>
+              {group.me.loans.map((l, i) => (
+                <View key={l.id} style={[styles.loanRow, i < group.me!.loans.length - 1 && styles.rowBorder]}>
+                  <View style={styles.flex1}>
+                    <Text style={styles.rowTitle}>{l.loanNumber}</Text>
+                    <Text style={styles.muted}>
+                      {formatCurrency(l.remaining)} remaining
+                      {centsFromDb(l.overdue) > 0 ? ` · ${formatCurrency(l.overdue)} overdue since ${formatDate(l.oldestOverdue)}` : ''}
+                    </Text>
+                  </View>
+                  <Badge status={l.status} />
+                </View>
+              ))}
+            </AppCard>
           </>
         ) : null}
 
-        <SectionHeader title="Group Members" subtitle="Mutually guaranteeing each other's loans" />
-        <AppCard padded={false} style={{ marginBottom: 8 }}>
-          {group.members.map((m, i) => {
-            const color = (m.contributionStatus ? STATUS_COLORS[m.contributionStatus] : undefined) ?? colors.textMuted;
-            return (
-              <View key={m.borrowerId} style={[styles.memberRow, i < group.members.length - 1 && styles.memberRowBorder]}>
-                <Avatar name={m.name} size={38} />
-                <View style={styles.flex1}>
-                  <Text style={styles.memberName}>
-                    {m.name}
-                    {m.role ? <Text style={styles.memberRole}> · {m.role}</Text> : null}
-                  </Text>
-                  <Text style={styles.memberStatus}>Contribution: {m.contributionStatus}</Text>
-                </View>
-                <View style={[styles.statusDot, { backgroundColor: color }]} />
+        {waiting.length ? (
+          <>
+            <SectionHeader title="Loans waiting for your consent" />
+            <Text style={[styles.muted, { marginBottom: 8 }]}>Members are jointly liable: if a member cannot pay, the group helps cover it. Consent only if you support this loan.</Text>
+            {waiting.map((l) => (
+              <AppCard key={l.id} style={styles.card}>
+                <Text style={styles.rowTitle}>{l.borrowerName}: {formatCurrency(l.principalAmount)} over {l.termMonths} months</Text>
+                <Text style={styles.muted}>{l.loanNumber} · {l.consented} of {l.required} members have consented</Text>
+                {l.myDecision === 'CONSENT' ? (
+                  <View style={{ marginTop: 8 }}><Badge label="You consented" status="APPROVED" /></View>
+                ) : (
+                  <View style={styles.actions}>
+                    {l.myDecision === 'DECLINE' ? <Badge label="You declined" status="REJECTED" /> : null}
+                    <AppButton title="I consent" size="sm" loading={busy === l.id} onPress={() => decide(l.id, 'CONSENT')} style={styles.actionBtn} />
+                    {l.myDecision !== 'DECLINE' ? (
+                      <AppButton title="Decline" size="sm" variant="outline" onPress={() => setDeclining({ id: l.id, loanNumber: l.loanNumber })} style={styles.actionBtn} />
+                    ) : null}
+                  </View>
+                )}
+              </AppCard>
+            ))}
+          </>
+        ) : null}
+
+        <SectionHeader title={`Members (${group.members.length})`} />
+        <AppCard padded={false} style={styles.card}>
+          {group.members.map((m, i) => (
+            <View key={m.borrowerId} style={[styles.memberRow, i < group.members.length - 1 && styles.rowBorder]}>
+              <Avatar name={m.fullName} size={36} />
+              <View style={[styles.flex1, { marginLeft: 10 }]}>
+                <Text style={styles.rowTitle}>{m.fullName}</Text>
+                <Text style={styles.muted}>{GROUP_ROLE_LABELS[m.role]}</Text>
               </View>
-            );
-          })}
+              <Badge label={m.standing === 'GOOD' ? 'Up to date' : 'Behind'} status={m.standing === 'GOOD' ? 'ACTIVE' : 'OVERDUE'} />
+            </View>
+          ))}
         </AppCard>
 
-        <Text style={styles.note}>
-          Solidarity groups support each member's repayment. If a member falls behind, the group works together to keep contributions current.
-        </Text>
+        <SectionHeader title="Meetings" />
+        <AppCard style={styles.card}>
+          <InfoRow label="Schedule" value={`${g.meetingDay}s at ${g.meetingTime}, ${MEETING_FREQUENCY_LABELS[g.meetingFrequency as MeetingFrequency]?.toLowerCase() ?? g.meetingFrequency}`} />
+          <InfoRow label="Where" value={g.meetingLocation} />
+          <InfoRow label="Loan officer" value={g.loanOfficerName} />
+          <InfoRow label="Solidarity fund" value={formatCurrency(group.fund.balance)} last={!group.meetings.length} />
+          {group.meetings.map((m, i) => (
+            <View key={m.meetingDate} style={[styles.meetingRow, i < group.meetings.length - 1 && styles.rowBorder]}>
+              <Text style={styles.muted}>{formatDate(m.meetingDate)} · {m.present} of {m.total} present</Text>
+              <Text style={styles.muted}>{m.me ? `You: ${m.me.toLowerCase()}` : ''}</Text>
+            </View>
+          ))}
+        </AppCard>
       </ScrollView>
+
+      {declining ? (
+        <DeclineModal loanNumber={declining.loanNumber} saving={busy === declining.id} onClose={() => setDeclining(null)} onSubmit={(note) => decide(declining.id, 'DECLINE', note)} />
+      ) : null}
     </SafeAreaView>
+  );
+};
+
+const DeclineModal: React.FC<{ loanNumber: string; saving: boolean; onClose: () => void; onSubmit: (note: string) => void }> = ({ loanNumber, saving, onClose, onSubmit }) => {
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  return (
+    <AppModal
+      visible
+      onClose={onClose}
+      title={`Decline ${loanNumber}`}
+      confirmText="Decline"
+      confirmVariant="danger"
+      confirmLoading={saving}
+      onConfirm={() => {
+        if (note.trim().length < 3) return setError('Tell the group why.');
+        onSubmit(note.trim());
+      }}
+    >
+      <AppTextInput label="Why do you not support this loan?" value={note} onChangeText={setNote} error={error} />
+    </AppModal>
   );
 };
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 60, flexGrow: 1 },
-  error: { fontSize: 12, color: colors.danger, textAlign: 'center', marginBottom: 10 },
-  groupHero: {
-    backgroundColor: colors.primaryDeep,
-    borderRadius: radius.xl,
-    padding: 18,
-    marginBottom: 14,
-  },
+  notice: { backgroundColor: colors.greenSoft, color: colors.greenDark, padding: 10, borderRadius: radius.md, marginBottom: 12, fontSize: 13 },
+  noticeError: { backgroundColor: colors.dangerSoft, color: colors.danger },
+  groupHero: { backgroundColor: colors.primaryDeep, borderRadius: radius.xl, padding: 18, marginBottom: 14 },
   groupHeroTop: { flexDirection: 'row', alignItems: 'center' },
   flex1: { flex: 1, marginRight: 10 },
   groupName: { fontSize: 19, fontWeight: '900', color: colors.white },
   groupMeta: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
-  loanCard: { marginBottom: 16 },
-  loanHeader: { marginBottom: 8 },
-  loanTitle: { fontSize: 13, fontWeight: '800', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  loanBalance: { fontSize: 24, fontWeight: '900', color: colors.text, marginTop: 4 },
-  loanSub: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  progressLabel: { fontSize: 12, fontWeight: '700', color: colors.greenDark },
-  progressAmount: { fontSize: 12, color: colors.textMuted },
-  nextPay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radius.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginTop: 12,
-  },
-  nextPayText: { fontSize: 11, color: colors.danger, fontWeight: '700', marginLeft: 6 },
-  schedRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
-  schedRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
-  schedNum: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  schedNumText: { fontSize: 12, fontWeight: '800', color: colors.textMuted },
-  schedAmt: { fontSize: 13, fontWeight: '800', color: colors.text },
-  schedDate: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  alert: { flexDirection: 'row', backgroundColor: colors.dangerSoft, borderRadius: radius.md, padding: 12, marginBottom: 12 },
+  alertText: { flex: 1, fontSize: 12, color: colors.danger, marginLeft: 8, lineHeight: 17 },
+  card: { marginBottom: 12 },
+  cardTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 4 },
+  rowTitle: { fontSize: 13, fontWeight: '800', color: colors.text },
+  muted: { fontSize: 12, color: colors.textMuted, marginTop: 2, lineHeight: 17 },
+  loanRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+  actions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 10 },
+  actionBtn: { marginRight: 8 },
   memberRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
-  memberRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
-  memberName: { fontSize: 13, fontWeight: '800', color: colors.text },
-  memberRole: { fontSize: 11, color: colors.textMuted, fontWeight: '600' },
-  memberStatus: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
-  statusDot: { width: 10, height: 10, borderRadius: 5, marginLeft: 8 },
+  meetingRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   infoCard: { marginTop: 12 },
   infoTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 4 },
   infoText: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
-  note: { fontSize: 11, color: colors.textFaint, textAlign: 'center', marginTop: 12, lineHeight: 16 },
 });

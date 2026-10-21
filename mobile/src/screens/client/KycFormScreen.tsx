@@ -1,1137 +1,628 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { AppButton, AppCard, AppModal, AppTextInput, DocRow, LoadingView, ScreenHeader, WizardHeader } from '../../components';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { AppButton, AppCard, AppTextInput, ErrorView, LoadingView, ScreenHeader, SelectField, WizardHeader, type SelectOption } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
-import { KycSubmissionPayload, KycRequiredDocumentItem, ClientProfile } from '../../types';
-import { validators } from '../../utils/validation';
+import { ApiError, api, messageOf } from '../../services/api';
+import {
+  buildKycApplication,
+  kycFormErrors,
+  kycFormFrom,
+  kycStepsValid,
+  manilaToday,
+  type FaceMatchResultView,
+  type IdScanView,
+  type KycFormState,
+  type KycStatusView,
+  type PsgcPlaceView,
+} from '../../shared/client';
+import { CIVIL_STATUSES, EMPLOYMENT_STATUSES, GENDERS, ID_TYPES, SOURCES_OF_INCOME, findIdType, type KycStep } from '../../shared/kyc';
+import { pickImage } from '../../utils/pickImage';
+import type { HomeStackParamList } from '../../navigation/types';
 
 const STEPS = [
-  { title: 'Personal Information', subtitle: 'Confirm the details on your valid ID' },
-  { title: 'Address', subtitle: 'Your current residential address' },
-  { title: 'Employment / Income', subtitle: 'Your source of livelihood' },
-  { title: 'Documents', subtitle: 'Upload clear photos of required documents' },
-  { title: 'Review & Submit', subtitle: 'Check everything before submitting' },
+  { title: 'Government ID', subtitle: 'Photo of your valid ID' },
+  { title: 'Selfie', subtitle: 'Matched against your ID photo' },
+  { title: 'Personal details', subtitle: 'As printed on your ID' },
+  { title: 'Address', subtitle: 'Where you live now' },
+  { title: 'Livelihood & income', subtitle: 'Work and monthly income' },
+  { title: 'Documents', subtitle: 'Supporting proofs' },
+  { title: 'Review & consent', subtitle: 'Check and submit' },
 ];
 
-const GENDERS = ['Female', 'Male', 'Prefer not to say'];
-const CIVIL_STATUS = ['Single', 'Married', 'Widowed', 'Separated'];
-const EMPLOYMENT_STATUS = ['Self-Employed', 'Employed', 'Unemployed', 'Retired', 'Student', 'Other'];
-const INCOME_SOURCES = [
-  'Business / Self-Employment',
-  'Salary / Employment',
-  'Agriculture / Farming',
-  'Family Support',
-  'Pension / Remittances',
-  'Other',
-];
+/** Which of the server's checks (validateKycApplication) belong to each step. */
+const STEP_CHECKS: Record<number, KycStep[]> = { 0: ['ID_UPLOAD'], 2: ['PERSONAL_INFO', 'CONTACT'], 3: ['ADDRESS'], 4: ['FINANCIAL'], 6: ['CONSENT'] };
+/** Server requiredStep -> step index. */
+const STEP_INDEX: Record<string, number> = { ID_UPLOAD: 0, FACE_MATCH: 1, PERSONAL_INFO: 2, CONTACT: 2, ADDRESS: 3, FINANCIAL: 4, DOCUMENTS: 5, CONSENT: 6 };
+/** Documents captured by the ID and selfie steps; the rest are uploaded in step 6. */
+const CAPTURED_KINDS = ['ID_FRONT', 'ID_BACK', 'SELFIE'];
+const EMPLOYED = ['Employed', 'Government Employee', 'Private Employee', 'OFW'];
+const BUSINESS = ['Self-Employed', 'Business Owner'];
 
-interface DocUpload {
-  documentType: string;
-  documentName: string;
-  fileName?: string;
-  fileUrl?: string;
-  status: 'PENDING' | 'UPLOADING' | 'DONE' | 'ERROR';
-}
+type Errors = Partial<Record<keyof KycFormState | 'scan' | 'face' | 'documents' | 'submit', string>>;
 
+/** The member's KYC application: same steps, payload and checks as the web portal (shared/client/kycForm.ts). */
 export const KycFormScreen: React.FC = () => {
-  const navigation = useNavigation();
-  const [loadingInit, setLoadingInit] = useState(true);
-  const [mediaPermission, setMediaPermission] = useState<boolean | null>(null);
-
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const [status, setStatus] = useState<KycStatusView | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [form, setForm] = useState<KycFormState | null>(null);
   const [step, setStep] = useState(0);
-  const [firstName, setFirstName] = useState('');
-  const [middleName, setMiddleName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [gender, setGender] = useState('');
-  const [civilStatus, setCivilStatus] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const [errors, setErrors] = useState<Errors>({});
+  const [busy, setBusy] = useState('');
+  const [notice, setNotice] = useState('');
 
-  const [street, setStreet] = useState('');
-  const [barangay, setBarangay] = useState('');
-  const [city, setCity] = useState('');
-  const [province, setProvince] = useState('');
-  const [postalCode, setPostalCode] = useState('');
+  const [scan, setScan] = useState<IdScanView | null>(null);
+  const [idFrontUri, setIdFrontUri] = useState<string | null>(null);
+  const [idBackDone, setIdBackDone] = useState(false);
+  const [face, setFace] = useState<FaceMatchResultView | null>(null);
+  const [selfieUri, setSelfieUri] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<Record<string, string>>({});
+  const [done, setDone] = useState<{ referenceNumber: string; message: string } | null>(null);
 
-  const [occupation, setOccupation] = useState('');
-  const [employmentStatus, setEmploymentStatus] = useState('');
-  const [employer, setEmployer] = useState('');
-  const [monthlyIncome, setMonthlyIncome] = useState('');
-  const [sourceOfIncome, setSourceOfIncome] = useState('');
-
-  const [requiredDocs, setRequiredDocs] = useState<KycRequiredDocumentItem[]>([]);
-  const [uploads, setUploads] = useState<DocUpload[]>([]);
-
-  // OCR ID Scanning & Quality State
-  const [isScanningId, setIsScanningId] = useState(false);
-  const [scanStage, setScanStage] = useState<'idle' | 'scanning' | 'checking_quality' | 'reading_info' | 'complete' | 'failed'>('idle');
-  const [scannedIdDoc, setScannedIdDoc] = useState<{ idType?: string; idNumber?: string; confidenceScore?: number } | null>(null);
-  const [qualityChecks, setQualityChecks] = useState<{
-    isBlurry: boolean;
-    isTooDark: boolean;
-    isTooBrightOrGlare: boolean;
-    isCutOff: boolean;
-    isTooFar: boolean;
-    isUpsideDown: boolean;
-    isRecognizedDoc: boolean;
-  } | null>(null);
-  const [qualityError, setQualityError] = useState<string | null>(null);
-  const [autoFilledKeys, setAutoFilledKeys] = useState<string[]>([]);
-  const [extractedConfirmed, setExtractedConfirmed] = useState(false);
-
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [result, setResult] = useState<{ referenceNumber?: string; message?: string }>({});
-  const [pickTarget, setPickTarget] = useState<DocUpload | null>(null);
-  const [confirmVisible, setConfirmVisible] = useState(false);
-
-  const handleScanId = async (mode: 'camera' | 'library') => {
+  const load = useCallback(async () => {
     try {
-      setQualityError(null);
-      setQualityChecks(null);
-
-      let res;
-      if (mode === 'camera') {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (!perm.granted) {
-          setQualityError('Camera access is required to take photo of your ID.');
-          return;
-        }
-        res = await ImagePicker.launchCameraAsync({
-          quality: 0.85,
-          allowsEditing: false,
-        });
-      } else {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) {
-          setQualityError('Gallery access is required to upload photo of your ID.');
-          return;
-        }
-        res = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.85,
-          allowsEditing: false,
-        });
-      }
-
-      if (res.canceled || !res.assets || res.assets.length === 0) return;
-
-      const asset = res.assets[0];
-      setIsScanningId(true);
-      setScanStage('scanning');
-
-      const t1 = setTimeout(() => setScanStage('checking_quality'), 600);
-      const t2 = setTimeout(() => setScanStage('reading_info'), 1300);
-
-      const uriLower = (asset.uri || '').toLowerCase();
-      const mime = uriLower.endsWith('.png') ? 'image/png' : uriLower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const imageBase64 = `data:${mime};base64,${base64}`;
-
-      const processRes = await api.processKycId({
-        frontImageBase64: imageBase64,
-        fileName: asset.fileName || `id_scan_${Date.now()}.jpg`,
-      });
-
-      clearTimeout(t1);
-      clearTimeout(t2);
-
-      const validation = processRes.validation || { isReadable: true, confidenceScore: 92 };
-      const extracted = processRes.extractedData || {};
-
-      if (!validation.isReadable || (validation.confidenceScore !== undefined && validation.confidenceScore < 50)) {
-        setScanStage('failed');
-        setQualityChecks(validation.qualityChecks || null);
-        setQualityError(
-          validation.qualityMessage ||
-            "We can't clearly read your ID. Please retake the photo in good lighting and make sure the entire ID is visible."
-        );
-        return;
-      }
-
-      setScanStage('complete');
-      setScannedIdDoc({
-        idType: extracted.idTypeName || extracted.idType || 'Government ID',
-        idNumber: extracted.idNumber,
-        confidenceScore: validation.confidenceScore || 92,
-      });
-
-      // Auto-fill form fields
-      const newAutoFilled: string[] = [];
-      if (extracted.firstName) {
-        setFirstName(extracted.firstName);
-        newAutoFilled.push('firstName');
-      }
-      if (extracted.middleName) {
-        setMiddleName(extracted.middleName);
-        newAutoFilled.push('middleName');
-      }
-      if (extracted.lastName) {
-        setLastName(extracted.lastName);
-        newAutoFilled.push('lastName');
-      }
-      if (extracted.dateOfBirth) {
-        setDateOfBirth(extracted.dateOfBirth);
-        newAutoFilled.push('dateOfBirth');
-      }
-      if (extracted.gender) {
-        setGender(extracted.gender);
-        newAutoFilled.push('gender');
-      }
-      if (extracted.civilStatus) {
-        setCivilStatus(extracted.civilStatus);
-        newAutoFilled.push('civilStatus');
-      }
-      if (extracted.street || extracted.address) {
-        setStreet(extracted.street || extracted.address || '');
-        newAutoFilled.push('street');
-      }
-      if (extracted.barangay) {
-        setBarangay(extracted.barangay);
-        newAutoFilled.push('barangay');
-      }
-      if (extracted.city) {
-        setCity(extracted.city);
-        newAutoFilled.push('city');
-      }
-      if (extracted.province) {
-        setProvince(extracted.province);
-        newAutoFilled.push('province');
-      }
-      if (extracted.postalCode) {
-        setPostalCode(extracted.postalCode);
-        newAutoFilled.push('postalCode');
-      }
-
-      setAutoFilledKeys(newAutoFilled);
-    } catch (err: any) {
-      setScanStage('failed');
-      setQualityError(err?.message || 'Failed to process ID. Please try again with clear lighting.');
-    } finally {
-      setIsScanningId(false);
+      const s = await api.getKycStatus();
+      setStatus(s);
+      setForm(kycFormFrom(s));
+      setLoadError('');
+    } catch (err) {
+      setLoadError(messageOf(err, 'Your KYC application could not be loaded.'));
     }
-  };
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      setLoadingInit(true);
-      try {
-        const [docs, profile] = await Promise.all([
-          api.getKycRequiredDocuments(),
-          api.getProfile().catch(() => null),
-        ]);
-        setRequiredDocs(docs);
-        if (docs.length) {
-          setUploads(
-            docs.map((d) => ({
-              documentType: d.documentType,
-              documentName: d.documentName || d.documentType.replace(/_/g, ' '),
-              status: 'PENDING',
-            }))
-          );
-        }
-        if (profile) {
-          setFirstName(profile.firstName ?? profile.fullName.split(' ')[0] ?? '');
-          setMiddleName(profile.middleName ?? '');
-          setLastName(profile.lastName ?? '');
-          setDateOfBirth(profile.dateOfBirth || '');
-          setGender(profile.gender ?? '');
-          setCivilStatus(profile.civilStatus || '');
-          setPhone(profile.phone || '');
-          setEmail(profile.email || '');
-          setStreet(profile.street ?? profile.houseUnit ?? '');
-          setBarangay(profile.barangay ?? '');
-          setCity(profile.city ?? '');
-          setProvince(profile.province ?? '');
-          setPostalCode(profile.postalCode ?? '');
-          setOccupation(profile.occupation || '');
-          setEmployer(profile.employer || '');
-          setMonthlyIncome(profile.monthlyIncome ? String(profile.monthlyIncome) : '');
-        }
-      } catch (err: any) {
-        // Required docs API failed; leave lists empty.
-      } finally {
-        setLoadingInit(false);
-      }
-    })();
-  }, []);
+    load();
+  }, [load]);
 
-  const requestPermission = useCallback(async () => {
-    const res = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    setMediaPermission(res.granted);
-    return res.granted;
-  }, []);
+  const onFile = useCallback((kind: string) => status?.requiredDocuments.find((d) => d.type === kind && d.submitted) ?? null, [status]);
+  const idType = form ? findIdType(form.idType) : undefined;
+  const idFrontStored = Boolean(scan || onFile('ID_FRONT'));
+  const scanUnreadable = scan?.validation.status === 'COMPLETED' && scan.validation.isReadable === false;
+  const selfieStored = Boolean(face || onFile('SELFIE'));
+  const supporting = (status?.requiredDocuments ?? []).filter((d) => !CAPTURED_KINDS.includes(d.type));
 
-  const pickFor = async (doc: DocUpload) => {
-    // Request media permission first if needed
-    if (!mediaPermission) {
-      const granted = await requestPermission();
-      if (!granted) return;
-    }
-
-    // Small delay to let the modal fully dismiss before launching the native picker
-    // (important on Android — the native modal animation needs to finish first)
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.7,
-    });
-    if (res.canceled) return;
-    const asset = res.assets[0];
-    const fileName = asset.fileName || `kyc-${doc.documentType.toLowerCase()}-${Date.now()}.jpg`;
-    // Determine MIME type from the URI extension
-    const uriLower = (asset.uri || '').toLowerCase();
-    const mime = uriLower.endsWith('.png') ? 'image/png' : uriLower.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
-
-    setUploads((prev) =>
-      prev.map((u) => (u.documentType === doc.documentType ? { ...u, status: 'UPLOADING', fileName, fileUrl: asset.uri } : u))
-    );
-    try {
-      // Read the image as a base64 string — the backend requires imageBase64, not a local URI
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const imageBase64 = `data:${mime};base64,${base64}`;
-
-      const uploaded = await api.uploadKycDocument({
-        documentType: doc.documentType,
-        documentName: doc.documentName,
-        fileName,
-        imageBase64,
-        mime,
-      });
-      setUploads((prev) =>
-        prev.map((u) =>
-          u.documentType === doc.documentType
-            ? { ...u, fileName: uploaded?.document?.fileName ?? fileName, fileUrl: uploaded?.document?.fileUrl ?? asset.uri, status: 'DONE' }
-            : u
-        )
-      );
-    } catch (err: any) {
-      console.warn('[KYC Upload] Error:', err?.message);
-      setUploads((prev) =>
-        prev.map((u) => (u.documentType === doc.documentType ? { ...u, status: 'ERROR' } : u))
-      );
-      setErrors((e) => ({ ...e, documents: err?.message || 'Upload failed. Please try again.' }));
-    }
+  const set = <K extends keyof KycFormState>(key: K, value: KycFormState[K]) => {
+    setForm((f) => (f ? { ...f, [key]: value } : f));
+    setErrors((e) => ({ ...e, [key]: undefined }));
   };
 
-  const set = (key: string) => (value: any) => {
-    const setters: Record<string, (v: any) => void> = {
-      firstName: setFirstName,
-      middleName: setMiddleName,
-      lastName: setLastName,
-      dateOfBirth: setDateOfBirth,
-      phone: setPhone,
-      email: setEmail,
-      street: setStreet,
-      barangay: setBarangay,
-      city: setCity,
-      province: setProvince,
-      postalCode: setPostalCode,
-      occupation: setOccupation,
-      employer: setEmployer,
-      monthlyIncome: setMonthlyIncome,
-    };
-    setters[key]?.(value);
-    setErrors((e) => {
-      const next = { ...e };
-      delete next[key];
-      return next;
-    });
-  };
-
-  const validate = (s: number): boolean => {
-    const e: Record<string, string> = {};
-    if (s === 0) {
-      if (!validators.required(firstName)) e.firstName = validators.required(firstName, 'First name') as string;
-      if (!validators.required(lastName)) e.lastName = validators.required(lastName, 'Last name') as string;
-      const dob = validators.dateOfBirth(dateOfBirth);
-      if (dob) e.dateOfBirth = dob;
-      if (!gender) e.gender = 'Select a gender.';
-      if (!civilStatus) e.civilStatus = 'Select civil status.';
-      const ph = validators.phonePolicy(phone);
-      if (ph) e.phone = ph;
-      if (email) {
-        const em = validators.email(email);
-        if (em) e.email = em;
-      }
+  // ---- step checks: the server's own rules plus what each step captures ----
+  const stepErrors = (i: number, f: KycFormState): Errors => {
+    const e: Errors = STEP_CHECKS[i] ? kycFormErrors(f, STEP_CHECKS[i], manilaToday()) : {};
+    if (i === 0) {
+      if (!idFrontStored) e.scan = 'Take a photo of the front of your ID.';
+      else if (scanUnreadable) e.scan = 'Your ID could not be read. Please retake the photo.';
+      if (idType?.hasBackSide && !idBackDone && !onFile('ID_BACK')) e.scan = e.scan ?? 'Take a photo of the back of your ID too.';
     }
-    if (s === 1) {
-      if (!validators.required(barangay)) e.barangay = validators.required(barangay, 'Barangay') as string;
-      if (!validators.required(city)) e.city = validators.required(city, 'City / Municipality') as string;
-      if (!validators.required(province)) e.province = validators.required(province, 'Province') as string;
+    if (i === 1) {
+      if (!selfieStored) e.face = 'Take a selfie to continue.';
+      else if (face?.matchStatus === 'NO_MATCH') e.face = 'Your selfie does not match your ID photo. Please retake it in good light.';
     }
-    if (s === 2) {
-      if (!validators.required(occupation)) e.occupation = validators.required(occupation, 'Occupation') as string;
-      if (!employmentStatus) e.employmentStatus = 'Select employment status.';
-      const inc = validators.amount(monthlyIncome);
-      if (inc) e.monthlyIncome = inc;
-      if (!sourceOfIncome) e.sourceOfIncome = 'Select source of income.';
+    if (i === 5) {
+      const missing = supporting.filter((d) => !d.submitted && !uploaded[d.type]);
+      if (missing.length) e.documents = `Upload: ${missing.map((d) => d.name).join(', ')}.`;
     }
-    if (s === 3) {
-      const missing = uploads.filter((u) => u.status !== 'DONE');
-      if (missing.length === uploads.length) {
-        e.documents = 'Upload clear photos of the required documents to continue.';
-      } else if (missing.length) {
-        e.documents = `${missing.length} document${missing.length > 1 ? 's' : ''} still need${missing.length > 1 ? '' : 's'} an upload.`;
-      }
-      if (missing.some((m) => m.status === 'ERROR')) e.documents = 'One or more uploads failed. Tap the document to try again.';
-    }
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    return e;
   };
 
   const next = () => {
-    if (validate(step)) setStep((s) => s + 1);
+    if (!form) return;
+    const e = stepErrors(step, form);
+    setErrors(e);
+    if (Object.values(e).some(Boolean)) return;
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
   };
 
-  const back = () => {
-    setErrors({});
-    setStep((s) => Math.max(0, s - 1));
-  };
-
-  const handleSubmit = async () => {
-    if (!validate(3)) {
-      setStep(3);
-      return;
-    }
-    setSubmitting(true);
+  // ---- ID and selfie ----
+  const scanId = async (source: 'camera' | 'library') => {
+    setErrors((e) => ({ ...e, scan: undefined }));
     try {
-      const payload: KycSubmissionPayload = {
-        personalInfo: {
-          firstName,
-          middleName,
-          lastName,
-          dateOfBirth,
-          gender,
-          civilStatus,
-          phone,
-          email: email || undefined,
-        },
-        address: {
-          street: street || undefined,
-          barangay,
-          city,
-          province,
-          postalCode: postalCode || undefined,
-        },
-        employment: {
-          occupation,
-          employmentStatus: employmentStatus || undefined,
-          employer: employer || undefined,
-          monthlyIncome: Number(monthlyIncome) || 0,
-          sourceOfIncome: sourceOfIncome || occupation,
-        },
-      };
-      const res = await api.submitKyc(payload);
-      setResult({ referenceNumber: res.referenceNumber, message: res.message });
-      setSubmitted(true);
-    } catch (err: any) {
-      setErrors({ submit: err?.message || 'Submission failed. Please try again.' });
+      const photo = await pickImage(source);
+      if (!photo) return;
+      setBusy('scan');
+      const result = await api.processKycId({ frontImageBase64: photo.dataUrl, fileName: photo.fileName });
+      setScan(result);
+      setIdFrontUri(photo.uri);
+      const x = result.extractedData;
+      if (x && result.validation.isReadable !== false) {
+        setForm((f) =>
+          f
+            ? {
+                ...f,
+                firstName: x.firstName || f.firstName,
+                middleName: x.middleName || f.middleName,
+                lastName: x.lastName || f.lastName,
+                dateOfBirth: x.dateOfBirth || f.dateOfBirth,
+                idDateOfBirth: x.dateOfBirth || f.idDateOfBirth,
+                gender: x.gender && (GENDERS as readonly string[]).includes(x.gender) ? x.gender : f.gender,
+                idNumber: x.idNumber || f.idNumber,
+                nameOnId: x.fullName || f.nameOnId,
+                idIssueDate: x.issueDate || f.idIssueDate,
+                idExpiryDate: x.expirationDate || f.idExpiryDate,
+              }
+            : f,
+        );
+      }
+    } catch (err) {
+      setErrors((e) => ({ ...e, scan: messageOf(err, 'Your ID could not be uploaded.') }));
     } finally {
-      setSubmitting(false);
+      setBusy('');
     }
   };
 
-  const ChipGroup = ({ options, selected, onSelect }: { options: string[]; selected: string; onSelect: (v: string) => void }) => (
-    <View style={styles.chipRow}>
-      {options.map((opt) => {
-        const active = selected === opt;
-        return (
-          <TouchableOpacity key={opt} style={[styles.chip, active && styles.chipActive]} onPress={() => onSelect(opt)} activeOpacity={0.8}>
-            <Ionicons name={active ? 'checkmark-circle' : 'ellipse-outline'} size={15} color={active ? colors.white : colors.textFaint} />
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
+  const uploadIdBack = async (source: 'camera' | 'library') => {
+    try {
+      const photo = await pickImage(source);
+      if (!photo) return;
+      setBusy('back');
+      await api.uploadKycDocument({ documentType: 'ID_FRONT', side: 'BACK', documentName: 'Government ID (back)', fileName: photo.fileName, imageBase64: photo.dataUrl });
+      setIdBackDone(true);
+      setErrors((e) => ({ ...e, scan: undefined }));
+    } catch (err) {
+      setErrors((e) => ({ ...e, scan: messageOf(err, 'The back of your ID could not be uploaded.') }));
+    } finally {
+      setBusy('');
+    }
+  };
 
-  if (loadingInit) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScreenHeader title="Complete KYC" />
-        <LoadingView />
-      </SafeAreaView>
-    );
-  }
+  const takeSelfie = async () => {
+    setErrors((e) => ({ ...e, face: undefined }));
+    try {
+      const photo = await pickImage('camera', { front: true });
+      if (!photo) return;
+      setBusy('face');
+      const result = await api.matchKycFace(photo.dataUrl);
+      setSelfieUri(photo.uri);
+      setFace(result.matchResult);
+    } catch (err) {
+      setErrors((e) => ({ ...e, face: messageOf(err, 'Your selfie could not be checked.') }));
+    } finally {
+      setBusy('');
+    }
+  };
 
-  if (submitted) {
+  const uploadSupporting = async (kind: string, name: string) => {
+    try {
+      const photo = await pickImage('library');
+      if (!photo) return;
+      setBusy(kind);
+      const res = await api.uploadKycDocument({ documentType: kind, documentName: name, fileName: photo.fileName, imageBase64: photo.dataUrl });
+      setUploaded((u) => ({ ...u, [kind]: res.document.fileName ?? photo.fileName }));
+      setErrors((e) => ({ ...e, documents: undefined }));
+    } catch (err) {
+      setErrors((e) => ({ ...e, documents: messageOf(err, 'The document could not be uploaded.') }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // ---- save and submit ----
+  const saveDraft = async () => {
+    if (!form) return;
+    setBusy('draft');
+    setNotice('');
+    try {
+      await api.saveKycDraft({ ...buildKycApplication(form), currentStep: step });
+      setNotice('Your progress is saved. You can finish later.');
+    } catch (err) {
+      setErrors((e) => ({ ...e, submit: messageOf(err, 'Your progress could not be saved.') }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const submit = async () => {
+    if (!form) return;
+    for (let i = 0; i < STEPS.length; i++) {
+      const e = stepErrors(i, form);
+      if (Object.values(e).some(Boolean)) {
+        setErrors(e);
+        setStep(i);
+        return;
+      }
+    }
+    setBusy('submit');
+    try {
+      const res = await api.submitKyc(buildKycApplication(form));
+      setDone({ referenceNumber: res.referenceNumber, message: res.message });
+    } catch (err) {
+      setErrors({ submit: messageOf(err, 'Your application could not be submitted.') });
+      const target = err instanceof ApiError ? STEP_INDEX[String(err.details.requiredStep ?? '')] : undefined;
+      if (target !== undefined) setStep(target);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // ---- render ----
+  if (loadError && !status) return <SafeAreaView style={styles.safe}><ScreenHeader title="Complete KYC" /><ErrorView message={loadError} onRetry={load} /></SafeAreaView>;
+  if (!status || !form) return <SafeAreaView style={styles.safe}><ScreenHeader title="Complete KYC" /><LoadingView text="Loading your application…" /></SafeAreaView>;
+
+  if (done) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.successWrap}>
           <View style={styles.successIcon}>
             <Ionicons name="checkmark" size={34} color={colors.white} />
           </View>
-          <Text style={styles.successTitle}>Submitted for Review</Text>
-          <Text style={styles.successMsg}>
-            {result.message || 'Your KYC documents have been submitted for verification by branch personnel.'}
-          </Text>
-          <AppCard style={styles.receiptCard}>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Reference No.</Text>
-              <Text style={styles.metaValue}>{result.referenceNumber ?? '—'}</Text>
-            </View>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Status</Text>
-              <Text style={styles.metaValue}>Pending Review</Text>
-            </View>
-          </AppCard>
-          <View style={{ alignSelf: 'stretch', marginTop: 8 }}>
-            <AppButton title="View My KYC Status" onPress={() => (navigation as any).replace('KycStatus')} />
-          </View>
-          <TouchableOpacity style={styles.homeLink} onPress={() => (navigation as any).popToTop()}>
-            <Text style={styles.homeLinkText}>Back to Home</Text>
-          </TouchableOpacity>
+          <Text style={styles.successTitle}>Submitted for review</Text>
+          <Text style={styles.successMsg}>{done.message}</Text>
+          <Text style={styles.successRef}>Reference {done.referenceNumber}</Text>
+          <AppButton title="View KYC status" onPress={() => navigation.navigate('KycStatus')} style={{ marginTop: 20, alignSelf: 'stretch' }} />
         </View>
       </SafeAreaView>
     );
   }
 
-  const allUploaded = uploads.length > 0 && uploads.every((u) => u.status === 'DONE');
+  if (!status.editable) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ScreenHeader title="Complete KYC" />
+        <View style={styles.successWrap}>
+          <Text style={styles.successTitle}>{status.statusLabel}</Text>
+          <Text style={styles.successMsg}>Your application cannot be changed right now.</Text>
+          <AppButton title="View KYC status" onPress={() => navigation.navigate('KycStatus')} style={{ marginTop: 20, alignSelf: 'stretch' }} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title="Complete KYC Verification" subtitle="Step-by-step secure verification" />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScreenHeader title="Complete KYC" subtitle={status.correctionReason ? `Branch note: ${status.correctionReason}` : undefined} />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <WizardHeader steps={STEPS} current={step} />
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <WizardHeader steps={STEPS} current={step} />
+          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+          {errors.submit ? <Text style={styles.errorBanner}>{errors.submit}</Text> : null}
 
-          {errors.submit ? (
-            <View style={styles.submitError}>
-              <Ionicons name="alert-circle" size={16} color={colors.danger} />
-              <Text style={styles.submitErrorText}>{errors.submit}</Text>
-            </View>
+          {step === 0 ? (
+            <AppCard>
+              <Label text="ID type" />
+              <Chips options={ID_TYPES.map((t) => t.label)} selected={idType?.label ?? ''} onSelect={(label) => set('idType', ID_TYPES.find((t) => t.label === label)?.code ?? form.idType)} />
+              <Text style={styles.hint}>Take a clear photo of the whole card in good light, without glare.</Text>
+              {idFrontUri ? <Image source={{ uri: idFrontUri }} style={styles.preview} resizeMode="contain" /> : null}
+              <PhotoButtons busy={busy === 'scan'} label={idFrontStored ? 'Retake front of ID' : 'Front of ID'} onPick={scanId} />
+              {scan ? (
+                <View style={[styles.result, scanUnreadable ? styles.resultBad : styles.resultOk]}>
+                  <Text style={styles.resultText}>{scan.validation.qualityMessage}</Text>
+                  {scan.validation.validationWarnings.map((w) => <Text key={w} style={styles.resultSub}>• {w}</Text>)}
+                </View>
+              ) : onFile('ID_FRONT') ? (
+                <Text style={styles.hint}>An ID photo is already on file.</Text>
+              ) : null}
+              {idType?.hasBackSide ? (
+                <>
+                  <PhotoButtons busy={busy === 'back'} label={idBackDone || onFile('ID_BACK') ? 'Retake back of ID' : 'Back of ID'} onPick={uploadIdBack} />
+                  {idBackDone || onFile('ID_BACK') ? <Text style={styles.hint}>Back of ID uploaded.</Text> : null}
+                </>
+              ) : null}
+              {errors.scan ? <Text style={styles.fieldError}>{errors.scan}</Text> : null}
+              <AppTextInput label="ID number" value={form.idNumber} onChangeText={(v) => set('idNumber', v)} autoCapitalize="characters" hint={idType ? `e.g. ${idType.example}` : undefined} error={errors.idNumber} />
+              <AppTextInput label="Name exactly as printed on the ID" value={form.nameOnId} onChangeText={(v) => set('nameOnId', v)} error={errors.nameOnId} />
+              <AppTextInput label="Expiry date (YYYY-MM-DD, if any)" value={form.idExpiryDate} onChangeText={(v) => set('idExpiryDate', v)} keyboardType="numbers-and-punctuation" error={errors.idExpiryDate} />
+            </AppCard>
           ) : null}
 
-          {step === 0 && (
-            <View>
-              {/* ID Scan Banner */}
-              <AppCard style={styles.ocrCard}>
-                <View style={styles.ocrHeaderRow}>
-                  <View style={styles.ocrIconWrap}>
-                    <Ionicons name="scan-outline" size={20} color={colors.primary} />
-                  </View>
-                  <View style={styles.flex1}>
-                    <Text style={styles.ocrTitle}>Instant Government ID Auto-Fill</Text>
-                    <Text style={styles.ocrSub}>Scan your PhilSys, Driver's License, or Passport to auto-fill</Text>
-                  </View>
-                </View>
-
-                {isScanningId ? (
-                  <View style={styles.ocrProgressBox}>
-                    <Ionicons name="sync-outline" size={18} color={colors.primary} />
-                    <Text style={styles.ocrProgressText}>
-                      {scanStage === 'scanning' && '1/3: Scanning ID photo...'}
-                      {scanStage === 'checking_quality' && '2/3: Checking image quality & glare...'}
-                      {scanStage === 'reading_info' && '3/3: Reading ID details with OCR...'}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.ocrBtnRow}>
-                    <TouchableOpacity
-                      style={styles.ocrBtn}
-                      onPress={() => handleScanId('camera')}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="camera-outline" size={16} color={colors.white} />
-                      <Text style={styles.ocrBtnText}>Take Photo</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.ocrBtnSecondary}
-                      onPress={() => handleScanId('library')}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="image-outline" size={16} color={colors.textSecondary} />
-                      <Text style={styles.ocrBtnSecondaryText}>Upload Photo</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {/* Quality Failure Banner */}
-                {qualityError && (
-                  <View style={styles.ocrErrorBox}>
-                    <View style={styles.ocrErrorHeader}>
-                      <Ionicons name="alert-circle" size={18} color={colors.danger} />
-                      <Text style={styles.ocrErrorTitle}>ID Quality Check Failed</Text>
-                    </View>
-                    <Text style={styles.ocrErrorMsg}>{qualityError}</Text>
-                    {qualityChecks && (
-                      <View style={styles.qualityList}>
-                        {qualityChecks.isBlurry && <Text style={styles.qualityItem}>❌ Blurry image detected</Text>}
-                        {qualityChecks.isTooDark && <Text style={styles.qualityItem}>❌ Too dark / underexposed</Text>}
-                        {qualityChecks.isTooBrightOrGlare && <Text style={styles.qualityItem}>❌ Flash glare detected</Text>}
-                        {qualityChecks.isCutOff && <Text style={styles.qualityItem}>❌ ID edges / corners cut off</Text>}
-                        {qualityChecks.isTooFar && <Text style={styles.qualityItem}>❌ ID is too far away</Text>}
-                        {qualityChecks.isUpsideDown && <Text style={styles.qualityItem}>❌ ID is upside down / tilted</Text>}
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* Validated OCR Result Card */}
-                {scannedIdDoc && !qualityError && (
-                  <View style={styles.ocrSuccessBox}>
-                    <View style={styles.ocrSuccessHeader}>
-                      <Ionicons name="checkmark-circle" size={18} color={colors.green} />
-                      <Text style={styles.ocrSuccessTitle}>ID Validated ({scannedIdDoc.confidenceScore}% Quality Score)</Text>
-                    </View>
-                    <Text style={styles.ocrSuccessType}>{scannedIdDoc.idType} {scannedIdDoc.idNumber ? `· ${scannedIdDoc.idNumber}` : ''}</Text>
-                    <TouchableOpacity
-                      style={styles.confirmExtractedRow}
-                      onPress={() => setExtractedConfirmed(!extractedConfirmed)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons
-                        name={extractedConfirmed ? 'checkbox' : 'square-outline'}
-                        size={18}
-                        color={extractedConfirmed ? colors.primary : colors.textSecondary}
-                      />
-                      <Text style={styles.confirmExtractedText}>
-                        I confirm that the information extracted from my ID is correct.
-                      </Text>
-                    </TouchableOpacity>
-                    <Text style={styles.ocrDisclaimer}>ID information extracted — manual verification required by cooperative staff.</Text>
-                  </View>
-                )}
-              </AppCard>
-
-              <AppTextInput
-                label={autoFilledKeys.includes('firstName') ? 'First Name * ✨ Auto-filled' : 'First Name *'}
-                value={firstName}
-                placeholder="As shown on your valid ID"
-                onChangeText={set('firstName')}
-                error={errors.firstName}
-              />
-              <AppTextInput
-                label={autoFilledKeys.includes('middleName') ? 'Middle Name ✨ Auto-filled' : 'Middle Name'}
-                value={middleName}
-                placeholder="Optional"
-                onChangeText={set('middleName')}
-                error={errors.middleName}
-              />
-              <AppTextInput
-                label={autoFilledKeys.includes('lastName') ? 'Last Name * ✨ Auto-filled' : 'Last Name *'}
-                value={lastName}
-                placeholder="As shown on your valid ID"
-                onChangeText={set('lastName')}
-                error={errors.lastName}
-              />
-              <AppTextInput
-                label={autoFilledKeys.includes('dateOfBirth') ? 'Date of Birth * ✨ Auto-filled' : 'Date of Birth *'}
-                value={dateOfBirth}
-                placeholder="YYYY-MM-DD"
-                onChangeText={set('dateOfBirth')}
-                error={errors.dateOfBirth}
-                hint="Format: 1990-05-18"
-              />
-              <Text style={styles.fieldLabel}>
-                Gender * {autoFilledKeys.includes('gender') ? '✨' : ''}
-              </Text>
-              <ChipGroup options={GENDERS} selected={gender} onSelect={(v) => { setGender(v); setErrors((e) => ({ ...e, gender: '' })); }} />
-              {errors.gender ? <Text style={styles.fieldError}>{errors.gender}</Text> : null}
-              <Text style={styles.fieldLabel}>
-                Civil Status * {autoFilledKeys.includes('civilStatus') ? '✨' : ''}
-              </Text>
-              <ChipGroup options={CIVIL_STATUS} selected={civilStatus} onSelect={(v) => { setCivilStatus(v); setErrors((e) => ({ ...e, civilStatus: '' })); }} />
-              {errors.civilStatus ? <Text style={styles.fieldError}>{errors.civilStatus}</Text> : null}
-              <AppTextInput label="Mobile Number *" value={phone} placeholder="e.g. 0917 555 4321" onChangeText={set('phone')} keyboardType="phone-pad" error={errors.phone} />
-              <AppTextInput label="Email (Optional)" value={email} placeholder="e.g. you@gmail.com" onChangeText={set('email')} autoCapitalize="none" keyboardType="email-address" error={errors.email} />
-            </View>
-          )}
-
-          {step === 1 && (
-            <View>
-              <AppTextInput
-                label={autoFilledKeys.includes('street') ? 'House / Street ✨ Auto-filled' : 'House / Street'}
-                value={street}
-                placeholder="House no., street, building"
-                onChangeText={set('street')}
-                error={errors.street}
-              />
-              <AppTextInput
-                label={autoFilledKeys.includes('barangay') ? 'Barangay * ✨ Auto-filled' : 'Barangay *'}
-                value={barangay}
-                placeholder="e.g. Poblacion"
-                onChangeText={set('barangay')}
-                error={errors.barangay}
-              />
-              <AppTextInput
-                label={autoFilledKeys.includes('city') ? 'City / Municipality * ✨ Auto-filled' : 'City / Municipality *'}
-                value={city}
-                placeholder="e.g. Tacloban City"
-                onChangeText={set('city')}
-                error={errors.city}
-              />
-              <AppTextInput
-                label={autoFilledKeys.includes('province') ? 'Province * ✨ Auto-filled' : 'Province *'}
-                value={province}
-                placeholder="e.g. Leyte"
-                onChangeText={set('province')}
-                error={errors.province}
-              />
-              <AppTextInput
-                label={autoFilledKeys.includes('postalCode') ? 'Postal Code ✨ Auto-filled' : 'Postal Code'}
-                value={postalCode}
-                placeholder="e.g. 6500"
-                onChangeText={set('postalCode')}
-                keyboardType="number-pad"
-                error={errors.postalCode}
-              />
-            </View>
-          )}
-
-          {step === 2 && (
-            <View>
-              <AppTextInput label="Occupation *" value={occupation} placeholder="e.g. Store Owner, Farmer, Teacher" onChangeText={set('occupation')} error={errors.occupation} />
-              <Text style={styles.fieldLabel}>Employment Status *</Text>
-              <ChipGroup options={EMPLOYMENT_STATUS} selected={employmentStatus} onSelect={(v) => { setEmploymentStatus(v); setErrors((e) => ({ ...e, employmentStatus: '' })); }} />
-              {errors.employmentStatus ? <Text style={styles.fieldError}>{errors.employmentStatus}</Text> : null}
-              <AppTextInput label="Employer / Business Name" value={employer} placeholder="Optional" onChangeText={set('employer')} error={errors.employer} />
-              <AppTextInput label="Monthly Income (₱) *" value={monthlyIncome} placeholder="e.g. 35000" onChangeText={set('monthlyIncome')} keyboardType="numeric" error={errors.monthlyIncome} />
-              <Text style={styles.fieldLabel}>Source of Income *</Text>
-              <ChipGroup options={INCOME_SOURCES} selected={sourceOfIncome} onSelect={(v) => { setSourceOfIncome(v); setErrors((e) => ({ ...e, sourceOfIncome: '' })); }} />
-              {errors.sourceOfIncome ? <Text style={styles.fieldError}>{errors.sourceOfIncome}</Text> : null}
-            </View>
-          )}
-
-          {step === 3 && (
-            <View>
-              {errors.documents ? (
-                <View style={styles.docError}>
-                  <Ionicons name="alert-circle" size={15} color={colors.danger} />
-                  <Text style={styles.docErrorText}>{errors.documents}</Text>
-                </View>
-              ) : (
-                <View style={styles.docHint}>
-                  <Ionicons name="camera-outline" size={15} color={colors.teal} />
-                  <Text style={styles.docHintText}>
-                    Photos must be clear, complete, and legible. Use landscape orientation and ensure no glare.
+          {step === 1 ? (
+            <AppCard>
+              <Text style={styles.hint}>Face the camera in good light, without a cap or sunglasses. Your selfie is compared with your ID photo.</Text>
+              {selfieUri ? <Image source={{ uri: selfieUri }} style={styles.preview} resizeMode="contain" /> : null}
+              <AppButton title={selfieStored ? 'Retake selfie' : 'Take selfie'} loading={busy === 'face'} onPress={takeSelfie} icon={<Ionicons name="camera-outline" size={18} color={colors.white} />} />
+              {face ? (
+                <View style={[styles.result, face.matchStatus === 'NO_MATCH' ? styles.resultBad : styles.resultOk]}>
+                  <Text style={styles.resultText}>
+                    {face.matchStatus === 'MATCH'
+                      ? `Your selfie matches your ID${face.matchConfidence !== null ? ` (${face.matchConfidence}%)` : ''}.`
+                      : face.matchStatus === 'NO_MATCH'
+                        ? 'Your selfie does not match your ID photo.'
+                        : face.details ?? 'A branch officer will compare your selfie with your ID.'}
                   </Text>
                 </View>
-              )}
-              <AppCard padded={false} style={{ marginBottom: 12 }}>
-                {uploads.map((u, i) => (
-                  <DocRow
-                    key={`${u.documentType}-${i}`}
-                    name={u.documentName}
-                    type={u.documentType}
-                    submitted={u.status === 'DONE'}
-                    status={u.status === 'DONE' ? 'PENDING' : undefined}
-                    fileName={u.fileName}
-                    onPress={() => setPickTarget(u)}
-                  />
-                ))}
-              </AppCard>
-              {!allUploaded ? (
-                <Text style={styles.docNote}>Tap each document to choose a photo from your gallery.</Text>
-              ) : (
-                <View style={styles.allDone}>
-                  <Ionicons name="checkmark-circle" size={16} color={colors.green} />
-                  <Text style={styles.allDoneText}>All documents uploaded!</Text>
-                </View>
-              )}
-            </View>
-          )}
+              ) : onFile('SELFIE') ? (
+                <Text style={styles.hint}>A selfie is already on file.</Text>
+              ) : null}
+              {errors.face ? <Text style={styles.fieldError}>{errors.face}</Text> : null}
+            </AppCard>
+          ) : null}
 
-          {step === 4 && (
-            <View>
-              <AppCard style={{ marginBottom: 12 }}>
-                <Text style={styles.reviewSection}>Personal</Text>
-                <Text style={styles.reviewLine}>{`${firstName} ${middleName ? middleName + ' ' : ''}${lastName}`}</Text>
-                <Text style={styles.reviewLineMuted}>{`${formatLabel('gender', gender)} · ${civilStatus}`}</Text>
-                <Text style={styles.reviewLineMuted}>{dateOfBirth}</Text>
-              </AppCard>
-              <AppCard style={{ marginBottom: 12 }}>
-                <Text style={styles.reviewSection}>Address</Text>
-                <Text style={styles.reviewLine}>{`${[street, barangay].filter(Boolean).join(', ')}`}</Text>
-                <Text style={styles.reviewLineMuted}>{`${city}, ${province}${postalCode ? ' ' + postalCode : ''}`}</Text>
-              </AppCard>
-              <AppCard style={{ marginBottom: 12 }}>
-                <Text style={styles.reviewSection}>Employment / Income</Text>
-                <Text style={styles.reviewLine}>{`${occupation} (${employmentStatus || 'N/A'})`}</Text>
-                <Text style={styles.reviewLineMuted}>{`${employer ? employer + ' · ' : ''}Monthly income: ₱${Number(monthlyIncome)?.toLocaleString() ?? monthlyIncome}`}</Text>
-                <Text style={styles.reviewLineMuted}>Source: {sourceOfIncome || '—'}</Text>
-              </AppCard>
-              <AppCard padded={false} style={{ marginBottom: 8 }}>
-                {uploads.map((u, i) => (
-                  <DocRow
-                    key={`${u.documentType}-review-${i}`}
-                    name={u.documentName}
-                    type={u.documentType}
-                    submitted={u.status === 'DONE'}
-                    status={u.status === 'DONE' ? 'PENDING' : undefined}
-                    fileName={u.fileName}
-                  />
-                ))}
-              </AppCard>
-              <View style={styles.consentRow}>
-                <Ionicons name="shield-checkmark-outline" size={18} color={colors.teal} />
-                <Text style={styles.consentText}>
-                  I certify that the information and documents I provided are true and correct, and I consent to HOSCOMCO's verification process under the Data Privacy Act.
-                </Text>
-              </View>
-            </View>
-          )}
+          {step === 2 ? (
+            <AppCard>
+              <AppTextInput label="First name" value={form.firstName} onChangeText={(v) => set('firstName', v)} error={errors.firstName} />
+              {!form.hasNoMiddleName ? <AppTextInput label="Middle name" value={form.middleName} onChangeText={(v) => set('middleName', v)} error={errors.middleName} /> : null}
+              <Toggle label="I have no middle name" value={form.hasNoMiddleName} onChange={(v) => set('hasNoMiddleName', v)} />
+              <AppTextInput label="Last name" value={form.lastName} onChangeText={(v) => set('lastName', v)} error={errors.lastName} />
+              <AppTextInput label="Suffix (Jr., III…)" value={form.suffix} onChangeText={(v) => set('suffix', v)} />
+              <AppTextInput label="Date of birth (YYYY-MM-DD)" value={form.dateOfBirth} onChangeText={(v) => { set('dateOfBirth', v); set('idDateOfBirth', v); }} keyboardType="numbers-and-punctuation" error={errors.dateOfBirth} />
+              <AppTextInput label="Place of birth" value={form.placeOfBirth} onChangeText={(v) => set('placeOfBirth', v)} error={errors.placeOfBirth} />
+              <Label text="Sex" />
+              <Chips options={GENDERS} selected={form.gender} onSelect={(v) => set('gender', v)} error={errors.gender} />
+              <Label text="Civil status" />
+              <Chips options={CIVIL_STATUSES} selected={form.civilStatus} onSelect={(v) => set('civilStatus', v)} error={errors.civilStatus} />
+              <AppTextInput label="Nationality" value={form.nationality} onChangeText={(v) => set('nationality', v)} error={errors.nationality} />
+              <AppTextInput label="Mobile number" value={form.mobileNumber} onChangeText={(v) => set('mobileNumber', v)} keyboardType="phone-pad" error={errors.mobileNumber} />
+              <AppTextInput label="Email" value={form.email} onChangeText={(v) => set('email', v)} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
+              <AppTextInput label="Emergency contact name" value={form.emergencyContactName} onChangeText={(v) => set('emergencyContactName', v)} />
+              <AppTextInput label="Relationship" value={form.emergencyContactRelationship} onChangeText={(v) => set('emergencyContactRelationship', v)} />
+            </AppCard>
+          ) : null}
 
-          <View style={styles.navRow}>
-            {step > 0 ? (
-              <TouchableOpacity style={styles.backStepBtn} onPress={back}>
-                <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
-                <Text style={styles.backStepText}>Back</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.backStepBtn} onPress={() => navigation.goBack()}>
-                <Ionicons name="chevron-back" size={16} color={colors.textSecondary} />
-                <Text style={styles.backStepText}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-            {step < 4 ? (
-              <View style={styles.flex1}>
-                <AppButton title="Continue" onPress={next} />
-              </View>
-            ) : (
-              <View style={styles.flex1}>
-                <AppButton
-                  title="Submit for Verification"
-                  loading={submitting}
-                  onPress={() => setConfirmVisible(true)}
-                  icon={<Ionicons name="paper-plane-outline" size={18} color={colors.white} />}
-                />
-              </View>
-            )}
-          </View>
+          {step === 3 ? (
+            <>
+              <AppCard style={{ marginBottom: 12 }}>
+                <Text style={styles.cardTitle}>Current address</Text>
+                <AddressFields form={form} prefix="current" set={set} errors={errors} />
+                <Toggle label="My permanent address is the same" value={form.isPermanentSameAsCurrent} onChange={(v) => set('isPermanentSameAsCurrent', v)} />
+              </AppCard>
+              {!form.isPermanentSameAsCurrent ? (
+                <AppCard>
+                  <Text style={styles.cardTitle}>Permanent address</Text>
+                  <AddressFields form={form} prefix="perm" set={set} errors={errors} />
+                </AppCard>
+              ) : null}
+            </>
+          ) : null}
+
+          {step === 4 ? (
+            <AppCard>
+              <Label text="Employment status" />
+              <Chips options={EMPLOYMENT_STATUSES} selected={form.employmentStatus} onSelect={(v) => set('employmentStatus', v)} error={errors.employmentStatus} />
+              {form.employmentStatus === 'Other' ? <AppTextInput label="Please explain" value={form.otherStatusExplanation} onChangeText={(v) => set('otherStatusExplanation', v)} error={errors.otherStatusExplanation} /> : null}
+              {EMPLOYED.includes(form.employmentStatus) ? (
+                <>
+                  <AppTextInput label="Employer name" value={form.employerName} onChangeText={(v) => set('employerName', v)} error={errors.employerName} />
+                  <AppTextInput label="Position" value={form.jobPosition} onChangeText={(v) => set('jobPosition', v)} />
+                </>
+              ) : null}
+              {BUSINESS.includes(form.employmentStatus) ? (
+                <>
+                  <AppTextInput label="Business name" value={form.businessName} onChangeText={(v) => set('businessName', v)} error={errors.businessName} />
+                  <AppTextInput label="Nature of business" value={form.natureOfBusiness} onChangeText={(v) => set('natureOfBusiness', v)} />
+                </>
+              ) : null}
+              <AppTextInput label="Monthly income (₱)" value={form.monthlyIncome} onChangeText={(v) => set('monthlyIncome', v)} keyboardType="decimal-pad" error={errors.monthlyIncome} />
+              <AppTextInput label="Monthly expenses (₱)" value={form.monthlyExpenses} onChangeText={(v) => set('monthlyExpenses', v)} keyboardType="decimal-pad" error={errors.monthlyExpenses} />
+              <Label text="Main source of income" />
+              <Chips options={SOURCES_OF_INCOME} selected={form.sourceOfIncome} onSelect={(v) => set('sourceOfIncome', v)} error={errors.sourceOfIncome} />
+            </AppCard>
+          ) : null}
+
+          {step === 5 ? (
+            <AppCard>
+              {supporting.length === 0 ? <Text style={styles.hint}>No other documents are required.</Text> : null}
+              {supporting.map((d) => {
+                const have = uploaded[d.type] ?? (d.submitted ? d.fileName ?? 'On file' : null);
+                return (
+                  <View key={d.type} style={styles.docRow}>
+                    <Ionicons name={have ? 'checkmark-circle' : 'document-outline'} size={20} color={have ? colors.green : colors.textMuted} />
+                    <View style={styles.flex1}>
+                      <Text style={styles.docName}>{d.name}</Text>
+                      <Text style={styles.hint}>{have ?? 'Not uploaded yet'}</Text>
+                    </View>
+                    <AppButton title={have ? 'Replace' : 'Upload'} size="sm" variant="outline" loading={busy === d.type} onPress={() => uploadSupporting(d.type, d.name)} />
+                  </View>
+                );
+              })}
+              {errors.documents ? <Text style={styles.fieldError}>{errors.documents}</Text> : null}
+            </AppCard>
+          ) : null}
+
+          {step === 6 ? (
+            <AppCard>
+              <Text style={styles.cardTitle}>Please confirm</Text>
+              <Summary label="Name" value={[form.firstName, form.hasNoMiddleName ? '' : form.middleName, form.lastName, form.suffix].filter(Boolean).join(' ')} />
+              <Summary label="Born" value={`${form.dateOfBirth} · ${form.placeOfBirth}`} />
+              <Summary label="ID" value={`${idType?.label ?? form.idType} · ${form.idNumber}`} />
+              <Summary label="Address" value={[form.currentHouseNumber, form.currentStreet, form.currentBarangayName, form.currentCityName, form.currentProvinceName].filter(Boolean).join(', ')} />
+              <Summary label="Income" value={`₱${form.monthlyIncome} a month · ${form.sourceOfIncome}`} />
+              <View style={{ height: 12 }} />
+              <Consent label="The information I gave is true and correct." value={form.truthfulInformation} onChange={(v) => set('truthfulInformation', v)} error={errors.truthfulInformation} />
+              <Consent label="The documents I uploaded are mine and genuine." value={form.documentOwnership} onChange={(v) => set('documentOwnership', v)} error={errors.documentOwnership} />
+              <Consent label="I allow HOSCOMCO to review and verify my information." value={form.authorizedReview} onChange={(v) => set('authorizedReview', v)} />
+              <Consent label="I have read and accept the Data Privacy Notice (RA 10173)." value={form.privacyNotice} onChange={(v) => set('privacyNotice', v)} error={errors.privacyNotice} />
+              <Consent label="I understand that false statements may lead to rejection and legal action." value={form.penaltyAcknowledgment} onChange={(v) => set('penaltyAcknowledgment', v)} />
+            </AppCard>
+          ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      <AppModal
-        visible={!!pickTarget && mediaPermission !== false}
-        onClose={() => setPickTarget(null)}
-        title="Upload Document"
-        subtitle={pickTarget?.documentName}
-        icon="cloud-upload-outline"
-        confirmText="Choose Photo"
-        onConfirm={() => {
-          if (pickTarget) {
-            const target = pickTarget;
-            setPickTarget(null); // Close this modal FIRST, then launch the picker
-            pickFor(target);
-          }
-        }}
-        confirmLoading={false}
-      >
-        <Text style={styles.modalNote}>
-          Select a clear photo of your {pickTarget?.documentName.toLowerCase() ?? 'document'}. The file will be sent securely to the branch for verification.
-        </Text>
-      </AppModal>
-
-      <AppModal
-        visible={confirmVisible}
-        onClose={() => setConfirmVisible(false)}
-        title="Submit KYC for Verification?"
-        subtitle="You will not be able to edit this submission while it is under review."
-        icon="document-text-outline"
-        iconColor={colors.teal}
-        iconBg={colors.tealSoft}
-        confirmText="Submit Now"
-        onConfirm={handleSubmit}
-        confirmLoading={submitting}
-      >
-        <View style={styles.confirmSummary}>
-          <View style={styles.confirmLine}>
-            <Text style={styles.confirmKey}>Documents</Text>
-            <Text style={styles.confirmVal}>{uploads.length} uploaded</Text>
-          </View>
-          <Text style={styles.modalNote}>
-            False or incomplete information may delay approval of your submission.
-          </Text>
+        <View style={styles.footer}>
+          {step > 0 ? <AppButton title="Back" variant="outline" onPress={() => { setErrors({}); setStep((s) => s - 1); }} style={styles.footerBtn} /> : null}
+          <AppButton title="Save" variant="secondary" loading={busy === 'draft'} onPress={saveDraft} style={styles.footerBtn} />
+          {step < STEPS.length - 1 ? (
+            <AppButton title="Next" onPress={next} style={styles.footerBtnWide} disabled={busy !== '' && busy !== 'draft'} />
+          ) : (
+            <AppButton title="Submit" onPress={submit} loading={busy === 'submit'} style={styles.footerBtnWide} disabled={!kycStepsValid(form, ['CONSENT'], manilaToday())} />
+          )}
         </View>
-      </AppModal>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
-function formatLabel(key: string, v: string) {
-  return v || '—';
-}
+// ---------------------------------------------------------------------------
+
+type SetField = <K extends keyof KycFormState>(key: K, value: KycFormState[K]) => void;
+
+/** Form fields that hold text. */
+type TextField = { [K in keyof KycFormState]: KycFormState[K] extends string ? K : never }[keyof KycFormState];
+type AddressPart = 'RegionCode' | 'RegionName' | 'ProvinceCode' | 'ProvinceName' | 'CityCode' | 'CityName' | 'BarangayCode' | 'BarangayName' | 'PostalCode' | 'HouseNumber' | 'Street' | 'Subdivision' | 'Landmark';
+
+const ADDRESS_FIELDS: Record<'current' | 'perm', Record<AddressPart, TextField>> = {
+  current: {
+    RegionCode: 'currentRegionCode', RegionName: 'currentRegionName', ProvinceCode: 'currentProvinceCode', ProvinceName: 'currentProvinceName',
+    CityCode: 'currentCityCode', CityName: 'currentCityName', BarangayCode: 'currentBarangayCode', BarangayName: 'currentBarangayName',
+    PostalCode: 'currentPostalCode', HouseNumber: 'currentHouseNumber', Street: 'currentStreet', Subdivision: 'currentSubdivision', Landmark: 'currentLandmark',
+  },
+  perm: {
+    RegionCode: 'permRegionCode', RegionName: 'permRegionName', ProvinceCode: 'permProvinceCode', ProvinceName: 'permProvinceName',
+    CityCode: 'permCityCode', CityName: 'permCityName', BarangayCode: 'permBarangayCode', BarangayName: 'permBarangayName',
+    PostalCode: 'permPostalCode', HouseNumber: 'permHouseNumber', Street: 'permStreet', Subdivision: 'permSubdivision', Landmark: 'permLandmark',
+  },
+};
+
+const LEVELS = ['Region', 'Province', 'City', 'Barangay'] as const;
+type Level = (typeof LEVELS)[number];
+
+/** Region → province → city → barangay from the PSGC lists, then street details. */
+const AddressFields: React.FC<{ form: KycFormState; prefix: 'current' | 'perm'; set: SetField; errors: Errors }> = ({ form, prefix, set, errors }) => {
+  const f = ADDRESS_FIELDS[prefix];
+  const get = (part: AddressPart) => form[f[part]];
+  const put = (part: AddressPart, value: string) => set(f[part], value);
+  const regionCode = get('RegionCode');
+  const provinceCode = get('ProvinceCode');
+  const cityCode = get('CityCode');
+  const [regions, setRegions] = useState<PsgcPlaceView[]>([]);
+  const [provinces, setProvinces] = useState<PsgcPlaceView[]>([]);
+  const [cities, setCities] = useState<PsgcPlaceView[]>([]);
+  const [barangays, setBarangays] = useState<PsgcPlaceView[]>([]);
+  const [listError, setListError] = useState('');
+  const [loading, setLoading] = useState('');
+
+  const fetchList = useCallback(async (what: string, run: () => Promise<PsgcPlaceView[]>, store: (v: PsgcPlaceView[]) => void) => {
+    setLoading(what);
+    try {
+      store(await run());
+      setListError('');
+    } catch (err) {
+      setListError(messageOf(err, 'The address lists could not be loaded.'));
+    } finally {
+      setLoading('');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchList('regions', () => api.getRegions(), setRegions);
+  }, [fetchList]);
+  useEffect(() => {
+    if (regionCode) fetchList('provinces', () => api.getProvinces(regionCode), setProvinces);
+  }, [regionCode, fetchList]);
+  useEffect(() => {
+    if (regionCode) fetchList('cities', () => api.getCities(regionCode, provinceCode || undefined), setCities);
+  }, [regionCode, provinceCode, fetchList]);
+  useEffect(() => {
+    if (cityCode) fetchList('barangays', () => api.getBarangays(cityCode), setBarangays);
+  }, [cityCode, fetchList]);
+
+  const choose = async (level: Level, o: SelectOption) => {
+    put(`${level}Code`, o.code);
+    put(`${level}Name`, o.name);
+    // A new choice clears everything below it.
+    for (const below of LEVELS.slice(LEVELS.indexOf(level) + 1)) {
+      put(`${below}Code`, '');
+      put(`${below}Name`, '');
+    }
+    if (level === 'City' || level === 'Barangay') {
+      try {
+        const zip = await api.getPostalCode(level === 'City' ? o.code : cityCode, level === 'Barangay' ? o.code : undefined);
+        if (zip) put('PostalCode', zip);
+      } catch (err) {
+        setListError(messageOf(err, 'The ZIP code could not be looked up; please type it.'));
+      }
+    }
+  };
+
+  const err = (part: AddressPart) => errors[f[part]];
+  return (
+    <>
+      {listError ? <Text style={styles.fieldError}>{listError}</Text> : null}
+      <SelectField label="Region" value={get('RegionName')} options={regions} onSelect={(o) => choose('Region', o)} loading={loading === 'regions'} error={err('RegionCode')} />
+      {provinces.length ? <SelectField label="Province" value={get('ProvinceName')} options={provinces} onSelect={(o) => choose('Province', o)} disabled={!regionCode} loading={loading === 'provinces'} /> : null}
+      <SelectField label="City / municipality" value={get('CityName')} options={cities} onSelect={(o) => choose('City', o)} disabled={!regionCode} loading={loading === 'cities'} error={err('CityCode')} />
+      <SelectField label="Barangay" value={get('BarangayName')} options={barangays} onSelect={(o) => choose('Barangay', o)} disabled={!cityCode} loading={loading === 'barangays'} error={err('BarangayCode')} />
+      <AppTextInput label="ZIP code" value={get('PostalCode')} onChangeText={(v) => put('PostalCode', v)} keyboardType="number-pad" maxLength={4} error={err('PostalCode')} />
+      <AppTextInput label="House / unit no." value={get('HouseNumber')} onChangeText={(v) => put('HouseNumber', v)} />
+      <AppTextInput label="Street" value={get('Street')} onChangeText={(v) => put('Street', v)} error={err('Street')} />
+      <AppTextInput label="Subdivision / village" value={get('Subdivision')} onChangeText={(v) => put('Subdivision', v)} />
+      <AppTextInput label="Landmark" value={get('Landmark')} onChangeText={(v) => put('Landmark', v)} />
+    </>
+  );
+};
+
+const Label: React.FC<{ text: string }> = ({ text }) => <Text style={styles.label}>{text}</Text>;
+
+const Chips: React.FC<{ options: readonly string[]; selected: string; onSelect: (v: string) => void; error?: string }> = ({ options, selected, onSelect, error }) => (
+  <View style={{ marginBottom: 10 }}>
+    <View style={styles.chipRow}>
+      {options.map((o) => (
+        <TouchableOpacity key={o} style={[styles.chip, selected === o && styles.chipActive]} onPress={() => onSelect(o)} accessibilityLabel={o}>
+          <Text style={[styles.chipText, selected === o && styles.chipTextActive]}>{o}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+    {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+  </View>
+);
+
+const Toggle: React.FC<{ label: string; value: boolean; onChange: (v: boolean) => void }> = ({ label, value, onChange }) => (
+  <View style={styles.toggleRow}>
+    <Text style={styles.toggleText}>{label}</Text>
+    <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.teal, false: colors.border }} accessibilityLabel={label} />
+  </View>
+);
+
+const Consent: React.FC<{ label: string; value: boolean; onChange: (v: boolean) => void; error?: string }> = ({ label, value, onChange, error }) => (
+  <TouchableOpacity style={styles.consentRow} onPress={() => onChange(!value)} accessibilityRole="checkbox" accessibilityState={{ checked: value }} accessibilityLabel={label}>
+    <Ionicons name={value ? 'checkbox' : 'square-outline'} size={22} color={error ? colors.danger : value ? colors.primary : colors.textMuted} />
+    <Text style={styles.consentText}>{label}</Text>
+  </TouchableOpacity>
+);
+
+const Summary: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <View style={styles.summaryRow}>
+    <Text style={styles.summaryLabel}>{label}</Text>
+    <Text style={styles.summaryValue}>{value || '—'}</Text>
+  </View>
+);
+
+const PhotoButtons: React.FC<{ label: string; busy: boolean; onPick: (source: 'camera' | 'library') => void }> = ({ label, busy, onPick }) => (
+  <View style={styles.photoRow}>
+    <AppButton title={`${label}: camera`} size="sm" loading={busy} onPress={() => onPick('camera')} style={styles.photoBtn} />
+    <AppButton title="Gallery" size="sm" variant="outline" disabled={busy} onPress={() => onPick('library')} style={styles.photoBtn} />
+  </View>
+);
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  flex: { flex: 1 },
-  content: { padding: 16, paddingBottom: 48 },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, marginTop: 4 },
-  fieldError: { fontSize: 12, color: colors.danger, fontWeight: '600', marginTop: 6 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.round,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginRight: 8,
-    marginBottom: 8,
-  },
+  content: { padding: 16, paddingBottom: 40 },
+  notice: { backgroundColor: colors.greenSoft, color: colors.greenDark, padding: 10, borderRadius: radius.md, marginBottom: 12, fontSize: 13 },
+  errorBanner: { backgroundColor: colors.dangerSoft, color: colors.danger, padding: 10, borderRadius: radius.md, marginBottom: 12, fontSize: 13 },
+  cardTitle: { fontSize: 13, fontWeight: '800', color: colors.text, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  label: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 6, marginTop: 4 },
+  hint: { fontSize: 12, color: colors.textMuted, marginVertical: 6, lineHeight: 17 },
+  fieldError: { fontSize: 12, color: colors.danger, marginVertical: 4 },
+  preview: { width: '100%', height: 180, borderRadius: radius.md, backgroundColor: colors.borderLight, marginVertical: 8 },
+  result: { borderRadius: radius.md, padding: 10, marginVertical: 8 },
+  resultOk: { backgroundColor: colors.greenSoft },
+  resultBad: { backgroundColor: colors.dangerSoft },
+  resultText: { fontSize: 12, color: colors.text, lineHeight: 17 },
+  resultSub: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  photoRow: { flexDirection: 'row', marginVertical: 6 },
+  photoBtn: { flex: 1, marginRight: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.round, borderWidth: 1, borderColor: colors.border, marginRight: 6, marginBottom: 6, backgroundColor: colors.surface },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginLeft: 6 },
+  chipText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
   chipTextActive: { color: colors.white },
-  docError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-    borderRadius: radius.md,
-    padding: 10,
-    marginBottom: 12,
-  },
-  docErrorText: { flex: 1, marginLeft: 8, fontSize: 12, color: colors.danger, fontWeight: '600' },
-  docHint: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.tealSoft,
-    borderWidth: 1,
-    borderColor: colors.tealBorder,
-    borderRadius: radius.md,
-    padding: 10,
-    marginBottom: 12,
-  },
-  docHintText: { flex: 1, marginLeft: 8, fontSize: 12, color: colors.tealDark, lineHeight: 17 },
-  docNote: { fontSize: 12, color: colors.textFaint, textAlign: 'center', marginTop: 4 },
-  allDone: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  allDoneText: { fontSize: 13, color: colors.greenDark, fontWeight: '700', marginLeft: 6 },
-  reviewSection: { fontSize: 11, fontWeight: '800', color: colors.primary, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
-  reviewLine: { fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 2 },
-  reviewLineMuted: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  consentRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 4, paddingVertical: 8 },
-  consentText: { flex: 1, fontSize: 11, color: colors.textMuted, marginLeft: 8, lineHeight: 16 },
-  navRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20 },
-  backStepBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 12, marginRight: 8 },
-  backStepText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
-  flex1: { flex: 1 },
-  submitError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-    borderRadius: radius.md,
-    padding: 10,
-    marginBottom: 12,
-  },
-  submitErrorText: { flex: 1, marginLeft: 8, fontSize: 12, color: colors.danger, fontWeight: '600' },
-  modalNote: { fontSize: 13, color: colors.textSecondary, lineHeight: 19 },
-  confirmSummary: { marginTop: 4 },
-  confirmLine: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  confirmKey: { fontSize: 13, color: colors.textMuted },
-  confirmVal: { fontSize: 13, fontWeight: '700', color: colors.text },
-  successWrap: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center' },
-  successIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-  successTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
-  successMsg: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 19 },
-  receiptCard: { alignSelf: 'stretch', marginTop: 18 },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight },
-  metaLabel: { fontSize: 12, color: colors.textMuted },
-  metaValue: { fontSize: 12, fontWeight: '700', color: colors.text },
-  homeLink: { paddingVertical: 12, marginTop: 6 },
-  homeLinkText: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
-  ocrCard: {
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderRadius: radius.lg,
-    padding: 14,
-    backgroundColor: colors.surface,
-  },
-  ocrHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  ocrIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  ocrTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  ocrSub: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 1,
-  },
-  ocrProgressBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-  },
-  ocrProgressText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primaryDark,
-    marginLeft: 8,
-  },
-  ocrBtnRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  ocrBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  ocrBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  ocrBtnSecondary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  ocrBtnSecondaryText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  ocrErrorBox: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-  },
-  ocrErrorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  ocrErrorTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.danger,
-  },
-  ocrErrorMsg: {
-    fontSize: 11,
-    color: colors.danger,
-    lineHeight: 16,
-  },
-  qualityList: {
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: colors.dangerBorder,
-  },
-  qualityItem: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.danger,
-    marginTop: 2,
-  },
-  ocrSuccessBox: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: colors.greenSoft,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.greenBorder,
-  },
-  ocrSuccessHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  ocrSuccessTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.greenDark,
-  },
-  ocrSuccessType: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 4,
-  },
-  ocrDisclaimer: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  confirmExtractedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 4,
-    backgroundColor: colors.surface,
-    padding: 8,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.greenBorder,
-  },
-  confirmExtractedText: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.text,
-  },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 8 },
+  toggleText: { flex: 1, fontSize: 13, color: colors.textSecondary, marginRight: 8 },
+  consentRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 8 },
+  consentText: { flex: 1, fontSize: 13, color: colors.text, marginLeft: 10, lineHeight: 19 },
+  summaryRow: { flexDirection: 'row', paddingVertical: 5 },
+  summaryLabel: { width: 80, fontSize: 12, color: colors.textMuted },
+  summaryValue: { flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' },
+  docRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+  flex1: { flex: 1, marginHorizontal: 10 },
+  docName: { fontSize: 14, fontWeight: '700', color: colors.text },
+  footer: { flexDirection: 'row', padding: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
+  footerBtn: { flex: 1, marginRight: 8 },
+  footerBtnWide: { flex: 1.4 },
+  successWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  successIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  successTitle: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  successMsg: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  successRef: { fontSize: 13, fontWeight: '700', color: colors.primary, marginTop: 10 },
 });

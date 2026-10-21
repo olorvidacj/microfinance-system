@@ -5,19 +5,21 @@
 // they consume these types via the service layer.
 // ---------------------------------------------------------------------------
 
+import type { ClientProfileView, KycStatusView } from '../../shared/client/contracts';
+
 export type PaymentStatus = 'COMPLETED' | 'PENDING' | 'FAILED' | 'PENDING_TELLER_VERIFICATION' | 'VERIFIED' | 'REJECTED';
 
+/** shared/lending LOAN_STATUSES as codes: 'Under Review' -> 'UNDER_REVIEW'. */
 export type LoanStatus =
-  | 'PENDING'
+  | 'DRAFT'
+  | 'SUBMITTED'
   | 'UNDER_REVIEW'
   | 'APPROVED'
-  | 'ACTIVE'
-  | 'DISBURSED'
-  | 'OVERDUE'
-  | 'IN_ARREARS'
-  | 'COMPLETED'
-  | 'PAID_OFF'
   | 'REJECTED'
+  | 'DISBURSED'
+  | 'ACTIVE'
+  | 'CLOSED'
+  | 'WRITTEN_OFF'
   | 'CANCELLED';
 
 export type KYCStatus =
@@ -42,92 +44,14 @@ export type NotificationCategory =
   | 'savings_update'
   | 'announcement';
 
-export type TransactionType =
-  | 'REPAYMENT'
-  | 'LOAN_DISBURSEMENT'
-  | 'SAVINGS_DEPOSIT'
-  | 'SAVINGS_WITHDRAWAL'
-  | 'LOAN_APPROVAL'
-  | 'FEE'
-  | 'ADJUSTMENT';
-
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'GCASH' | 'MAYA' | 'EWALLET' | 'OVER_THE_COUNTER';
-
-// ---------------------------------------------------------------------------
-// Dashboard
-// ---------------------------------------------------------------------------
-
-export interface DashboardTransaction {
-  id: string;
-  type: TransactionType;
-  amount: number;
-  date: string;
-  referenceNumber: string;
-  paymentMethod?: string;
-  status: PaymentStatus | 'COMPLETED';
-  description?: string;
-}
-
-export interface ClientDashboard {
-  borrowerName: string;
-  memberNumber: string;
-  totalActiveLoan: number;
-  remainingBalance: number;
-  nextPayment: number;
-  nextPaymentDueDate: string;
-  loanStatus: LoanStatus | 'NO_ACTIVE_LOAN';
-  activeLoansCount: number;
-  recentTransactions: DashboardTransaction[];
-  // Extended (campaign / mock) — full profile avatar + totals
-  savingsBalance?: number;
-  totalSavingsDeposits?: number;
-  lastSavingsDepositDate?: string;
-  totalPaid?: number;
-  totalPayments?: number;
-}
 
 // ---------------------------------------------------------------------------
 // Profile
 // ---------------------------------------------------------------------------
 
-export interface ClientProfile {
-  id: string;
-  fullName: string;
-  firstName?: string;
-  middleName?: string;
-  lastName?: string;
-  suffix?: string;
-  hasNoMiddleName?: boolean;
-  email: string;
-  phone: string;
-  secondaryPhone?: string;
-  address: string;
-  houseUnit?: string;
-  street?: string;
-  barangay?: string;
-  city?: string;
-  province?: string;
-  postalCode?: string;
-  dateOfBirth: string;
-  placeOfBirth?: string;
-  gender?: string;
-  civilStatus: string;
-  nationality?: string;
-  citizenship?: string;
-  occupation: string;
-  employer: string;
-  employmentStatus?: string;
-  monthlyIncome: number;
-  avatar: string;
-  memberNumber: string;
-  borrowerNumber?: string;
-  branchId?: string;
-  memberStatus?: string;
-  membershipDate: string;
-  kycStatus: KYCStatus;
-  creditScore: number;
-  creditTier: string;
-}
+/** Exactly what GET /api/client/profile sends (shared/client/contracts.ts). */
+export type ClientProfile = ClientProfileView;
 
 export interface KycDocumentItem {
   type: string;
@@ -147,9 +71,11 @@ export interface IdQualityChecks {
 }
 
 export interface IdValidationResult {
-  isReadable: boolean;
-  confidenceScore: number;
-  detectedType: string;
+  /** COMPLETED, or UNAVAILABLE/FAILED when the ID could not be read automatically. */
+  status?: 'COMPLETED' | 'UNAVAILABLE' | 'FAILED';
+  isReadable: boolean | null;
+  confidenceScore: number | null;
+  detectedType: string | null;
   qualityChecks?: IdQualityChecks;
   qualityMessage?: string;
   authenticityNotice?: string;
@@ -192,30 +118,21 @@ export interface ExtractedIdData {
 export interface FaceMatchResult {
   isMatch: boolean;
   matchConfidence: number;
-  matchStatus: 'MATCH' | 'LOW_CONFIDENCE' | 'FAILED';
+  /** NO_MATCH blocks submission; UNAVAILABLE/FAILED mean no automated comparison was made. */
+  matchStatus: 'MATCH' | 'LOW_CONFIDENCE' | 'NO_MATCH' | 'UNAVAILABLE' | 'FAILED';
   livenessVerified: boolean;
   details: string;
   recommendation?: 'CONTINUE' | 'RETRY_SELFIE' | 'MANUAL_REVIEW';
   timestamp?: string;
 }
 
-export interface KycStatusData {
-  kycStatus: KYCStatus;
-  isVerified: boolean;
-  requiredDocuments: KycDocumentItem[];
-  uploadedDocuments: any[];
-  submissionId?: string;
-  submittedAt?: string;
-  reviewedAt?: string;
-  correctionReason?: string;
-  correctionDetails?: any;
-  rejectionReason?: string;
-  verifiedAt?: string;
-  reviewedByName?: string;
-  extractedIdData?: ExtractedIdData;
-  faceMatchResult?: FaceMatchResult;
-  submission?: any;
-}
+/** GET /api/client/kyc-status: the shared view plus the scan and face results the web wizard restores. */
+export type KycStatusData = KycStatusView & {
+  submissionId: string | null;
+  uploadedDocuments: Array<{ type?: string; documentType?: string; fileUrl?: string | null }>;
+  extractedIdData?: ExtractedIdData | null;
+  faceMatchResult?: FaceMatchResult | null;
+};
 
 // ---------------------------------------------------------------------------
 // KYC Submission
@@ -291,11 +208,17 @@ export interface ClientLoan {
   interestRate: number;
   interestType?: string;
   termMonths: number;
+  /** The regular installment at the loan's frequency (not necessarily monthly). */
   monthlyInstallment: number;
+  /** "Weekly", "Bi-weekly" or "Monthly". */
+  frequency?: string;
   remainingBalance: number;
   paidAmount?: number;
   totalPayable?: number;
   totalInterest?: number;
+  totalFees?: number;
+  netProceeds?: number;
+  overdue?: boolean;
   status: LoanStatus;
   startDate?: string;
   disbursedDate?: string;
@@ -314,36 +237,13 @@ export interface ScheduleItem {
   principal: number;
   interest: number;
   remainingBalance: number;
-  status: 'PAID' | 'DUE' | 'UPCOMING' | 'OVERDUE';
+  status: 'PAID' | 'PARTIAL' | 'DUE' | 'UPCOMING' | 'OVERDUE';
   paidDate?: string | null;
   receiptNumber?: string | null;
 }
 
-export interface LoanProduct {
-  id: string;
-  name: string;
-  code: string;
-  minAmount: number;
-  maxAmount: number;
-  minTermMonths: number;
-  maxTermMonths: number;
-  interestRatePerMonth: number;
-  interestType: 'REDUCING_BALANCE' | 'FLAT_RATE';
-  processingFeePercentage: number;
-  description: string;
-}
+export type { LoanProduct } from '../../shared/lending';
 
-export interface LoanCalculation {
-  principal: number;
-  termMonths: number;
-  monthlyInterestRate: number;
-  estimatedMonthlyPayment: number;
-  estimatedTotalInterest: number;
-  totalRepayable: number;
-  processingFee: number;
-  estimatedNetProceeds: number;
-  totalInstallments?: number;
-}
 
 export interface LoanApplication {
   id: string;
@@ -356,6 +256,9 @@ export interface LoanApplication {
   status: LoanStatus;
   coopStep?: string;
   rejectionReason?: string | null;
+  /** Why staff returned the application for changes. */
+  returnedReason?: string | null;
+  decisionReason?: string | null;
   disbursedAt?: string | null;
   repaymentFrequency?: string;
   purpose?: string;
@@ -425,17 +328,6 @@ export interface WithdrawalRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Transactions history
-// ---------------------------------------------------------------------------
-
-export interface FinancialTransaction extends DashboardTransaction {
-  loanId?: string;
-  loanNumber?: string;
-  description: string;
-  balanceAfter?: number;
-}
-
-// ---------------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------------
 
@@ -499,28 +391,9 @@ export interface PortalDocument {
   type: string;
   date: string;
   relatedLoanNumber?: string;
+  hasFile?: boolean;
   fileName?: string;
   sizeLabel?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Help & Support
-// ---------------------------------------------------------------------------
-
-export interface FaqItem {
-  id: string;
-  question: string;
-  answer: string;
-}
-
-export interface SupportTicket {
-  id: string;
-  subject: string;
-  category: string;
-  message: string;
-  createdAt: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-  lastUpdate: string;
 }
 
 // ---------------------------------------------------------------------------

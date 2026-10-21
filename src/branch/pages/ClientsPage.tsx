@@ -8,12 +8,16 @@ import { StatusBadge } from '../../portal/components/ui/StatusBadge';
 import { Amount } from '../../portal/components/ui/Amount';
 import { LoadingState, ErrorState, EmptyState } from '../../portal/components/ui/States';
 import { Modal } from '../../portal/components/ui/Modal';
-import { Field, Input, Select, Textarea } from '../../portal/components/ui/Field';
+import { Input, Select } from '../../portal/components/ui/Field';
 import { useToast } from '../../portal/components/ui/Toast';
 import { useBranchData } from '../hooks/useBranchData';
 import { useBranchPermission } from '../hooks/useBranchPermission';
 import { clientsService } from '../services';
 import { ClientSummary } from '../types';
+import { BranchApiError } from '../services/api';
+import { KycStatusBadge } from '../../components/KycStatusBadge';
+import { MemberDetailsForm } from '../../components/onboarding/MemberDetailsForm';
+import { KYC_STATUSES, KYC_STATUS_LABELS, validateRegistration, type RegistrationInput } from '../../../shared/kyc-core';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
@@ -27,11 +31,7 @@ const STATUS_OPTIONS = [
 
 const KYC_OPTIONS = [
   { value: '', label: 'All KYC' },
-  { value: 'VERIFIED', label: 'Verified' },
-  { value: 'PENDING', label: 'Pending Review' },
-  { value: 'Under Review', label: 'Under Review' },
-  { value: 'CORRECTION_REQUIRED', label: 'Correction Requested' },
-  { value: 'REJECTED', label: 'Rejected' },
+  ...KYC_STATUSES.map((s) => ({ value: s, label: KYC_STATUS_LABELS[s] })),
 ];
 
 const SORT_OPTIONS = [
@@ -39,22 +39,6 @@ const SORT_OPTIONS = [
   { value: 'nameAsc', label: 'Name A–Z' },
   { value: 'membershipAsc', label: 'Oldest members' },
 ];
-
-const initialForm = {
-  fullName: '',
-  phone: '',
-  email: '',
-  idNumber: '',
-  address: '',
-  occupation: '',
-  employerOrBusiness: '',
-  employmentStatus: 'Employed',
-  monthlyIncome: '',
-  monthlyExpenses: '',
-  gender: 'Not specified',
-  civilStatus: 'Single',
-  dateOfBirth: '',
-};
 
 const exportCsv = (rows: ClientSummary[]) => {
   const header = ['Borrower No.', 'Name', 'Phone', 'Email', 'Member Status', 'KYC Status', 'Savings', 'Joined'];
@@ -189,7 +173,7 @@ const ClientsPage: React.FC = () => {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{row.borrowerNumber}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{row.phone}</td>
-                    <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={row.kycStatus} /></td>
+                    <td className="whitespace-nowrap px-4 py-3"><KycStatusBadge status={row.kycStatus} size="xs" /></td>
                     <td className="whitespace-nowrap px-4 py-3"><StatusBadge status={row.memberStatus} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-slate-700"><Amount value={row.savingsBalance} /></td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -220,25 +204,27 @@ const ClientsPage: React.FC = () => {
 
 export const RegisterClientModal: React.FC<{ open: boolean; onClose: () => void; onDone: () => void }> = ({ open, onClose, onDone }) => {
   const toast = useToast();
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState<RegistrationInput>({ address: {} });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const set = (k: keyof typeof initialForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
-
   const submit = async () => {
+    const check = validateRegistration(form, 'BRANCH', manilaToday());
+    setErrors(check.errors);
+    if (!check.ok) {
+      toast.error('Please correct the highlighted fields.');
+      return;
+    }
     setLoading(true);
     try {
-      await clientsService.create({
-        ...form,
-        monthlyIncome: Number(form.monthlyIncome) || 0,
-        monthlyExpenses: Number(form.monthlyExpenses) || 0,
-      });
-      setForm(initialForm);
+      const result = await clientsService.create(form);
+      setForm({ address: {} });
+      setErrors({});
       onDone();
-      toast.success('Client registered successfully');
+      toast.success(`Member ${result?.data?.borrowerNumber ?? ''} registered. KYC has not started yet.`);
     } catch (err: any) {
-      toast.error(err?.message || 'Unable to register client.');
+      if (err instanceof BranchApiError) setErrors(err.fieldErrors);
+      toast.error(err?.message || 'Unable to register the member.');
     } finally {
       setLoading(false);
     }
@@ -248,76 +234,27 @@ export const RegisterClientModal: React.FC<{ open: boolean; onClose: () => void;
     <Modal
       open={open}
       onClose={onClose}
-      title="Register new client"
+      title="Register new member"
       size="lg"
       footer={
         <>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="brand" onClick={submit} loading={loading}>
-            <UserPlus className="h-4 w-4" /> Register client
+            <UserPlus className="h-4 w-4" /> Register member
           </Button>
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Full name" required>
-          <Input value={form.fullName} onChange={set('fullName')} placeholder="Juan Dela Cruz" />
-        </Field>
-        <Field label="Date of birth">
-          <Input type="date" value={form.dateOfBirth} onChange={set('dateOfBirth')} />
-        </Field>
-        <Field label="Phone" required>
-          <Input value={form.phone} onChange={set('phone')} placeholder="0917 000 0000" />
-        </Field>
-        <Field label="Email">
-          <Input type="email" value={form.email} onChange={set('email')} placeholder="name@example.com" />
-        </Field>
-        <Field label="Valid ID no.">
-          <Input value={form.idNumber} onChange={set('idNumber')} placeholder="ID-0000-000" />
-        </Field>
-        <Field label="Gender">
-          <Select value={form.gender} onChange={set('gender')}>
-            <option>Not specified</option>
-            <option>Female</option>
-            <option>Male</option>
-          </Select>
-        </Field>
-        <Field label="Civil status">
-          <Select value={form.civilStatus} onChange={set('civilStatus')}>
-            <option>Single</option>
-            <option>Married</option>
-            <option>Widowed</option>
-            <option>Separated</option>
-          </Select>
-        </Field>
-        <Field label="Employment status">
-          <Select value={form.employmentStatus} onChange={set('employmentStatus')}>
-            <option>Employed</option>
-            <option>Self-Employed</option>
-            <option>Unemployed</option>
-            <option>Retired</option>
-          </Select>
-        </Field>
-        <Field label="Employer / business">
-          <Input value={form.employerOrBusiness} onChange={set('employerOrBusiness')} />
-        </Field>
-        <Field label="Occupation">
-          <Input value={form.occupation} onChange={set('occupation')} />
-        </Field>
-        <Field label="Monthly income">
-          <Input type="number" value={form.monthlyIncome} onChange={set('monthlyIncome')} />
-        </Field>
-        <Field label="Monthly expenses">
-          <Input type="number" value={form.monthlyExpenses} onChange={set('monthlyExpenses')} />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Address">
-            <Textarea rows={3} value={form.address} onChange={set('address')} placeholder="Street, Barangay, City/Town, Province" />
-          </Field>
-        </div>
-      </div>
+      <p className="mb-4 text-xs text-slate-500">
+        Enter the details exactly as printed on the government ID you have checked. The member can activate portal access later by registering online with the same email.
+      </p>
+      <MemberDetailsForm value={form} onChange={setForm} errors={errors} channel="BRANCH" idPrefix="branch-reg" />
     </Modal>
   );
 };
+
+function manilaToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
 
 export default ClientsPage;

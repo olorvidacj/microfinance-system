@@ -8,9 +8,24 @@ import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 import type { Request, Response, NextFunction } from 'express';
 import { getDb, schema, testDbConnection } from './src/db/index';
-import { initDbSchema } from './src/db/initDb';
-import { createClientProfile, findBorrowerByContact } from './src/db/clientProvisioning';
-import { seedDatabaseIfEmpty } from './src/db/seed';
+import { verifyDbSchema } from './src/db/initDb';
+import { handleSendEmailCode, handleVerifyEmailCode, onboardingDb } from './src/onboarding/http';
+import { psgcResolver } from './src/onboarding/geography';
+import { publicBranches, registerSelf, type AccountProvider } from './src/onboarding/registration';
+import { sendError } from './src/routes/httpErrors';
+import type { AppDb } from './src/kyc/errors';
+import { clientKycRouter } from './src/routes/clientKycRoutes';
+import { openLocalObject } from './src/kyc/storage';
+import { normaliseKycStatus } from './shared/kyc-core';
+import { claimApplication, decideApplication, kycDossier, kycQueue, releaseApplication, type StaffActor } from './src/kyc/service';
+import { listProducts, saveProduct, type LendingStaff } from './src/lending/service';
+import { runOverdueCheck } from './src/lending/repayment';
+import { centsFromDb, centsToPesos, formatPeso, normaliseLoanStatus, paymentMethodLabel, productToDto, savingsProductToDto } from './shared/lending';
+import { ledgerCheck, monthlyCollections, portfolioSummary } from './src/reports/portfolio';
+import { transactions as savingsTxnTable } from './src/savings/tables';
+import { listSavingsProducts, runInterestPosting, saveSavingsProduct } from './src/savings/service';
+import { fundView, groupDetail, groupMeetings, listGroups } from './src/groups/service';
+import { seedDatabase } from './src/db/seed';
 import { getServerSupabase, testServerSupabaseConnection } from './src/db/supabaseServer';
 import {
   signToken,
@@ -18,8 +33,6 @@ import {
   verifyPassword,
   hashPassword,
   authStore,
-  ensureDefaultUsers,
-  DEFAULT_ADMIN_PASS_HASH,
 } from './src/auth/index';
 import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from './src/utils/passwordValidator';
 import {
@@ -49,8 +62,7 @@ import {
   SystemPermission,
   normalizeRole,
 } from './src/auth/permissions';
-import { desc, eq, inArray, sql } from 'drizzle-orm';
-import { calculateLoanSchedule } from './src/utils/loanMath';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { clientMobileRouter } from './src/routes/clientMobileRoutes';
 import { branchRouter } from './src/routes/branchRoutes';
 import { psgcService } from './src/services/psgcService';
@@ -101,8 +113,26 @@ app.get('/api/geography/postal-code', (req, res) => {
 // ---------------------------------------------------------------------------
 // Resilient Local Document Storage File Serving
 // ---------------------------------------------------------------------------
+// KYC documents are served only through short-lived signed links (src/kyc/storage.ts).
+app.get('/api/kyc/files/:token', async (req, res) => {
+  try {
+    const file = await openLocalObject(req.params.token);
+    if (!file) return res.status(404).json({ success: false, error: 'This document link has expired. Reload the page to get a new one.' });
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    file.stream.pipe(res);
+  } catch (err) {
+    sendError(res, err, 'kyc-file');
+  }
+});
+
 app.use('/api/storage', (req, res) => {
   const safePath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
+  // Identity documents are never served from here, signed or not.
+  if (/^[\/\\]?kyc([\/\\]|$)/i.test(safePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
   const filePath = path.join(process.cwd(), 'uploads', safePath);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
@@ -504,441 +534,77 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// In-memory registration OTP store
-interface RegistrationOtpEntry {
-  phone: string;
-  email?: string;
-  otp: string;
-  expiresAt: number;
-  verified: boolean;
-}
-const regOtpStore = new Map<string, RegistrationOtpEntry>();
-
-app.post('/api/auth/send-registration-otp', async (req, res) => {
-  try {
-    const { phone, email } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
-    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return res.status(400).json({
-        success: false,
-        error: 'A valid email address (Gmail) is required to receive your 6-digit verification code.',
-      });
-    }
-
-    if (!phone) {
-      return res.status(400).json({ success: false, error: 'Philippine mobile number is required' });
-    }
-    const cleanPhone = String(phone).replace(/\s+/g, '');
-    const digitsOnly = cleanPhone.replace(/\D/g, '');
-
-    if (digitsOnly.length < 10) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567 or +63 917 123 4567)',
-      });
-    }
-
-    let formattedPhone = cleanPhone;
-    if (digitsOnly.length === 10 && digitsOnly.startsWith('9')) {
-      formattedPhone = `+63 ${digitsOnly.slice(0, 3)} ${digitsOnly.slice(3, 6)} ${digitsOnly.slice(6)}`;
-    } else if (digitsOnly.length === 11 && digitsOnly.startsWith('09')) {
-      formattedPhone = `+63 ${digitsOnly.slice(1, 4)} ${digitsOnly.slice(4, 7)} ${digitsOnly.slice(7)}`;
-    } else if (digitsOnly.length === 12 && digitsOnly.startsWith('639')) {
-      formattedPhone = `+63 ${digitsOnly.slice(2, 5)} ${digitsOnly.slice(5, 8)} ${digitsOnly.slice(8)}`;
-    }
-
-    // Send authentic 6-digit OTP code to Gmail using Supabase
-    await supabaseSendEmailOtp(cleanEmail);
-
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-    const otpKey = digitsOnly.slice(-10);
-
-    regOtpStore.set(otpKey, {
-      phone: formattedPhone,
-      email: cleanEmail,
-      otp: '',
-      expiresAt,
-      verified: false,
-    });
-    regOtpStore.set(cleanEmail, {
-      phone: formattedPhone,
-      email: cleanEmail,
-      otp: '',
-      expiresAt,
-      verified: false,
-    });
-
-    console.log(`[Auth] Dispatched Supabase email OTP to Gmail: ${cleanEmail}`);
-
-    res.json({
-      success: true,
-      message: `A 6-digit verification code has been sent to ${cleanEmail}. Please check your Gmail inbox.`,
-      email: cleanEmail,
-      formattedPhone,
-      expiresInSeconds: 600,
-    });
-  } catch (err: any) {
-    res.status(err.status || 500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/auth/verify-registration-otp', async (req, res) => {
-  try {
-    const { phone, email, otp } = req.body || {};
-    const cleanOtp = String(otp || '').trim().replace(/\D/g, '');
-    if (!cleanOtp || cleanOtp.length < 6 || cleanOtp.length > 8) {
-      return res.status(400).json({ success: false, error: 'Please enter the verification code sent to your email.' });
-    }
-
-    let targetEmail = String(email || '').trim().toLowerCase();
-    const cleanPhone = String(phone || '').replace(/\D/g, '');
-    const otpKey = cleanPhone.slice(-10);
-
-    if (!targetEmail && otpKey) {
-      const entry = regOtpStore.get(otpKey);
-      if (entry?.email) {
-        targetEmail = entry.email;
-      }
-    }
-
-    if (!targetEmail) {
-      return res.status(400).json({ success: false, error: 'Email address is required for verification.' });
-    }
-
-    // Real Supabase verification (No demo OTP accepted)
-    await supabaseVerifyEmailOtp(targetEmail, cleanOtp);
-
-    const entry = regOtpStore.get(otpKey) || regOtpStore.get(targetEmail);
-    if (entry) {
-      entry.verified = true;
-    }
-
-    res.json({
-      success: true,
-      verified: true,
-      message: 'Email verified successfully via Supabase.',
-    });
-  } catch (err: any) {
-    res.status(err.status || 400).json({ success: false, error: err.message || 'Invalid or expired verification code. Please check your Gmail.' });
-  }
-});
-
 // ------------------------------------------------------------------
-// Email verification (native Supabase email OTP). The user enters their
-// email during registration; a 6-digit code is delivered to Gmail by
-// Supabase's own email-OTP flow (signInWithOtp / verifyOtp type email).
+// Registration (src/onboarding). The email is verified with a one-time
+// code before the account exists; registration consumes the resulting
+// single-use token in the same transaction that creates login, member
+// record and KYC application.
 // ------------------------------------------------------------------
 
-const emailOtpStore = new Map<string, { email: string; otp: string; expiresAt: number; verified: boolean }>();
-
-function maskEmail(email: string): string {
-  const raw = String(email || '').trim().toLowerCase();
-  if (!raw.includes('@')) return raw;
-  const [local, domain] = raw.split('@');
-  if (!local) return raw;
-  const shown = local.length <= 2 ? local[0] + '*' : local.slice(0, 2) + '***';
-  return `${shown}@${domain}`;
+/** Local password hash, or a Supabase Auth user when Supabase is configured. */
+function registrationAccounts(): AccountProvider {
+  const supabase = getServerSupabase();
+  if (!supabase) {
+    return {
+      async create({ password }) {
+        return { id: `u-${crypto.randomUUID()}`, passwordHash: hashPassword(password) };
+      },
+      async remove() {},
+    };
+  }
+  return {
+    async create({ email, password, fullName, phone }) {
+      const created = await supabaseCreateClientUser({ email, password, fullName, phone });
+      // Supabase Auth holds the real credential; the local hash is an unusable sentinel.
+      return { id: created.id, passwordHash: hashPassword(crypto.randomUUID()) };
+    },
+    async remove(id) {
+      const { error } = await supabase.auth.admin.deleteUser(id);
+      if (error) throw error;
+    },
+  };
 }
 
-app.post('/api/auth/send-email-otp', async (req, res) => {
+app.post('/api/auth/email-code', handleSendEmailCode);
+app.post('/api/auth/email-code/verify', handleVerifyEmailCode);
+// Earlier names for the same two steps, still used by the mobile app.
+app.post('/api/auth/send-registration-otp', handleSendEmailCode);
+app.post('/api/auth/send-email-otp', handleSendEmailCode);
+app.post('/api/auth/verify-registration-otp', handleVerifyEmailCode);
+app.post('/api/auth/verify-email-otp', handleVerifyEmailCode);
+
+app.get('/api/public/branches', async (_req, res) => {
   try {
-    const { email } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
-    }
-
-    await supabaseSendEmailOtp(cleanEmail);
-
-    console.log(`[Auth] Email verification code dispatched to ${cleanEmail}`);
-
-    res.json({
-      success: true,
-      message: `A 6-digit verification code has been sent to ${maskEmail(cleanEmail)}. Please check your Gmail inbox.`,
-      maskedEmail: maskEmail(cleanEmail),
-      expiresInSeconds: 300,
-    });
-  } catch (err: any) {
-    res.status(err.status || 500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/auth/verify-email-otp', async (req, res) => {
-  try {
-    const { email, otp } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
-    const cleanOtp = String(otp || '').replace(/\D/g, '');
-
-    if (!cleanEmail || cleanOtp.length !== 6) {
-      return res.status(400).json({ success: false, error: 'Email and a 6-digit verification code are required' });
-    }
-
-    const { verified, user } = await supabaseVerifyEmailOtp(cleanEmail, cleanOtp);
-    if (verified) {
-      try {
-        await writeAuditLog({
-          action: 'EMAIL_VERIFIED',
-          details: `Code verified for ${cleanEmail}`,
-          performedBy: user?.email || cleanEmail,
-        });
-      } catch {}
-    }
-
-    res.json({ success: true, verified: true, message: 'Email verified successfully via Supabase.' });
-  } catch (err: any) {
-    res.status(err.status || 400).json({
-      success: false,
-      error: err.message || 'Invalid or expired verification code. Please check your Gmail and try again.',
-    });
+    res.json({ success: true, branches: await publicBranches(onboardingDb()) });
+  } catch (err) {
+    sendError(res, err, 'public-branches');
   }
 });
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const body = req.body || {};
-    const {
-      phone,
-      email,
-      password,
-      confirmPassword,
-      fullName,
-      firstName,
-      middleName,
-      lastName,
-      suffix,
-      hasNoMiddleName,
-      agreeTerms,
-      gender,
-      dateOfBirth,
-      civilStatus,
-      address,
-      barangay,
-      cityMunicipality,
-      city,
-      province,
-      occupation,
-      employerOrBusiness,
-      monthlyIncome,
-      monthlyExpenses,
-      sourceOfIncome,
-      idNumber,
-      facebookAccount,
-      employmentStatus,
-      borrowerNumber,
-    } = body;
-
-    const fName = String(firstName || '').trim();
-    const mName = String(middleName || '').trim();
-    const lName = String(lastName || '').trim();
-    const sfx = String(suffix || '').trim();
-    const noMiddle = Boolean(hasNoMiddleName);
-
-    let finalName = '';
-    if (fName && lName) {
-      const parts = [fName, (!noMiddle && mName) ? mName : null, lName, sfx || null].filter(Boolean);
-      finalName = parts.join(' ');
-    } else {
-      finalName = String(fullName || '').trim();
-    }
-
-    // ---- Validate: Legal Name ----
-    if (!finalName || finalName.length < 2) {
-      return res.status(400).json({ error: 'Please enter your legal first and last name.' });
-    }
-    if (firstName !== undefined && !fName) {
-      return res.status(400).json({ error: 'First name is required.' });
-    }
-    if (lastName !== undefined && !lName) {
-      return res.status(400).json({ error: 'Last name is required.' });
-    }
-
-    const rawEmail = String(email || '').trim();
-    const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail);
-    const rawPhone = String(phone || '').trim();
-    const finalPhone = isValidPhilippinePhone(rawPhone) ? normalizePhilippinePhone(rawPhone) : null;
-
-    if (!finalPhone) {
-      return res.status(400).json({
-        error: 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567 or +63 917 123 4567).',
-      });
-    }
-
-    if (rawEmail && !hasValidEmail) {
-      return res.status(400).json({
-        error: 'Please enter a valid email address or leave it blank.',
-      });
-    }
-
-    const userPass = String(password || '');
-    if (!isPasswordStrong(userPass)) {
-      return res.status(400).json({ error: STRONG_PASSWORD_ERROR_MESSAGE });
-    }
-
-    if (confirmPassword && userPass !== String(confirmPassword)) {
-      return res.status(400).json({ error: 'Passwords do not match. Please verify.' });
-    }
-
-    const loginEmail = hasValidEmail
-      ? rawEmail.toLowerCase()
-      : generateClientEmail(finalPhone || '');
-    const displayPhone = finalPhone || null;
-
-    const profileInput = {
-      fullName: finalName,
-      firstName: fName || null,
-      middleName: (!noMiddle && mName) ? mName : null,
-      lastName: lName || null,
-      suffix: sfx || null,
-      hasNoMiddleName: noMiddle,
-      phone: displayPhone,
-      email: loginEmail,
-      dateOfBirth: dateOfBirth ? String(dateOfBirth) : null,
-      gender: gender ? String(gender) : null,
-      civilStatus: civilStatus ? String(civilStatus) : null,
-      address: address ? String(address) : null,
-      barangay: barangay ? String(barangay) : null,
-      cityMunicipality: cityMunicipality ? String(cityMunicipality) : (city ? String(city) : null),
-      province: province ? String(province) : null,
-      occupation: occupation ? String(occupation) : null,
-      employerOrBusiness: employerOrBusiness ? String(employerOrBusiness) : null,
-      monthlyIncome: Number(monthlyIncome) || 0,
-      monthlyExpenses: Number(monthlyExpenses) || 0,
-      sourceOfIncome: sourceOfIncome ? String(sourceOfIncome) : null,
-      idNumber: idNumber ? String(idNumber) : null,
-      facebookAccount: facebookAccount ? String(facebookAccount) : null,
-      employmentStatus: employmentStatus ? String(employmentStatus) : null,
-    };
-
-    // ---- Duplicate check against local projection ----
-    try {
-      const dupEmail = await authStore.findByEmailOrPhone(loginEmail);
-      if (dupEmail) {
-        return res.status(409).json({ error: 'An account with this email address already exists. Please sign in.' });
-      }
-      const dupPhone = displayPhone ? await authStore.findByEmailOrPhone(displayPhone) : null;
-      if (dupPhone) {
-        return res.status(409).json({ error: 'An account with this mobile number already exists. Please sign in or use another number.' });
-      }
-    } catch {}
-
-    // ---- Primary: register with Supabase Auth (role always forced to CLIENT) ----
-    let supabaseUser: any = null;
-    if (getServerSupabase()) {
-      try {
-        supabaseUser = await supabaseCreateClientUser({
-          email: loginEmail,
-          password: userPass,
-          fullName: finalName,
-          phone: displayPhone,
-        });
-      } catch (err: any) {
-        if (err instanceof SupabaseAuthError) {
-          if (err.status === 409) {
-            return res.status(409).json({ error: err.message, code: err.code });
-          }
-          if (err.status !== 503) {
-            return res.status(err.status).json({ error: err.message, code: err.code });
-          }
-        } else {
-          console.warn('[Auth] Supabase create-user error:', err?.message || err);
-        }
-      }
-    }
-
-    // ---- Local projection (Supabase user, or fully-local HMAC fallback) ----
-    let user: any = null;
-    if (supabaseUser) {
-      try {
-        user = await ensureLocalClientUser({
-          id: supabaseUser.id,
-          email: loginEmail,
-          fullName: finalName,
-          phone: displayPhone,
-          profile: profileInput,
-        });
-      } catch (syncErr) {
-        console.warn('[Auth] local user sync warning:', syncErr);
-      }
-      if (!user) {
-        user = {
-          id: supabaseUser.id,
-          email: loginEmail,
-          fullName: finalName,
-          role: 'CLIENT' as const,
-          staffRole: null,
-          staffId: null,
-          borrowerId: null,
-          phone: displayPhone,
-          avatar: null,
-          isActive: true,
-        };
-      }
-    } else {
-      // Fully-local development without Supabase: HMAC account with local hash.
-      let borrowerId: string | null = null;
-      if (getDb()) {
-        try {
-          const existingMatch = await findBorrowerByContact(displayPhone, loginEmail);
-          if (existingMatch) {
-            borrowerId = existingMatch.id;
-          } else {
-            const provisioned = await createClientProfile(profileInput);
-            if (provisioned && provisioned.id) {
-              borrowerId = provisioned.id;
-            }
-          }
-        } catch (provisionErr) {
-          console.warn('[Auth] local client provisioning warning:', provisionErr);
-        }
-      }
-      if (!borrowerId) {
-        borrowerId = `bor-${crypto.randomUUID().slice(0, 8)}`;
-      }
-      user = await authStore.createUser({
-        id: `u-${crypto.randomUUID()}`,
-        email: loginEmail,
-        fullName: finalName,
-        passwordHash: hashPassword(userPass),
-        role: 'CLIENT',
-        staffRole: null,
-        staffId: null,
-        borrowerId,
-        phone: displayPhone,
-        avatar: `https://ui-avatars.com/api/?background=059669&color=fff&name=${encodeURIComponent(finalName)}`,
-      });
-    }
-
-    try {
-      await authStore.touchLogin(user.id);
-    } catch {}
-    const token = signToken(user);
-
-    try {
-      await writeAuditLog({
-        action: 'REGISTER',
-        type: 'AUTH',
-        details: `New client account created: ${user.email}`,
-        performedBy: user.id,
-        userName: user.fullName || '',
-        userRole: 'CLIENT',
-        targetType: 'user',
-        targetId: user.id,
-      });
-    } catch {}
-
-    const publicProfile = await enrichProfileFlags(publicUser(user));
+    const result = await registerSelf(onboardingDb(), req.body || {}, {
+      accounts: registrationAccounts(),
+      geo: psgcResolver,
+      isPasswordStrong,
+      passwordMessage: STRONG_PASSWORD_ERROR_MESSAGE,
+    });
+    const token = signToken(result.user);
+    const publicProfile = await enrichProfileFlags(publicUser(result.user));
     res.status(201).json({
       success: true,
       token,
       user: publicProfile,
-      linkedMember: Boolean(user.borrowerId),
-      isNewRegistration: true,
-      profileComplete: publicProfile.profileComplete === true,
-      message: 'Account created successfully. Please complete your profile to start applying for services.',
+      linkedMember: result.linkedExisting,
+      borrowerNumber: result.borrowerNumber,
+      isNewRegistration: !result.linkedExisting,
+      profileComplete: false,
+      message: result.linkedExisting
+        ? 'Your portal account is now linked to your membership. Complete your KYC to use loans and savings.'
+        : 'Your account was created. Complete your KYC verification to apply for loans and open savings.',
     });
-  } catch (err: any) {
-    console.error('[Auth] register error:', err);
-    res.status(500).json({ error: 'Registration failed. Please try again.' });
+  } catch (err) {
+    sendError(res, err, 'register');
   }
 });
 
@@ -1153,19 +819,16 @@ app.get('/api/staff/branch-assignment', requireAuth(['STAFF']), async (req: Auth
 app.post('/api/admin/staff/assign-branch', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
   try {
     const caller = req.authUser!;
-    const { staffId, branchId, adminPassword } = req.body || {};
+    const { staffId, branchId } = req.body || {};
 
     if (!staffId || !branchId) {
       return res.status(400).json({ success: false, error: 'staffId and branchId are required' });
     }
 
-    // Security check: strictly ensure Administrator privileges
-    const isCallerAdmin = caller.staffRole === 'ADMINISTRATOR' || hasPermission(caller.staffRole, 'manage_users');
-    let authorized = isCallerAdmin;
-
-    if (!authorized && adminPassword) {
-      authorized = verifyPassword(adminPassword, DEFAULT_ADMIN_PASS_HASH);
-    }
+    // Only an account that manages users may assign branches. There is no
+    // password override: a shared admin password would let any staff member
+    // assign themselves to any branch.
+    const authorized = caller.staffRole === 'ADMINISTRATOR' || hasPermission(caller.staffRole, 'manage_users');
 
     if (!authorized) {
       return res.status(403).json({
@@ -1304,7 +967,7 @@ app.post('/api/staff/request-assignment', requireAuth(['STAFF']), async (req: Au
 // ---------- RBAC & Admin Management Endpoints ----------
 
 // 1. Roles & Permissions Metadata Dictionary
-app.get('/api/admin/roles', (req, res) => {
+app.get('/api/admin/roles', requireAuth(['STAFF']), (req, res) => {
   res.json({
     success: true,
     roles: Object.values(ROLE_DEFINITIONS),
@@ -1314,23 +977,13 @@ app.get('/api/admin/roles', (req, res) => {
 
 // KYC required documents management (institution-configurable)
 app.get('/api/admin/kyc/required-documents', requirePermission(['manage_settings', 'view_all_records']), async (req, res) => {
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'The database is not available right now.' });
   try {
-    const db = getDb();
-    if (db) {
-      const rows = await db.select().from(schema.kycRequiredDocuments).orderBy(schema.kycRequiredDocuments.sortOrder);
-      return res.json({ success: true, documents: rows });
-    }
-    return res.json({
-      success: true,
-      documents: [
-        { id: 'REQ-VALID_ID', documentType: 'VALID_ID', documentName: 'Primary Government ID (UMID / Driver License / Passport)', description: 'A valid, current government-issued photo ID.', isActive: true, sortOrder: 1, createdAt: new Date().toISOString() },
-        { id: 'REQ-PROOF_OF_ADDRESS', documentType: 'PROOF_OF_ADDRESS', documentName: 'Barangay Clearance or Utility Bill', description: 'Recent proof of residence within the last 3 months.', isActive: true, sortOrder: 2, createdAt: new Date().toISOString() },
-        { id: 'REQ-PROOF_OF_INCOME', documentType: 'PROOF_OF_INCOME', documentName: 'Payslip / Business Permit / Bank Statement', description: 'Evidence of regular income or business operations.', isActive: true, sortOrder: 3, createdAt: new Date().toISOString() },
-        { id: 'REQ-PHOTO_2X2', documentType: 'PHOTO_2X2', documentName: 'Recent 2x2 ID Photo', description: 'A recent photograph with white background.', isActive: true, sortOrder: 4, createdAt: new Date().toISOString() },
-      ],
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    const rows = await db.select().from(schema.kycRequiredDocuments).orderBy(schema.kycRequiredDocuments.sortOrder);
+    res.json({ success: true, documents: rows });
+  } catch (err) {
+    sendError(res, err, 'admin-kyc-required-documents');
   }
 });
 
@@ -1516,104 +1169,21 @@ app.put('/api/admin/users/:id', requirePermission('manage_users'), async (req: A
   }
 });
 
-// 5. System Settings [Get: view_all_records/manage_settings, Put: manage_settings]
-let systemSettingsState = {
-  cooperativeName: 'San Jose Cooperative Multi-Purpose Credit Union',
-  coopCode: 'COOP-NCR-2026-088',
-  defaultMaxLoanAmount: 500000,
-  defaultMaxTenorMonths: 36,
-  dailyCashierDisbursementLimit: 100000,
-  sensitiveApprovalThreshold: 250000,
-  kycStrictnessLevel: 'High (Gov ID + Proof of Address + PMES Certificate)',
-  interestCapPerAnnum: 24.0,
-  latePenaltyRateDaily: 0.1,
-  allowOnlineLoanApplications: true,
-  require2FAForAdmin: true,
-  allowReversalsWithinHours: 24,
-  auditLogRetentionDays: 365,
-};
+// 5. System settings: removed. They were an in-memory object (lost on restart,
+// describing a different cooperative) that no code read. Each rule lives with what
+// it governs: loan and savings products, KYC requirements, branches, users.
 
-app.get('/api/admin/system-settings', requirePermission(['manage_settings', 'view_all_records']), (req, res) => {
-  res.json({ success: true, settings: systemSettingsState });
-});
-
-app.put('/api/admin/system-settings', requirePermission('manage_settings'), (req: AuthedRequest, res) => {
-  systemSettingsState = { ...systemSettingsState, ...req.body };
-  res.json({
-    success: true,
-    settings: systemSettingsState,
-    message: 'System settings and institutional credit limits updated successfully',
-  });
-});
-
-// PATCH for partial updates.
-//
-// A PUT that merges req.body accepts an unknown or misspelled key and silently
-// stores it as a new setting, so a typo like 'maxLoanAmount' would persist
-// alongside 'defaultMaxLoanAmount' and quietly stop taking effect. PATCH
-// rejects anything outside the known settings.
-const SYSTEM_SETTING_KEYS = new Set(Object.keys(systemSettingsState));
-
-app.patch('/api/admin/system-settings', requirePermission('manage_settings'), (req: AuthedRequest, res) => {
-  const patch = req.body || {};
-  const unknown = Object.keys(patch).filter((k) => !SYSTEM_SETTING_KEYS.has(k));
-  if (unknown.length > 0) {
-    return res.status(400).json({
-      error: `Unknown setting(s): ${unknown.join(', ')}.`,
-      allowedKeys: Array.from(SYSTEM_SETTING_KEYS),
-    });
-  }
-  systemSettingsState = { ...systemSettingsState, ...patch };
-  res.json({
-    success: true,
-    settings: systemSettingsState,
-    message: 'System settings and institutional credit limits updated successfully',
-  });
-});
-
-// 6. Approve Sensitive Operations [Requires 'approve_sensitive_operations']
-app.post('/api/admin/approve-sensitive', requirePermission('approve_sensitive_operations'), async (req: AuthedRequest, res) => {
-  try {
-    const { operationType, targetId, amount, justification } = req.body || {};
-    const approver = req.authUser?.email || 'Administrator';
-    const now = new Date().toISOString();
-
-    const approvalRecord = {
-      id: `APPR-${Date.now().toString().slice(-6)}`,
-      operationType: operationType || 'HIGH_VALUE_DISBURSEMENT',
-      targetId: targetId || 'N/A',
-      amount: Number(amount) || 0,
-      justification: justification || 'Authorized under executive oversight delegation',
-      approvedBy: approver,
-      approvedAt: now,
-      status: 'APPROVED',
-    };
-
-    res.json({
-      success: true,
-      approval: approvalRecord,
-      message: `Sensitive operation '${operationType}' for target '${targetId}' successfully approved by ${approver}`,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// 6. Approve sensitive operations: removed. It answered "approved" without recording or
+// changing anything. Sensitive actions are authorised inside the services that perform
+// them (payment reversal, write-off, withdrawal release, fund covers).
 
 // ---------------------------------------------------------------------------
 // 7. Admin Console Data Aggregates (read-only, live-DB)
 // ---------------------------------------------------------------------------
-const ADMIN_READ_ANY: SystemPermission[] = [
-  'view_all_records',
-  'manage_users',
-  'manage_settings',
-  'manage_loan_applications',
-  'process_loan_applications',
-  'view_transaction_records',
-  'monitor_loan_repayment',
-  'manage_kyc',
-  'register_clients',
-  'approve_sensitive_operations',
-];
+// The admin console's reads cover every branch, so they need the all-records
+// permission (head office and oversight roles). Branch staff use /api/branch,
+// which is scoped to their branch.
+const ADMIN_READ_ANY: SystemPermission[] = ['view_all_records'];
 
 function toMoney(v: any): number {
   const n = Number(v);
@@ -1631,23 +1201,16 @@ function mapClientStatus(s: any): string {
 }
 
 function mapKycRequestStatus(s: any): string {
-  const up = String(s || '').toUpperCase();
-  if (['VERIFIED', 'APPROVED', 'COMPLETE'].includes(up)) return 'Approved';
-  if (['UNDER_REVIEW', 'IN_REVIEW', 'REVIEWING', 'PENDING_REVIEW'].includes(up)) return 'Under Review';
-  if (up === 'REJECTED') return 'Rejected';
-  if (['CORRECTION', 'REQUIRES_CORRECTION', 'NEEDS_CORRECTION', 'RETURNED'].includes(up)) return 'Requires Correction';
+  const status = normaliseKycStatus(s);
+  if (status === 'APPROVED') return 'Approved';
+  if (status === 'UNDER_REVIEW') return 'Under Review';
+  if (status === 'REJECTED' || status === 'SUSPENDED') return 'Rejected';
+  if (status === 'CORRECTION_REQUIRED') return 'Requires Correction';
   return 'Pending';
 }
 
-function mapLoanStatus(s: any): string {
-  const up = String(s || '').toUpperCase();
-  if (up === 'APPROVED') return 'Approved';
-  if (['REJECTED', 'WITHDRAWN', 'CANCELLED', 'DENIED'].includes(up)) return 'Rejected';
-  if (['DISBURSED', 'FOR_RELEASE', 'PENDING_DISBURSEMENT'].includes(up)) return 'Disbursed';
-  if (['ACTIVE', 'IN ARREARS', 'IN_ARREARS', 'REPAYING'].includes(up)) return 'Active';
-  if (['COMPLETED', 'PAID OFF', 'PAID_OFF', 'CLOSED'].includes(up)) return 'Completed';
-  if (['UNDER REVIEW', 'UNDER_REVIEW', 'FOR ASSESSMENT', 'FOR_ASSESSMENT', 'REVIEWING'].includes(up)) return 'Under Review';
-  return 'Pending';
+function mapLoanStatus(s: unknown): string {
+  return normaliseLoanStatus(s) ?? String(s ?? '');
 }
 
 function mapTxnType(t: any): string {
@@ -1676,24 +1239,6 @@ function mapAuditStatus(t: any): string {
   return 'Success';
 }
 
-function mapGroupStatus(s: any): string {
-  const up = String(s || '').toUpperCase();
-  if (up === 'ACTIVE') return 'Active';
-  if (up === 'PENDING') return 'Pending';
-  if (up.includes('GRADUAT')) return 'Graduated';
-  return 'Inactive';
-}
-
-function mapSavingsStatus(memberStatus: any, lastTxn?: string | null): string {
-  const up = String(memberStatus || '').toUpperCase();
-  if (up === 'SUSPENDED') return 'Suspended';
-  if (up.includes('CLOSE') || up.includes('DELET')) return 'Closed';
-  if (lastTxn) {
-    const age = (Date.now() - new Date(lastTxn).getTime()) / (1000 * 60 * 60 * 24);
-    if (age > 180) return 'Dormant';
-  }
-  return 'Active';
-}
 
 function shortMonth(ym: string): string {
   const parts = String(ym).split('-');
@@ -1818,19 +1363,24 @@ function mapAdminTxn(t: any, branchNames: Map<string, string>): any {
   };
 }
 
-function mapAdminSaving(a: any, borrower: any, lastTxn: string | null, branchNames: Map<string, string>): any {
+// The account's own status (0027) is authoritative; it is set by the savings
+// service's state machine, not inferred from the member or activity dates.
+const SAVINGS_STATUS_LABEL: Record<string, string> = { ACTIVE: 'Active', DORMANT: 'Dormant', FROZEN: 'Frozen', CLOSED: 'Closed' };
+
+function mapAdminSaving(a: any, product: any, lastTxn: string | null, branchNames: Map<string, string>): any {
   return {
     id: a.id,
     accountNumber: a.passbookNumber || a.id,
     clientName: a.memberName || '',
     clientId: a.memberId || '',
-    accountType: 'Regular Savings',
+    accountType: product?.name || '',
     balance: toMoney(a.balance),
-    status: mapSavingsStatus(borrower?.memberStatus, lastTxn),
-    openedDate: a.createdAt ? new Date(a.createdAt).toISOString().slice(0, 10) : '',
+    status: SAVINGS_STATUS_LABEL[a.status] || a.status,
+    statusReason: a.statusReason || '',
+    openedDate: a.openedAt ? String(a.openedAt).slice(0, 10) : a.createdAt ? new Date(a.createdAt).toISOString().slice(0, 10) : '',
     lastTransaction: lastTxn || '',
-    branch: branchNames.get(borrower?.branchId) || '',
-    interestRate: toMoney(a.interestRate),
+    branch: branchNames.get(a.branchId) || '',
+    interestRate: toMoney(product?.annualRate ?? a.interestRate),
   };
 }
 
@@ -1922,16 +1472,28 @@ app.get('/api/admin/loans/:id', requirePermission(ADMIN_READ_ANY), async (req: A
     const rows = await db.select().from(schema.loans).where(eq(schema.loans.id, req.params.id)).limit(1);
     if (!rows.length) return res.status(404).json({ success: false, error: 'Loan not found' });
     const l = rows[0] as any;
-    const [branchNames, borrowerNumbers, payments, audit] = await Promise.all([
+    const [branchNames, borrowerNumbers, payments, audit, installments] = await Promise.all([
       resolveBranchNames(db),
       resolveBorrowerNumbers(db),
       db.select().from(schema.payments).where(eq(schema.payments.loanId, l.id)),
       db.select().from(schema.auditLogs).where(eq(schema.auditLogs.targetId, l.id)),
+      db.select().from(schema.loanSchedule).where(eq(schema.loanSchedule.loanId, l.id)).orderBy(asc(schema.loanSchedule.installmentNumber)),
     ]);
     res.json({
       success: true,
       data: {
-        loan: mapAdminLoan(l, branchNames, borrowerNumbers),
+        loan: {
+          ...mapAdminLoan(l, branchNames, borrowerNumbers),
+          // The stored schedule (0025); older loans without one show none.
+          schedule: installments.map((i) => ({
+            dueDate: i.dueDate,
+            principal: Number(i.principalDue),
+            interest: Number(i.interestDue),
+            totalDue: Number(i.totalDue) + Number(i.penaltyDue),
+            amountPaid: Number(i.amountPaid),
+            status: i.status,
+          })),
+        },
         payments: [...payments]
           .sort((a: any, c: any) => String(c.paymentDate).localeCompare(String(a.paymentDate)))
           .map((p: any) => ({
@@ -1945,6 +1507,7 @@ app.get('/api/admin/loans/:id', requirePermission(ADMIN_READ_ANY), async (req: A
             interestPortion: toMoney(p.interestPortion),
             penaltyPortion: toMoney(p.penaltyPortion),
             collectedBy: p.collectedBy,
+            status: p.status,
           })),
         auditHistory: audit
           .sort((a: any, c: any) => String(c.timestamp).localeCompare(String(a.timestamp)))
@@ -1966,19 +1529,19 @@ app.get('/api/admin/savings', requirePermission(ADMIN_READ_ANY), async (req: Aut
   try {
     const db = getDb();
     if (!db) return res.json({ success: true, accounts: [] });
-    const [accounts, txns, borrowers, branchNames] = await Promise.all([
+    const [accounts, txns, products, branchNames] = await Promise.all([
       db.select().from(schema.savingsAccounts),
       db.select({ accountId: schema.savingsTransactions.savingsAccountId, date: schema.savingsTransactions.date }).from(schema.savingsTransactions),
-      db.select({ id: schema.borrowers.id, memberStatus: schema.borrowers.memberStatus, branchId: schema.borrowers.branchId }).from(schema.borrowers),
+      db.select().from(schema.savingsProducts),
       resolveBranchNames(db),
     ]);
-    const borrowerById = new Map(borrowers.map((b: any) => [b.id, b]));
+    const productById = new Map(products.map((p: any) => [p.id, p]));
     const lastTxnByAcct = new Map<string, string>();
     for (const t of txns) {
       const cur = lastTxnByAcct.get(t.accountId);
       if (!cur || String(t.date) > cur) lastTxnByAcct.set(t.accountId, String(t.date));
     }
-    const mapped = accounts.map((a: any) => mapAdminSaving(a, borrowerById.get(a.memberId), lastTxnByAcct.get(a.id) || null, branchNames));
+    const mapped = accounts.map((a: any) => mapAdminSaving(a, productById.get(a.productId), lastTxnByAcct.get(a.id) || null, branchNames));
     res.json({ success: true, accounts: mapped });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1992,24 +1555,28 @@ app.get('/api/admin/savings/:id', requirePermission(ADMIN_READ_ANY), async (req:
     const rows = await db.select().from(schema.savingsAccounts).where(eq(schema.savingsAccounts.id, req.params.id)).limit(1);
     if (!rows.length) return res.status(404).json({ success: false, error: 'Savings account not found' });
     const a = rows[0] as any;
-    const [borrowers, branchNames, ledger] = await Promise.all([
-      db.select().from(schema.borrowers),
+    const [products, branchNames, ledger] = await Promise.all([
+      db.select().from(schema.savingsProducts).where(eq(schema.savingsProducts.id, a.productId)),
       resolveBranchNames(db),
       db.select().from(schema.savingsTransactions).where(eq(schema.savingsTransactions.savingsAccountId, a.id)),
     ]);
-    const borrower = borrowers.find((b: any) => b.id === a.memberId);
-    const lastTxn = ledger.length ? [...ledger].sort((x: any, y: any) => String(y.date).localeCompare(String(x.date)))[0].date : null;
-    const sorted = [...ledger].sort((x: any, y: any) => String(y.date).localeCompare(String(x.date))).slice(0, 30);
+    // Newest first by posting order; the sequence breaks ties within a day.
+    const sorted = [...ledger].sort((x: any, y: any) => Number(y.sequence ?? 0) - Number(x.sequence ?? 0));
+    const lastTxn = sorted.length ? sorted[0].date : null;
+    // Totals in integer centavos so many small amounts do not drift.
+    const centsOf = (t: any) => Math.round(Number(t.signedAmount) * 100);
+    const inflowCents = ledger.reduce((s: number, t: any) => s + Math.max(0, centsOf(t)), 0);
+    const outflowCents = ledger.reduce((s: number, t: any) => s + Math.max(0, -centsOf(t)), 0);
     res.json({
       success: true,
       data: {
-        account: mapAdminSaving(a, borrower, lastTxn ? String(lastTxn) : null, branchNames),
-        inflows: ledger.filter((t: any) => !String(t.type).toLowerCase().includes('withdraw')).reduce((s: number, t: any) => s + toMoney(t.amount), 0),
-        outflows: ledger.filter((t: any) => String(t.type).toLowerCase().includes('withdraw')).reduce((s: number, t: any) => s + toMoney(t.amount), 0),
-        ledger: sorted.map((t: any) => ({
+        account: mapAdminSaving(a, products[0], lastTxn ? String(lastTxn) : null, branchNames),
+        inflows: inflowCents / 100,
+        outflows: outflowCents / 100,
+        ledger: sorted.slice(0, 30).map((t: any) => ({
           id: t.id,
           ref: t.officialReceiptNumber || t.transactionNumber || t.id,
-          type: String(t.type).toLowerCase().includes('withdraw') ? 'Withdrawal' : 'Deposit',
+          type: t.type,
           amount: toMoney(t.amount),
           balance: toMoney(t.balanceAfter),
           date: t.date || '',
@@ -2035,76 +1602,64 @@ app.get('/api/admin/transactions', requirePermission(ADMIN_READ_ANY), async (req
   }
 });
 
+// Head-office view of lending groups (src/groups/service.ts). Groups are run by
+// branch loan officers; this view is read-only.
+const GROUP_STATUS_WORD: Record<string, string> = { FORMING: 'Forming', ACTIVE: 'Active', SUSPENDED: 'Suspended', DISSOLVED: 'Dissolved' };
+
 app.get('/api/admin/groups', requirePermission(ADMIN_READ_ANY), async (req: AuthedRequest, res) => {
   try {
-    const db = getDb();
-    if (!db) return res.json({ success: true, groups: [] });
-    const [groups, branchNames] = await Promise.all([db.select().from(schema.solidarityGroups), resolveBranchNames(db)]);
-    const mapped = groups.map((g: any) => ({
-      id: g.id,
-      groupId: g.groupCode || g.id,
-      groupName: g.groupName,
-      leader: g.leaderName || '',
-      memberCount: Array.isArray(g.members) ? g.members.length : 0,
-      status: mapGroupStatus(g.status),
-      totalGroupLoan: toMoney(g.totalActiveLoans),
-      branch: branchNames.get(g.branchId) || g.branchId || '',
-      formedDate: g.formedDate || '',
-      meetingDay: g.meetingDay || '',
-      repaymentRate: toMoney(g.repaymentRate),
-    }));
-    res.json({ success: true, groups: mapped });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    const db = onboardingDb();
+    const [list, branchNames] = await Promise.all([listGroups(db, productAdminActor(req)), resolveBranchNames(getDb())]);
+    res.json({
+      success: true,
+      groups: list.map((g) => ({
+        id: g.id,
+        groupId: g.groupCode,
+        groupName: g.groupName,
+        leader: g.leaderName || '',
+        memberCount: g.memberCount,
+        status: GROUP_STATUS_WORD[g.status] || g.status,
+        totalGroupLoan: Number(g.exposure),
+        fundBalance: Number(g.fundBalance),
+        runningLoans: g.runningLoans,
+        membersInArrears: g.membersInArrears,
+        blocked: g.blocked,
+        blockReasons: g.blockReasons,
+        branch: branchNames.get(g.branchId) || g.branchId,
+        formedDate: g.formedDate,
+        meetingDay: g.meetingDay,
+        meetingTime: g.meetingTime,
+        meetingLocation: g.meetingLocation,
+        loanOfficer: g.loanOfficerName,
+      })),
+    });
+  } catch (err) {
+    sendError(res, err, 'admin-groups');
   }
 });
 
 app.get('/api/admin/groups/:id', requirePermission(ADMIN_READ_ANY), async (req: AuthedRequest, res) => {
   try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ success: false, error: 'Database unavailable' });
-    const rows = await db.select().from(schema.solidarityGroups).where(eq(schema.solidarityGroups.id, req.params.id)).limit(1);
-    if (!rows.length) return res.status(404).json({ success: false, error: 'Group not found' });
-    const g = rows[0] as any;
-    const branchNames = await resolveBranchNames(db);
-    const members = Array.isArray(g.members) ? g.members : [];
-    const memberIds = members.map((m: any) => m.borrowerId).filter(Boolean);
-    const [loans, payments] = await Promise.all([
-      memberIds.length ? db.select().from(schema.loans).where(inArray(schema.loans.borrowerId, memberIds)) : Promise.resolve([]),
-      memberIds.length ? db.select().from(schema.payments).where(inArray(schema.payments.borrowerId, memberIds)) : Promise.resolve([]),
-    ]);
-    const detail = members.map((m: any) => {
-      const memberLoans = loans.filter((l: any) => l.borrowerId === m.borrowerId);
-      const outstanding = memberLoans.reduce((s: number, l: any) => s + toMoney(l.remainingBalance), 0);
-      return {
-        id: m.borrowerId || m.memberId || m.id || '',
-        name: m.fullName || m.name || '',
-        phone: m.phone || '',
-        role: (['Leader', 'Treasurer', 'Secretary'].includes(m.role) ? m.role : 'Member') as string,
-        loanAmount: toMoney(m.activeLoanAmount),
-        balance: Math.round(outstanding * 100) / 100,
-        status: ['Good Standing', 'Due', 'In Arrears'].includes(m.status) ? m.status : outstanding > 0 ? 'Good Standing' : m.status || 'Good Standing',
-      };
-    });
+    const db = onboardingDb();
+    const actor = productAdminActor(req);
+    const [d, fund, meetings] = await Promise.all([groupDetail(db, actor, req.params.id), fundView(db, actor, req.params.id), groupMeetings(db, actor, req.params.id)]);
+    const loanIds = d.members.flatMap((m) => m.loans.map((l) => l.id));
+    const loans = loanIds.length ? await getDb().select().from(schema.loans).where(inArray(schema.loans.id, loanIds)) : [];
+    const payments = loanIds.length ? await getDb().select().from(schema.payments).where(inArray(schema.payments.loanId, loanIds)) : [];
+    const standing: Record<string, string> = { GOOD: 'Good Standing', IN_ARREARS: 'In Arrears', OWES_FUND: 'Owes Fund' };
     res.json({
       success: true,
       data: {
-        group: {
-          id: g.id,
-          groupId: g.groupCode || g.id,
-          groupName: g.groupName,
-          leader: g.leaderName || '',
-          memberCount: members.length,
-          status: mapGroupStatus(g.status),
-          totalGroupLoan: toMoney(g.totalActiveLoans),
-          branch: branchNames.get(g.branchId) || g.branchId || '',
-          formedDate: g.formedDate || '',
-          meetingDay: g.meetingDay || '',
-          meetingTime: g.meetingTime || '',
-          meetingLocation: g.meetingLocation || '',
-          repaymentRate: toMoney(g.repaymentRate),
-        },
-        members: detail,
+        members: d.members.map((m) => ({
+          id: m.borrowerId,
+          name: m.fullName,
+          phone: m.phone || '',
+          role: m.role.charAt(0) + m.role.slice(1).toLowerCase(),
+          loanAmount: m.loans.reduce((s, l) => s + Number(l.remaining), 0),
+          balance: m.loans.reduce((s, l) => s + Number(l.overdue), 0),
+          coverOwed: Number(m.coverOwed),
+          status: standing[m.standing] || m.standing,
+        })),
         loans: loans.map((l: any) => ({
           id: l.id,
           loanId: l.loanNumber,
@@ -2125,59 +1680,161 @@ app.get('/api/admin/groups/:id', requirePermission(ADMIN_READ_ANY), async (req: 
             principal: toMoney(p.principalPortion),
             interest: toMoney(p.interestPortion),
             by: p.collectedBy || '',
-            method: p.paymentMethod || 'Cash',
+            method: paymentMethodLabel(p.paymentMethod),
           })),
+        fund,
+        meetings: meetings.slice(0, 20).map((m) => ({ date: m.meetingDate, present: m.present, total: m.total, recordedBy: m.recordedByName || '' })),
+        block: d.block,
+        statusReason: d.group.statusReason,
       },
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-group-detail');
   }
 });
 
-app.get('/api/admin/kyc-requests', requirePermission(ADMIN_READ_ANY), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.json({ success: true, requests: [] });
-    const [submissions, docRows, reqDocsRows] = await Promise.all([
-      db
-        .select({
-          id: schema.kycSubmissions.id,
-          borrowerId: schema.kycSubmissions.borrowerId,
-          status: schema.kycSubmissions.status,
-          submittedAt: schema.kycSubmissions.submittedAt,
-          createdAt: schema.kycSubmissions.createdAt,
-          reviewedBy: schema.kycSubmissions.reviewedBy,
-          reviewedByName: schema.kycSubmissions.reviewedByName,
-          borrowerNumber: schema.borrowers.borrowerNumber,
-          fullName: schema.borrowers.fullName,
-        })
-        .from(schema.kycSubmissions)
-        .leftJoin(schema.borrowers, eq(schema.kycSubmissions.borrowerId, schema.borrowers.id)),
-      db
-        .select({ submissionId: schema.kycDocuments.kycSubmissionId, documentType: schema.kycDocuments.documentType, createdAt: schema.kycDocuments.createdAt })
-        .from(schema.kycDocuments),
-      db.select({ n: sql<number>`cast(count(*) as int)` }).from(schema.kycRequiredDocuments),
-    ]);
-    const totalRequired = reqDocsRows[0]?.n ?? 0;
-    const docCount = new Map<string, number>();
-    const idType = new Map<string, string>();
-    for (const d of [...docRows].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
-      docCount.set(d.submissionId, (docCount.get(d.submissionId) || 0) + 1);
-      if (!idType.has(d.submissionId) && d.documentType) idType.set(d.submissionId, d.documentType);
+// ------------------------------------------------------------------
+// Head-office KYC review (src/kyc/service). Reading needs
+// view_all_records; deciding also needs manage_kyc.
+// ------------------------------------------------------------------
+
+function requireHeadOfficeKyc(write: boolean) {
+  return async (req: AuthedRequest, res: Response, next: NextFunction) => {
+    await authenticate(req);
+    const auth = req.authUser;
+    if (!auth) return res.status(401).json({ success: false, error: 'Please sign in.' });
+    const perms = auth.role === 'STAFF' && auth.staffRole ? getRolePermissions(normalizeRole(auth.staffRole)) : [];
+    const allowed = perms.includes('view_all_records') && (!write || perms.includes('manage_kyc'));
+    if (!allowed) {
+      return res.status(403).json({ success: false, error: write ? 'Only head-office KYC reviewers can decide applications here.' : 'You do not have access to the head-office KYC queue.' });
     }
-    const mapped = submissions.map((k: any) => ({
-      id: k.id,
-      clientId: k.borrowerNumber || k.borrowerId || '',
-      clientName: k.fullName || '',
-      submissionDate: (k.submittedAt || k.createdAt || '').slice(0, 10),
-      status: mapKycRequestStatus(k.status),
-      assignedStaff: k.reviewedByName || k.reviewedBy || '',
-      documents: `${docCount.get(k.id) || 0} of ${totalRequired} uploaded`,
-      idType: idType.get(k.id) || '',
-    }));
-    res.json({ success: true, requests: mapped });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next();
+  };
+}
+
+function headOfficeActor(req: AuthedRequest): StaffActor {
+  const auth = req.authUser!;
+  return {
+    kind: 'staff',
+    userId: auth.id,
+    staffId: auth.staffId ?? null,
+    name: auth.fullName || auth.email,
+    role: normalizeRole(auth.staffRole),
+    branchId: null,
+    viewAll: true,
+  };
+}
+
+// Loan products (head office). Applications copy a product's terms, so edits
+// never change loans already filed.
+function productAdminActor(req: AuthedRequest): LendingStaff {
+  return { ...headOfficeActor(req), permissions: getRolePermissions(normalizeRole(req.authUser?.staffRole)) };
+}
+
+app.get('/api/admin/loan-products', requirePermission(['manage_settings', 'view_all_records', 'process_loan_applications']), async (_req: AuthedRequest, res) => {
+  try {
+    const products = await listProducts(onboardingDb(), { includeInactive: true });
+    res.json({ success: true, data: products.map(productToDto) });
+  } catch (err) {
+    sendError(res, err, 'admin-loan-products');
+  }
+});
+
+app.post('/api/admin/loan-products', requirePermission('manage_settings'), async (req: AuthedRequest, res) => {
+  try {
+    const product = await saveProduct(onboardingDb(), productAdminActor(req), null, req.body || {});
+    res.status(201).json({ success: true, data: productToDto(product) });
+  } catch (err) {
+    sendError(res, err, 'admin-loan-product-create');
+  }
+});
+
+app.put('/api/admin/loan-products/:id', requirePermission('manage_settings'), async (req: AuthedRequest, res) => {
+  try {
+    const product = await saveProduct(onboardingDb(), productAdminActor(req), req.params.id, req.body || {});
+    res.json({ success: true, data: productToDto(product) });
+  } catch (err) {
+    sendError(res, err, 'admin-loan-product-update');
+  }
+});
+
+// Savings products (head office). Changing a rate takes effect from the next
+// interest period; periods already posted are never recomputed.
+app.get('/api/admin/savings-products', requirePermission(['manage_settings', 'view_all_records']), async (_req: AuthedRequest, res) => {
+  try {
+    const products = await listSavingsProducts(onboardingDb(), true);
+    res.json({ success: true, data: products.map(savingsProductToDto) });
+  } catch (err) {
+    sendError(res, err, 'admin-savings-products');
+  }
+});
+
+app.post('/api/admin/savings-products', requirePermission('manage_settings'), async (req: AuthedRequest, res) => {
+  try {
+    const product = await saveSavingsProduct(onboardingDb(), productAdminActor(req), null, req.body || {});
+    res.status(201).json({ success: true, data: savingsProductToDto(product) });
+  } catch (err) {
+    sendError(res, err, 'admin-savings-product-create');
+  }
+});
+
+app.put('/api/admin/savings-products/:id', requirePermission('manage_settings'), async (req: AuthedRequest, res) => {
+  try {
+    const product = await saveSavingsProduct(onboardingDb(), productAdminActor(req), req.params.id, req.body || {});
+    res.json({ success: true, data: savingsProductToDto(product) });
+  } catch (err) {
+    sendError(res, err, 'admin-savings-product-update');
+  }
+});
+
+app.get('/api/admin/kyc-requests', requireHeadOfficeKyc(false), async (req: AuthedRequest, res) => {
+  try {
+    const { items, counts } = await kycQueue(onboardingDb(), { branchId: null, viewAll: true }, {
+      status: req.query.status ? String(req.query.status) : undefined,
+      search: req.query.search ? String(req.query.search) : undefined,
+      branchId: req.query.branchId ? String(req.query.branchId) : undefined,
+    });
+    res.json({ success: true, requests: items, counts });
+  } catch (err) {
+    sendError(res, err, 'admin-kyc-queue');
+  }
+});
+
+app.get('/api/admin/kyc/:borrowerId', requireHeadOfficeKyc(false), async (req: AuthedRequest, res) => {
+  try {
+    res.json({ success: true, data: await kycDossier(onboardingDb(), { branchId: null, viewAll: true }, req.params.borrowerId) });
+  } catch (err) {
+    sendError(res, err, 'admin-kyc-dossier');
+  }
+});
+
+app.post('/api/admin/kyc/:borrowerId/claim', requireHeadOfficeKyc(true), async (req: AuthedRequest, res) => {
+  try {
+    res.json({ success: true, ...(await claimApplication(onboardingDb(), headOfficeActor(req), req.params.borrowerId)) });
+  } catch (err) {
+    sendError(res, err, 'admin-kyc-claim');
+  }
+});
+
+app.post('/api/admin/kyc/:borrowerId/release', requireHeadOfficeKyc(true), async (req: AuthedRequest, res) => {
+  try {
+    res.json({ success: true, ...(await releaseApplication(onboardingDb(), headOfficeActor(req), req.params.borrowerId, req.body?.reason ? String(req.body.reason) : null)) });
+  } catch (err) {
+    sendError(res, err, 'admin-kyc-release');
+  }
+});
+
+app.post('/api/admin/kyc/:borrowerId/decision', requireHeadOfficeKyc(true), async (req: AuthedRequest, res) => {
+  try {
+    const result = await decideApplication(onboardingDb(), headOfficeActor(req), req.params.borrowerId, {
+      decision: req.body?.decision,
+      reason: req.body?.reason,
+      sections: req.body?.sections,
+      idempotencyKey: req.get('Idempotency-Key') || null,
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    sendError(res, err, 'admin-kyc-decision');
   }
 });
 
@@ -2186,7 +1843,7 @@ app.get('/api/admin/notifications', requirePermission(ADMIN_READ_ANY), async (re
     const db = getDb();
     if (!db) return res.json({ success: true, notifications: [] });
     const [branchNotifs, pendingWithdrawals, kycRows, loanRows, borrowerRows, branchNames] = await Promise.all([
-      db.select().from(schema.branchNotifications).orderBy(desc(schema.branchNotifications.createdAt)).limit(30),
+      db.select().from(schema.branchNotifications).where(eq(schema.branchNotifications.audience, 'STAFF')).orderBy(desc(schema.branchNotifications.createdAt)).limit(30),
       db.select().from(schema.savingsWithdrawalRequests),
       db
         .select({
@@ -2213,7 +1870,7 @@ app.get('/api/admin/notifications', requirePermission(ADMIN_READ_ANY), async (re
       else if (t.includes('LOAN') || t.includes('PAYMENT') || t.includes('LATE') || t.includes('DISBURSE')) type = 'Loan';
       out.push({ id: n.id, title: n.title, message: n.message, timestamp: n.createdAt || '', type, isRead: Boolean(n.isRead) });
     }
-    for (const w of pendingWithdrawals.filter((x: any) => x.status === 'Pending Approval')) {
+    for (const w of pendingWithdrawals.filter((x: any) => x.status === 'PENDING')) {
       out.push({
         id: `WDR-${w.id}`,
         title: 'Savings Withdrawal Request',
@@ -2326,235 +1983,154 @@ app.get('/api/admin/branches', requirePermission(ADMIN_READ_ANY), async (req: Au
 });
 
 app.get('/api/admin/reports', requirePermission(ADMIN_READ_ANY), async (req: AuthedRequest, res) => {
+  const db = getDb();
+  if (!db) return res.status(503).json({ error: 'The database is not available right now.' });
   try {
-    const db = getDb();
-    const emptyPayload = {
-      success: true,
-      charts: {
-        client: [], kyc: [], loan: [], repayment: [], savings: [], transactions: [], groups: [], branches: [],
-      },
-      cards: {},
-      tableRows: {},
-    };
-    if (!db) return res.json(emptyPayload);
-
-    const [branchRows, borrowers, loans, payments, savingsTxns, txns, groups, kycRows, savingsAccounts] = await Promise.all([
-      db.select().from(schema.branches),
-      db.select().from(schema.borrowers),
-      db.select().from(schema.loans),
-      db.select().from(schema.payments),
-      db.select().from(schema.savingsTransactions),
-      db.select().from(schema.financialTransactions),
-      db.select().from(schema.solidarityGroups),
-      db.select().from(schema.kycSubmissions),
-      db.select({ id: schema.savingsAccounts.id }).from(schema.savingsAccounts),
+    const appDb = db as unknown as AppDb;
+    // Every amount below comes from src/reports/portfolio.ts, the same figures the
+    // branch app and the client portal show (exact; formatted with formatPeso).
+    const p = await portfolioSummary(appDb, { branchId: null });
+    const branchRows = await db.select({ id: schema.branches.id, name: schema.branches.name }).from(schema.branches);
+    const perBranch = await Promise.all(branchRows.map(async (b) => ({ branch: b, p: await portfolioSummary(appDb, { branchId: b.id }) })));
+    const [borrowers, loanRows, groups, kycRows, savingsRows] = await Promise.all([
+      db.select({ joinedDate: schema.borrowers.joinedDate, branchId: schema.borrowers.branchId }).from(schema.borrowers),
+      db.select({ applicationDate: schema.loans.applicationDate, status: schema.loans.status }).from(schema.loans),
+      db.select({ formedDate: schema.solidarityGroups.formedDate }).from(schema.solidarityGroups),
+      db.select({ submittedAt: schema.kycSubmissions.submittedAt, reviewedAt: schema.kycSubmissions.reviewedAt }).from(schema.kycSubmissions),
+      db.select({ kind: savingsTxnTable.kind, amount: savingsTxnTable.amount, date: savingsTxnTable.date }).from(savingsTxnTable),
     ]);
 
     const months = lastSixMonthKeys();
-    const monthValue = (map: Map<string, number>) => months.map((m) => ({ month: shortMonth(m), value: map.get(m) || 0 }));
-    const bucket = (rows: any[], getMonth: (r: any) => string) => {
-      const map = new Map<string, number>(months.map((m) => [m, 0]));
-      for (const r of rows) {
-        const key = String(getMonth(r) || '').slice(0, 7);
-        if (map.has(key)) map.set(key, (map.get(key) || 0) + 1);
-      }
-      return monthValue(map);
+    const count = (rows: { d: string | null }[]) => months.map((m) => ({ month: shortMonth(m), value: rows.filter((r) => String(r.d ?? '').startsWith(m)).length }));
+    const pesosByMonth = (rows: { d: string; cents: number }[]) => months.map((m) => ({ month: shortMonth(m), value: centsToPesos(rows.filter((r) => r.d.startsWith(m)).reduce((t, r) => t + r.cents, 0)) }));
+    const collections = await monthlyCollections(appDb, null, months);
+    const deposits = savingsRows.filter((t) => t.kind === 'DEPOSIT').map((t) => ({ d: t.date, cents: centsFromDb(t.amount) }));
+    const withdrawals = savingsRows.filter((t) => t.kind === 'WITHDRAWAL').map((t) => ({ d: t.date, cents: centsFromDb(t.amount) }));
+
+    const reviewDays = kycRows
+      .filter((k) => k.submittedAt && k.reviewedAt)
+      .map((k) => (new Date(String(k.reviewedAt)).getTime() - new Date(String(k.submittedAt)).getTime()) / 86_400_000)
+      .filter((d) => d >= 0);
+    const avgReview = reviewDays.length ? `${(reviewDays.reduce((t, d) => t + d, 0) / reviewDays.length).toFixed(1)} days` : 'no reviews yet';
+    const decided = loanRows.filter((l) => ['Approved', 'Disbursed', 'Active', 'Closed', 'Written Off', 'Rejected'].includes(normaliseLoanStatus(l.status)));
+    const approved = decided.filter((l) => normaliseLoanStatus(l.status) !== 'Rejected');
+    const approvalRate = decided.length ? `${Math.round((approved.length / decided.length) * 100)}%` : 'no decisions yet';
+    const par = p.loans.running ? `${Math.round((p.loans.overdue / p.loans.running) * 100)}%` : '0%';
+    const peso = (v: string) => formatPeso(centsFromDb(v));
+    const ranked = [...perBranch].sort((x, y) => centsFromDb(y.p.loans.outstanding) - centsFromDb(x.p.loans.outstanding));
+
+    const charts = {
+      client: count(borrowers.map((b) => ({ d: b.joinedDate }))),
+      loan: count(loanRows.map((l) => ({ d: l.applicationDate }))),
+      groups: count(groups.map((g) => ({ d: g.formedDate }))),
+      repayment: collections.map((c) => ({ month: shortMonth(c.month), value: centsToPesos(centsFromDb(c.amount)) })),
+      savings: pesosByMonth(deposits),
+      transactions: pesosByMonth([...deposits, ...withdrawals, ...collections.map((c) => ({ d: c.month, cents: centsFromDb(c.amount) }))]),
+      kyc: [
+        { name: 'Verified', value: p.members.kycVerified, color: '#10b981' },
+        { name: 'Awaiting review', value: p.members.kycAwaitingReview, color: '#3b82f6' },
+        { name: 'Not verified', value: p.members.kycNotVerified, color: '#f59e0b' },
+      ].filter((x) => x.value > 0),
+      branches: ranked.map((x, i) => ({ name: x.branch.name, value: centsToPesos(centsFromDb(x.p.loans.outstanding)), color: ['#091527', '#059669', '#d97706', '#2563eb', '#7c3aed'][i % 5] })),
     };
 
-    const charts: any = {
-      client: bucket(borrowers, (b: any) => b.joinedDate),
-      loan: bucket(loans, (l: any) => l.applicationDate),
-      groups: bucket(groups, (g: any) => g.formedDate),
-    };
-
-    const savingsMonthly = new Map<string, number>(months.map((m) => [m, 0]));
-    const withdrawalsMonthly = new Map<string, number>(months.map((m) => [m, 0]));
-    for (const t of savingsTxns) {
-      const key = String(t.date || '').slice(0, 7);
-      if (savingsMonthly.has(key)) {
-        if (String(t.type).toLowerCase().includes('withdrawal')) {
-          withdrawalsMonthly.set(key, (withdrawalsMonthly.get(key) || 0) + toMoney(t.amount));
-        } else {
-          savingsMonthly.set(key, (savingsMonthly.get(key) || 0) + toMoney(t.amount));
-        }
-      }
-    }
-    charts.savings = monthValue(savingsMonthly);
-
-    const txMonthly = new Map<string, number>(months.map((m) => [m, 0]));
-    for (const t of txns) {
-      const key = String(t.transactionDate || '').slice(0, 7);
-      if (txMonthly.has(key)) txMonthly.set(key, (txMonthly.get(key) || 0) + toMoney(t.amount));
-    }
-    charts.transactions = monthValue(txMonthly);
-
-    const payMonthly = new Map<string, number>(months.map((m) => [m, 0]));
-    for (const p of payments) {
-      const key = String(p.paymentDate || '').slice(0, 7);
-      if (payMonthly.has(key)) payMonthly.set(key, (payMonthly.get(key) || 0) + toMoney(p.amount));
-    }
-    charts.repayment = monthValue(payMonthly);
-
-    const kycCounts = { approved: 0, pending: 0, underReview: 0, rejected: 0, correction: 0 };
-    for (const k of kycRows) {
-      const s = mapKycRequestStatus(k.status);
-      if (s === 'Approved') kycCounts.approved++;
-      else if (s === 'Rejected') kycCounts.rejected++;
-      else if (s === 'Requires Correction') kycCounts.correction++;
-      else if (s === 'Under Review') kycCounts.underReview++;
-      else kycCounts.pending++;
-    }
-    if (kycRows.length === 0) {
-      for (const b of borrowers) {
-        const s = mapKycRequestStatus(b.kycStatus);
-        if (s === 'Approved') kycCounts.approved++;
-        else if (s === 'Rejected') kycCounts.rejected++;
-        else if (s === 'Requires Correction') kycCounts.correction++;
-        else if (s === 'Under Review') kycCounts.underReview++;
-        else kycCounts.pending++;
-      }
-    }
-    charts.kyc = [
-      { name: 'Approved', value: kycCounts.approved, color: '#10b981' },
-      { name: 'Pending', value: kycCounts.pending, color: '#f59e0b' },
-      { name: 'Under Review', value: kycCounts.underReview, color: '#3b82f6' },
-      { name: 'Rejected', value: kycCounts.rejected, color: '#ef4444' },
-      { name: 'Correction Required', value: kycCounts.correction, color: '#8b5cf6' },
-    ].filter((x) => x.value > 0);
-
-    const branchLoanSum = new Map<string, number>();
-    for (const l of loans) branchLoanSum.set(l.branchId, (branchLoanSum.get(l.branchId) || 0) + toMoney(l.principalAmount));
-    const branchOrder = branchRows.map((b: any) => b.id);
-    const sortedBranches = [...branchRows].sort((a: any, b: any) => (branchLoanSum.get(b.id) || 0) - (branchLoanSum.get(a.id) || 0));
-    const branchColors = ['#091527', '#059669', '#d97706', '#2563eb', '#7c3aed'];
-    charts.branches = sortedBranches.map((b: any, i: number) => ({
-      name: b.name || b.id,
-      value: Math.round((branchLoanSum.get(b.id) || 0) / 1000),
-      color: branchColors[i % branchColors.length],
-    }));
-
-    const clientBranchCount = new Map<string, number>();
-    for (const b of borrowers) clientBranchCount.set(b.branchId, (clientBranchCount.get(b.branchId) || 0) + 1);
-    const sum6mo = (map: Map<string, number>) => months.reduce((s, m) => s + (map.get(m) || 0), 0);
-
-    const totalReg6mo = charts.client.reduce((s: number, c: any) => s + c.value, 0);
-    const totalPayments = payments.reduce((s: number, p: any) => s + toMoney(p.amount), 0);
-    const totalPayable = loans.reduce((s: number, l: any) => s + toMoney(l.totalPayable), 0);
-    const totalPaid = loans.reduce((s: number, l: any) => s + toMoney(l.totalPaid), 0);
-    const par30 = loans.filter((l: any) => (l.daysInArrears || 0) > 30).length;
-    const par130 = loans.filter((l: any) => (l.daysInArrears || 0) > 0 && (l.daysInArrears || 0) <= 30).length;
-    const approvedCount = loans.filter((l: any) => ['Approved', 'Disbursed', 'Active', 'In Arrears'].includes(l.status)).length;
-    const rejectedCount = loans.filter((l: any) => ['Rejected', 'Withdrawn', 'Cancelled'].includes(l.status)).length;
-    const avgGroupRepay = groups.length ? Math.round(groups.reduce((s: number, g: any) => s + toMoney(g.repaymentRate), 0) / groups.length) : 0;
-    const activeGroupsCount = groups.filter((g: any) => g.status === 'Active').length;
-    const totalGroupLoan = groups.reduce((s: number, g: any) => s + toMoney(g.totalActiveLoans), 0);
-    const totalSavings = borrowers.reduce((s: number, b: any) => s + toMoney(b.savingsBalance), 0);
-    const cashAmount = txns.filter((t: any) => String(t.paymentMethod).toUpperCase() === 'CASH').reduce((s: number, t: any) => s + toMoney(t.amount), 0);
-    const totalTxnAmount = txns.reduce((s: number, t: any) => s + toMoney(t.amount), 0);
-    const cashShare = totalTxnAmount ? Math.round((cashAmount / totalTxnAmount) * 100) : 0;
-    const appRate = loans.length ? Math.round((approvedCount / loans.length) * 100) : 0;
-    const collEff = totalPayable ? Math.round((totalPaid / totalPayable) * 1000) / 10 : 0;
-    const regAvg = months.length ? Math.round(totalReg6mo / months.length) : 0;
-    const topBranchId = [...clientBranchCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-    const topAcquirer = branchRows.find((b: any) => b.id === topBranchId)?.name || branchRows[0]?.name || '—';
-    const topPortfolio = [...branchLoanSum.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-    const topPortfolioName = branchRows.find((b: any) => b.id === topPortfolio)?.name || branchRows[0]?.name || '—';
-    const fmt = (n: number) => `₱${n.toLocaleString()}`;
-
-    const cards: any = {
+    const cards = {
       client: [
-        { title: 'New Members (Period)', value: `${totalReg6mo}`, highlight: 'text-slate-900' },
-        { title: 'Monthly Velocity', value: `${regAvg} members/mo`, highlight: 'text-emerald-700' },
-        { title: 'Highest Acquirer', value: topAcquirer, highlight: 'text-amber-600' },
+        { title: 'Members', value: `${p.members.total}`, highlight: 'text-slate-900' },
+        { title: 'Active members', value: `${p.members.active}`, highlight: 'text-emerald-700' },
+        { title: 'Joined in the last 6 months', value: `${charts.client.reduce((t, c) => t + c.value, 0)}`, highlight: 'text-amber-600' },
       ],
       kyc: [
-        { title: 'Submitted Dossiers', value: `${kycRows.length || borrowers.length}`, highlight: 'text-slate-900' },
-        { title: 'Compliance Approval Rate', value: `${appRate}%`, highlight: 'text-emerald-700' },
-        { title: 'Average Turnaround', value: '—', highlight: 'text-amber-600' },
+        { title: 'Verified', value: `${p.members.kycVerified}`, highlight: 'text-slate-900' },
+        { title: 'Awaiting review', value: `${p.members.kycAwaitingReview}`, highlight: 'text-emerald-700' },
+        { title: 'Average review time', value: avgReview, highlight: 'text-amber-600' },
       ],
       loan: [
-        { title: 'Loan Proposals Evaluated', value: `${loans.length}`, highlight: 'text-slate-900' },
-        { title: 'Credit Committee Pass Rate', value: `${appRate}%`, highlight: 'text-emerald-700' },
-        { title: 'Aggregated Exposure', value: fmt(loans.reduce((s: number, l: any) => s + toMoney(l.totalPayable), 0)), highlight: 'text-amber-600' },
+        { title: 'Running loans', value: `${p.loans.running}`, highlight: 'text-slate-900' },
+        { title: 'Approval rate', value: approvalRate, highlight: 'text-emerald-700' },
+        { title: 'Outstanding', value: peso(p.loans.outstanding), highlight: 'text-amber-600' },
       ],
       repayment: [
-        { title: 'Overall Collection Efficiency', value: `${collEff}%`, highlight: 'text-emerald-700' },
-        { title: 'Portfolio at Risk (PAR > 30)', value: `${loans.length ? Math.round((par30 / loans.length) * 100) : 0}%`, highlight: 'text-amber-600' },
-        { title: 'Punctual Amortizations', value: `${payments.length}`, highlight: 'text-slate-900' },
+        { title: 'Collected (posted payments)', value: peso(p.collections.amount), highlight: 'text-emerald-700' },
+        { title: 'Loans behind schedule', value: `${p.loans.overdue} (${par})`, highlight: 'text-amber-600' },
+        { title: 'Outstanding on loans behind', value: peso(p.loans.overdueOutstanding), highlight: 'text-slate-900' },
       ],
       savings: [
-        { title: 'Consolidated Member Equity', value: fmt(totalSavings), highlight: 'text-slate-900' },
-        { title: 'Statutory Annual Dividend', value: '1.0% p.a.', highlight: 'text-emerald-700' },
-        { title: 'Passbook Accounts Active', value: `${savingsAccounts.length}`, highlight: 'text-amber-600' },
+        { title: 'Savings balances', value: peso(p.savings.balance), highlight: 'text-slate-900' },
+        { title: 'Open accounts', value: `${p.savings.accounts}`, highlight: 'text-emerald-700' },
+        { title: 'Interest credited', value: peso(p.savings.interest), highlight: 'text-amber-600' },
       ],
       transactions: [
-        { title: 'Period Ledger Turnover', value: fmt(sum6mo(txMonthly)), highlight: 'text-slate-900' },
-        { title: 'Cashier Counter (Cash)', value: `${cashShare}% Share`, highlight: 'text-emerald-700' },
-        { title: 'Electronic Rail (GCash/Maya)', value: `${100 - cashShare}% Share`, highlight: 'text-amber-600' },
+        { title: 'Loan payments', value: peso(p.collections.amount), highlight: 'text-slate-900' },
+        { title: 'Savings deposits', value: peso(p.savings.deposits), highlight: 'text-emerald-700' },
+        { title: 'Savings withdrawals', value: peso(p.savings.withdrawals), highlight: 'text-amber-600' },
       ],
       groups: [
-        { title: 'Active Solidarity Cells', value: `${activeGroupsCount} Centers`, highlight: 'text-slate-900' },
-        { title: 'Joint Liability Repayment', value: `${avgGroupRepay}% Index`, highlight: 'text-emerald-700' },
-        { title: 'Group Portfolio Book', value: fmt(totalGroupLoan), highlight: 'text-amber-600' },
+        { title: 'Active groups', value: `${p.groups.active}`, highlight: 'text-slate-900' },
+        { title: 'Groups', value: `${p.groups.total}`, highlight: 'text-emerald-700' },
+        { title: 'Solidarity funds', value: peso(p.groups.fundBalance), highlight: 'text-amber-600' },
       ],
       branches: [
-        { title: 'Operational Branches', value: `${branchRows.length} Stations`, highlight: 'text-slate-900' },
-        { title: 'Top Portfolio Center', value: topPortfolioName, highlight: 'text-emerald-700' },
-        { title: 'Consolidated Member Base', value: `${borrowers.length} Members`, highlight: 'text-amber-600' },
+        { title: 'Branches', value: `${branchRows.length}`, highlight: 'text-slate-900' },
+        { title: 'Largest portfolio', value: ranked[0]?.branch.name ?? '—', highlight: 'text-emerald-700' },
+        { title: 'Members', value: `${p.members.total}`, highlight: 'text-amber-600' },
       ],
     };
 
-    const tableRows: any = {
-      client: [
-        ...charts.client.slice(-3).reverse().map((c: any) => ({ label: `${c.month} Verified Registrations`, value: `${c.value} members` })),
-        { label: 'Total Registered Members', value: `${borrowers.length} members` },
-      ],
+    const tableRows = {
+      client: [...charts.client.slice(-3).reverse().map((c) => ({ label: `Joined in ${c.month}`, value: `${c.value} members` })), { label: 'All members', value: `${p.members.total} members` }],
       kyc: [
-        { label: 'Approved Client Dossiers', value: `${kycCounts.approved} requests` },
-        { label: 'In Verification Queue', value: `${kycCounts.pending} requests` },
-        { label: 'Under Review', value: `${kycCounts.underReview} requests` },
-        { label: 'Non-compliant / Rejected', value: `${kycCounts.rejected} requests` },
-        { label: 'Returned for Re-upload', value: `${kycCounts.correction} requests` },
+        { label: 'Verified', value: `${p.members.kycVerified} members` },
+        { label: 'Awaiting review', value: `${p.members.kycAwaitingReview} members` },
+        { label: 'Not yet verified', value: `${p.members.kycNotVerified} members` },
       ],
       loan: [
-        { label: 'Loan Proposals Received', value: `${loans.length} facilities` },
-        { label: 'Credit Committee Approvals', value: `${approvedCount} facilities` },
-        { label: 'Disbursed / Active Principal', value: `${approvedCount} facilities` },
-        { label: 'Rejected on Risk Appraisal', value: `${rejectedCount} facilities` },
+        { label: 'Applications in progress', value: `${p.loans.applications} loans` },
+        { label: 'Running', value: `${p.loans.running} loans` },
+        { label: 'Finished (closed, rejected, cancelled)', value: `${p.loans.finished} loans` },
+        { label: 'Principal released', value: peso(p.loans.principalReleased) },
+        { label: 'Outstanding', value: peso(p.loans.outstanding) },
       ],
       repayment: [
-        { label: 'Standard Collection Efficiency', value: `${collEff}%` },
-        { label: 'Watchlist Portfolio (PAR 1-30 days)', value: `${loans.length ? Math.round((par130 / loans.length) * 100) : 0}%` },
-        { label: 'Substandard / Impaired (PAR 31+)', value: `${loans.length ? Math.round((par30 / loans.length) * 100) : 0}%` },
-        { label: 'Punctual Amortizations', value: `${payments.length} payments` },
+        { label: 'Posted payments', value: `${p.collections.count}` },
+        { label: 'Collected', value: peso(p.collections.amount) },
+        { label: 'Loans behind schedule', value: `${p.loans.overdue}` },
+        { label: 'Outstanding on loans behind', value: peso(p.loans.overdueOutstanding) },
       ],
       savings: [
-        { label: 'Consolidated Member Balance', value: fmt(totalSavings) },
-        { label: 'Period Capital Inflows (Deposits)', value: fmt(sum6mo(savingsMonthly)) },
-        { label: 'Member Counter Withdrawals', value: fmt(sum6mo(withdrawalsMonthly)) },
+        { label: 'Savings balances', value: peso(p.savings.balance) },
+        { label: 'Deposits', value: peso(p.savings.deposits) },
+        { label: 'Withdrawals', value: peso(p.savings.withdrawals) },
+        { label: 'Interest credited', value: peso(p.savings.interest) },
       ],
       transactions: [
-        { label: 'Consolidated Ledger Flux', value: fmt(sum6mo(txMonthly)) },
-        { label: 'Amortization Inflow Credits', value: fmt(sum6mo(payMonthly)) },
-        { label: 'Member Savings Deposits', value: fmt(sum6mo(savingsMonthly)) },
+        { label: 'Loan payments', value: peso(p.collections.amount) },
+        { label: 'Savings deposits', value: peso(p.savings.deposits) },
+        { label: 'Savings withdrawals', value: peso(p.savings.withdrawals) },
       ],
       groups: [
-        { label: 'Chartered Solidarity Cells', value: `${groups.length} centers` },
-        { label: 'Active Solidarity Cells', value: `${activeGroupsCount} centers` },
-        { label: 'Joint Liability Repayment Index', value: `${avgGroupRepay}%` },
+        { label: 'Groups', value: `${p.groups.total}` },
+        { label: 'Active groups', value: `${p.groups.active}` },
+        { label: 'Solidarity funds', value: peso(p.groups.fundBalance) },
       ],
       branches: [
-        ...sortedBranches.map((b: any) => ({
-          label: `${b.name || b.id} Portfolio`,
-          value: fmt(branchLoanSum.get(b.id) || 0),
-        })),
-        { label: 'Consolidated Member Base', value: `${borrowers.length} members` },
+        ...ranked.map((x) => ({ label: `${x.branch.name} outstanding`, value: peso(x.p.loans.outstanding) })),
+        { label: 'All branches outstanding', value: peso(p.loans.outstanding) },
       ],
     };
 
-    res.json({ success: true, charts, cards, tableRows });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    const ledger = await ledgerCheck(appDb);
+    res.json({
+      success: true,
+      charts,
+      cards,
+      tableRows,
+      portfolio: p,
+      branches: perBranch.map((x) => ({ id: x.branch.id, name: x.branch.name, portfolio: x.p })),
+      ledger: { debits: ledger.debits, credits: ledger.credits, difference: ledger.difference, balanced: ledger.balanced },
+    });
+  } catch (err) {
+    sendError(res, err, 'admin-reports');
   }
 });
 
@@ -2602,16 +2178,18 @@ app.get('/api/admin/overview', requirePermission(ADMIN_READ_ANY), async (req: Au
       resolveBranchNames(db),
       resolveBorrowerNumbers(db),
     ]);
+    // Counts and balances shared with the reports, the branch app and the portal (src/reports/portfolio.ts).
+    const portfolio = await portfolioSummary(db as unknown as AppDb, { branchId: null });
 
     const totalUsers = users.filter((u: any) => u.role === 'STAFF').length;
-    const activeClients = borrowers.filter((b: any) => b.memberStatus === 'Active').length;
-    const pendingKyc = borrowers.filter((b: any) => b.kycStatus !== 'VERIFIED' || b.memberStatus === 'Pending').length;
+    const activeClients = portfolio.members.active;
+    const pendingKyc = portfolio.members.kycAwaitingReview;
     const totalLoanApplications = loans.length;
-    const approvedLoans = loans.filter((l: any) => ['Approved', 'Disbursed', 'Active', 'In Arrears'].includes(l.status)).length;
+    const approvedLoans = loans.filter((l: any) => ['Approved', 'Disbursed', 'Active', 'Closed'].includes(normaliseLoanStatus(l.status))).length;
     const approvalRate = totalLoanApplications ? Math.round((approvedLoans / totalLoanApplications) * 100) : 0;
-    const totalSavingsLiquidity = borrowers.reduce((s: number, b: any) => s + toMoney(b.savingsBalance), 0);
+    const totalSavingsLiquidity = portfolio.savings.balance;
     const transactionsRecorded = txns.length + payments.length + savingsTxns.length;
-    const activeGroups = groups.filter((g: any) => g.status === 'Active').length;
+    const activeGroups = portfolio.groups.active;
 
     const kycCounts = { approved: 0, pending: 0, rejected: 0, underReview: 0, correction: 0 };
     for (const k of kycRows) {
@@ -2720,7 +2298,7 @@ app.get('/api/admin/overview', requirePermission(ADMIN_READ_ANY), async (req: Au
       else if (t.includes('LOAN') || t.includes('PAYMENT') || t.includes('LATE') || t.includes('DISBURSE')) type = 'Loan';
       notifRows.push({ id: n.id, title: n.title, message: n.message, timestamp: n.createdAt || '', type, isRead: Boolean(n.isRead) });
     }
-    for (const w of pendingWithdrawals.filter((x: any) => x.status === 'Pending Approval')) {
+    for (const w of pendingWithdrawals.filter((x: any) => x.status === 'PENDING')) {
       notifRows.push({
         id: `WDR-${w.id}`,
         title: 'Savings Withdrawal Request',
@@ -2737,6 +2315,7 @@ app.get('/api/admin/overview', requirePermission(ADMIN_READ_ANY), async (req: Au
     res.json({
       success: true,
       data: {
+        portfolio,
         stats: {
           totalUsers,
           activeClients,
@@ -2879,6 +2458,7 @@ app.use(
     await authenticate(req);
     next();
   },
+  clientKycRouter,
   clientMobileRouter
 );
 
@@ -2895,507 +2475,17 @@ app.use(
 // Every client and mobile caller uses the explicit '/api/client' prefix, so the
 // bare mount had no legitimate consumer.
 
-// Test custom connection string endpoint
-app.post('/api/db/test-connection', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
-  try {
-    const { connectionString } = req.body;
-    const result = await testDbConnection(connectionString);
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
+// Removed (audit 3.4): /api/db/test-connection (let any staff login make the server
+// connect to an arbitrary database), /api/db/seed (seeding is npm run db:seed and
+// server start), /api/db/all (every table to any staff login), raw-body
+// /api/borrowers writes, the unscoped GET /api/borrowers and /api/loans lists, and
+// /api/financial-transactions (raw register inserts, status overrides and
+// "reversals" that never moved a balance). Their only caller was the legacy
+// MainApp shell, which no account can reach. Members, loans, payments, savings
+// and their history are served by /api/branch, /api/admin and /api/client.
 
-// Manual database seed trigger
-app.post('/api/db/seed', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
-  try {
-    await seedDatabaseIfEmpty();
-    res.json({ success: true, message: 'Database seeded successfully' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Get all records for initial sync
-app.get('/api/db/all', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) {
-      return res.json({ connected: false });
-    }
-
-    const [
-      branchesList,
-      staffList,
-      productsList,
-      borrowersList,
-      loansList,
-      paymentsList,
-      applicationsList,
-      updatesList,
-      followUpList,
-      savingsAccountsList,
-      savingsTxList,
-      withdrawalsList,
-      auditLogsList,
-      solidarityList,
-      financialTxList,
-    ] = await Promise.all([
-      db.select().from(schema.branches),
-      db.select().from(schema.staff),
-      db.select().from(schema.loanProducts),
-      db.select().from(schema.borrowers),
-      db.select().from(schema.loans),
-      db.select().from(schema.payments),
-      db.select().from(schema.membershipApplications),
-      db.select().from(schema.memberUpdateRequests),
-      db.select().from(schema.memberFollowUpLogs),
-      db.select().from(schema.savingsAccounts),
-      db.select().from(schema.savingsTransactions).orderBy(desc(schema.savingsTransactions.createdAt)),
-      db.select().from(schema.savingsWithdrawalRequests).orderBy(desc(schema.savingsWithdrawalRequests.createdAt)),
-      db.select().from(schema.auditLogs).orderBy(desc(schema.auditLogs.createdAt)).limit(100),
-      db.select().from(schema.solidarityGroups),
-      db.select().from(schema.financialTransactions).orderBy(desc(schema.financialTransactions.createdAt)),
-    ]);
-
-    res.json({
-      connected: true,
-      data: {
-        branches: branchesList,
-        staff: staffList,
-        loanProducts: productsList,
-        borrowers: borrowersList,
-        loans: loansList,
-        payments: paymentsList,
-        membershipApplications: applicationsList,
-        memberUpdateRequests: updatesList,
-        memberFollowUpLogs: followUpList,
-        savingsAccounts: savingsAccountsList,
-        savingsTransactions: savingsTxList,
-        savingsWithdrawalRequests: withdrawalsList,
-        auditLogs: auditLogsList,
-        solidarityGroups: solidarityList,
-        financialTransactions: financialTxList,
-      },
-    });
-  } catch (error: any) {
-    console.error('Error fetching all db data:', error);
-    res.json({ connected: false, error: error.message });
-  }
-});
-
-// Members / Borrowers API
-app.get('/api/borrowers', requirePermission(['view_client_info', 'register_clients', 'manage_kyc', 'assist_clients', 'access_own_account_only']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-
-    // Client multi-tenant isolation: clients can only view their own member record
-    if (req.authUser?.role === 'CLIENT') {
-      if (!req.authUser.borrowerId) {
-        return res.json([]);
-      }
-      const list = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, req.authUser.borrowerId));
-      return res.json(list);
-    }
-
-    const list = await db.select().from(schema.borrowers);
-    res.json(list);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/borrowers', requirePermission('register_clients'), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const newBorrower = req.body;
-    await db.insert(schema.borrowers).values(newBorrower);
-    res.json({ success: true, data: newBorrower });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/borrowers/:id', requirePermission(['manage_kyc', 'assist_clients', 'register_clients']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const { id } = req.params;
-    await db.update(schema.borrowers).set(req.body).where(eq(schema.borrowers.id, id));
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Loans API
-app.get('/api/loans', requirePermission(['review_client_loan_info', 'process_loan_applications', 'monitor_loan_repayment', 'view_all_records', 'access_own_account_only', 'client_view_loans']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-
-    // Client multi-tenant isolation: clients can only view loans belonging to their member profile
-    if (req.authUser?.role === 'CLIENT') {
-      if (!req.authUser.borrowerId) {
-        return res.json([]);
-      }
-      const list = await db.select().from(schema.loans).where(eq(schema.loans.borrowerId, req.authUser.borrowerId));
-      return res.json(list);
-    }
-
-    // Branch isolation: staff without view_all_records see only their own branch.
-    // Returning every loan to any staff role with review/monitor permissions
-    // leaked the whole cooperative's borrowers through this list endpoint.
-    const scope = await resolveStaffBranchScope(db, req.authUser);
-    const list = scope
-      ? await db.select().from(schema.loans).where(eq(schema.loans.branchId, scope))
-      : await db.select().from(schema.loans);
-    res.json(list);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Staff-only loan creation.
-//
-// This previously accepted 'client_apply_services' and inserted req.body
-// verbatim, which let any signed-in client write a fully-formed loan row -
-// arbitrary amount, arbitrary terms, and a status of their choosing - straight
-// into the loans table, completely bypassing the product validation, canonical
-// amortization schedule, and officer assignment enforced by
-// POST /api/client/apply-loan. Clients must apply through that route.
-app.post('/api/loans', requirePermission(['process_loan_applications', 'manage_loan_applications']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-
-    const body = req.body || {};
-    const borrowerId = String(body.borrowerId || '').trim();
-    const productId = String(body.productId || '').trim();
-    const requestedAmount = Number(body.principalAmount ?? body.amount);
-
-    if (!borrowerId || !productId) {
-      return res.status(400).json({ error: 'borrowerId and productId are required.' });
-    }
-    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
-      return res.status(400).json({ error: 'A positive principal amount is required.' });
-    }
-
-    // Derive the terms from the product rather than trusting the payload, so a
-    // crafted request cannot choose its own interest rate.
-    const productRows = await db.select().from(schema.loanProducts).where(eq(schema.loanProducts.id, productId)).limit(1);
-    if (productRows.length === 0) {
-      return res.status(404).json({ error: `Loan product '${productId}' was not found.` });
-    }
-    const product = productRows[0] as any;
-    const annualRate = Number(product.interestRate) || 0;
-    const termMonths = Number(body.termMonths ?? product.maxTermMonths) || 0;
-
-    if (Number(product.minAmount) > 0 && requestedAmount < Number(product.minAmount)) {
-      return res.status(400).json({ error: `Amount is below the ${product.name} minimum of ${product.minAmount}.` });
-    }
-    if (Number(product.maxAmount) > 0 && requestedAmount > Number(product.maxAmount)) {
-      return res.status(400).json({ error: `Amount exceeds the ${product.name} maximum of ${product.maxAmount}.` });
-    }
-    if (Number(product.minTermMonths) > 0 && termMonths < Number(product.minTermMonths)) {
-      return res.status(400).json({ error: `Term is below the ${product.name} minimum of ${product.minTermMonths} months.` });
-    }
-    if (Number(product.maxTermMonths) > 0 && termMonths > Number(product.maxTermMonths)) {
-      return res.status(400).json({ error: `Term exceeds the ${product.name} maximum of ${product.maxTermMonths} months.` });
-    }
-
-    const calc = calculateLoanSchedule({
-      principal: requestedAmount,
-      annualInterestRate: annualRate,
-      termMonths,
-      interestType: (product.interestType || 'Flat Rate') as any,
-      repaymentFrequency: (product.repaymentFrequency || 'Monthly') as any,
-      processingFeePercentage: Number(product.processingFeePercentage) || 0,
-    });
-
-    const borrowerRows = await db.select().from(schema.borrowers).where(eq(schema.borrowers.id, borrowerId)).limit(1);
-    if (borrowerRows.length === 0) {
-      return res.status(404).json({ error: `Borrower '${borrowerId}' was not found.` });
-    }
-    const borrower = borrowerRows[0] as any;
-
-    // loan_officer_id / loan_officer_name are NOT NULL. Resolve a real,
-    // loan-capable officer and refuse rather than inventing or defaulting one.
-    let loanOfficerId = String(body.loanOfficerId || '').trim();
-    let loanOfficerName = String(body.loanOfficerName || '').trim();
-    if (!loanOfficerId) {
-      const officers = await db
-        .select()
-        .from(schema.staff)
-        .where(eq(schema.staff.assignedBranchId, borrower.branchId || 'br-main'));
-      const OFFICER_ROLES = ['LOAN_OFFICER', 'MANAGER', 'ADMINISTRATOR', 'CREDIT_COMMITTEE', 'BRANCH_MANAGER'];
-      const officer: any = (officers as any[]).find((s: any) => OFFICER_ROLES.includes(normalizeRole(s.role)));
-      if (!officer) {
-        return res.status(409).json({
-          error: `No loan officer is assigned to branch '${borrower.branchId || 'br-main'}'. Assign one before creating loans here.`,
-        });
-      }
-      loanOfficerId = String(officer.id);
-      loanOfficerName = String(officer.name);
-    }
-
-    const now = new Date();
-    const loanId = String(body.id || `LN-${now.getFullYear()}-${String(Date.now()).slice(-6)}`);
-    const lastDue = Array.isArray(calc.schedule) && calc.schedule.length > 0 ? calc.schedule[calc.schedule.length - 1] : null;
-
-    const row = {
-      id: loanId,
-      loanNumber: String(body.loanNumber || loanId),
-      borrowerId,
-      borrowerName: String(borrower.fullName),
-      borrowerPhone: String(borrower.phone || ''),
-      branchId: String(borrower.branchId || 'br-main'),
-      productId,
-      productName: String(product.name),
-      principalAmount: requestedAmount,
-      interestRate: annualRate,
-      interestType: String(product.interestType || 'Flat Rate'),
-      repaymentFrequency: String(product.repaymentFrequency || 'Monthly'),
-      termMonths,
-      totalInstallments: calc.totalInstallments,
-      processingFee: calc.processingFee,
-      totalInterest: Math.round((calc.totalPayable - requestedAmount - (calc.processingFee || 0)) * 100) / 100,
-      totalPayable: calc.totalPayable,
-      totalPaid: 0,
-      remainingBalance: calc.totalPayable,
-      schedule: calc.schedule as any,
-      purpose: String(body.purpose || 'Not specified'),
-      status: 'PENDING',
-      coopStep: 'CREDIT_INVESTIGATION',
-      applicationDate: now.toISOString().slice(0, 10),
-      maturityDate: String(lastDue?.dueDate || new Date(now.getTime() + termMonths * 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)),
-      loanOfficerId,
-      loanOfficerName,
-    };
-
-    await db.insert(schema.loans).values(row);
-
-    res.status(201).json({ success: true, data: row });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/loans/:id', requirePermission(['manage_loan_applications', 'approve_sensitive_operations']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const { id } = req.params;
-    await db.update(schema.loans).set(req.body).where(eq(schema.loans.id, id));
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Payments API (Cashier / Teller processing)
-app.post('/api/payments', requirePermission('process_loan_repayments'), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const payment = req.body;
-    await db.insert(schema.payments).values(payment);
-    res.json({ success: true, data: payment });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 7. Financial Transactions Core API
-app.get('/api/financial-transactions', requirePermission(['view_transaction_records', 'access_own_account_only', 'client_view_transactions_receipts']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-
-    // Client multi-tenant isolation: clients can only view their own transactions
-    if (req.authUser?.role === 'CLIENT') {
-      if (!req.authUser.borrowerId) {
-        return res.json([]);
-      }
-      const list = await db
-        .select()
-        .from(schema.financialTransactions)
-        .where(eq(schema.financialTransactions.clientId, req.authUser.borrowerId))
-        .orderBy(desc(schema.financialTransactions.createdAt));
-      return res.json(list);
-    }
-
-    const list = await db
-      .select()
-      .from(schema.financialTransactions)
-      .orderBy(desc(schema.financialTransactions.createdAt));
-    res.json(list);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/financial-transactions', requirePermission(['process_loan_repayments', 'process_savings_deposits', 'process_savings_withdrawals']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const txn = req.body;
-    const now = new Date().toISOString();
-    const record = {
-      ...txn,
-      createdAt: txn.createdAt || now,
-      updatedAt: txn.updatedAt || now,
-    };
-    await db.insert(schema.financialTransactions).values(record);
-    res.json({ success: true, data: record });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Reversal & Adjustment: Strictly requires 'approve_sensitive_operations' (Administrator)
-app.post('/api/financial-transactions/:id/reverse', requirePermission('approve_sensitive_operations'), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const { id } = req.params;
-    const { reason, reversedBy } = req.body;
-
-    const existing = await db
-      .select()
-      .from(schema.financialTransactions)
-      .where(eq(schema.financialTransactions.id, id))
-      .limit(1);
-
-    if (existing.length === 0) {
-      return res.status(404).json({ error: 'Transaction not found' });
-    }
-
-    const orig = existing[0];
-    const now = new Date().toISOString();
-    const reversalTxnId = `TXN-REV-${Date.now().toString().slice(-6)}`;
-    const adjustmentRef = `REV-ADJ-${Date.now().toString().slice(-4)}`;
-
-    // Create adjustment transaction record linked to the reversed one
-    const adjustmentTxn = {
-      id: reversalTxnId,
-      referenceNumber: adjustmentRef,
-      clientId: orig.clientId,
-      clientName: orig.clientName,
-      accountOrLoanId: orig.accountOrLoanId,
-      accountOrLoanType: orig.accountOrLoanType,
-      branchId: orig.branchId,
-      transactionType: 'Adjustment',
-      amount: -Math.abs(orig.amount),
-      transactionDate: now.split('T')[0],
-      paymentMethod: 'Adjustment',
-      processedBy: reversedBy || req.authUser?.email || 'Executive Administrator',
-      status: 'Completed',
-      notes: `Reversal & Adjustment of transaction ${orig.referenceNumber} (${orig.id}). Reason: ${reason || 'Correction of entry'}`,
-      reversalOfTxnId: orig.id,
-      metadata: {
-        reversedTxnId: orig.id,
-        reversedTxnRef: orig.referenceNumber,
-        originalType: orig.transactionType,
-        reason: reason || 'Correction of entry',
-        reversedAt: now,
-      },
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await db.insert(schema.financialTransactions).values(adjustmentTxn);
-
-    // Update original transaction status to 'Reversed'
-    await db
-      .update(schema.financialTransactions)
-      .set({
-        status: 'Reversed',
-        reversedByTxnId: reversalTxnId,
-        updatedAt: now,
-      })
-      .where(eq(schema.financialTransactions.id, id));
-
-    res.json({
-      success: true,
-      reversedTransactionId: id,
-      adjustmentTransaction: adjustmentTxn,
-      message: `Transaction ${orig.referenceNumber} successfully reversed. Linked adjustment record ${adjustmentRef} generated.`,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Update status
-app.put('/api/financial-transactions/:id/status', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const { id } = req.params;
-    const { status, notes } = req.body;
-    const now = new Date().toISOString();
-
-    await db
-      .update(schema.financialTransactions)
-      .set({
-        status,
-        ...(notes ? { notes } : {}),
-        updatedAt: now,
-      })
-      .where(eq(schema.financialTransactions.id, id));
-
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Delete endpoint strictly rejects deletion per financial core compliance rule
-app.delete('/api/financial-transactions/:id', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
-  return res.status(400).json({
-    error: 'Strict Compliance Rule: Financial transaction records cannot be permanently deleted. Use reversal and adjustment records instead to maintain complete audit integrity.',
-  });
-});
-
-
-// Solidarity Groups API
-app.get('/api/solidarity-groups', requirePermission(['view_client_info', 'manage_loan_applications', 'view_all_records']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const list = await db.select().from(schema.solidarityGroups);
-    res.json(list);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/solidarity-groups', requirePermission(['manage_loan_applications', 'register_clients']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const newGroup = req.body;
-    await db.insert(schema.solidarityGroups).values(newGroup);
-    res.json({ success: true, data: newGroup });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/solidarity-groups/:id', requirePermission(['manage_loan_applications', 'register_clients']), async (req: AuthedRequest, res) => {
-  try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ error: 'DB unavailable' });
-    const { id } = req.params;
-    await db.update(schema.solidarityGroups).set(req.body).where(eq(schema.solidarityGroups.id, id));
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Group lending is served by /api/branch/groups (src/groups/service.ts); the raw
+// /api/solidarity-groups insert/update endpoints were removed in B5.
 
 // AI Underwriting & Credit Risk Analysis [Requires 'process_loan_applications' or 'review_client_loan_info']
 app.post('/api/gemini/underwrite', requirePermission(['process_loan_applications', 'review_client_loan_info']), async (req: AuthedRequest, res) => {
@@ -3608,16 +2698,49 @@ Return JSON:
   }
 });
 
+/** Marks overdue installments and charges penalties now and every 6 hours. Each run is idempotent. */
+function startOverdueChecks() {
+  const run = async () => {
+    const db = getDb();
+    if (!db) return;
+    try {
+      const r = await runOverdueCheck(onboardingDb());
+      if (r.penaltiesCharged || r.groupAlerts) console.log(`[Overdue check] ${r.date}: ${r.penaltiesCharged} penalties (₱${r.amountCharged}) on ${r.loansCharged.join(', ') || 'no loans'}; ${r.groupAlerts} group alert(s)`);
+    } catch (err: any) {
+      console.error('[Overdue check] failed:', err?.message || err);
+    }
+  };
+  void run();
+  setInterval(run, 6 * 60 * 60 * 1000).unref();
+}
+
+/**
+ * Posts savings interest for every complete month not yet posted, now and every
+ * 6 hours. Each (account, month) is posted at most once, so reruns are no-ops.
+ */
+function startInterestPosting() {
+  const run = async () => {
+    const db = getDb();
+    if (!db) return;
+    try {
+      const r = await runInterestPosting(onboardingDb());
+      if (r.interestPostings || r.madeDormant) console.log(`[Savings interest] ${r.date}: ${r.interestPostings} postings (₱${r.interestTotal}), ${r.madeDormant} marked dormant`);
+    } catch (err: any) {
+      console.error('[Savings interest] failed:', err?.message || err);
+    }
+  };
+  void run();
+  setInterval(run, 6 * 60 * 60 * 1000).unref();
+}
+
 // Setup Vite development middleware or static file serving
 async function initServer() {
-  // Initialize database schema, seed if empty, and ensure default users
-  try {
-    await initDbSchema();
-    await seedDatabaseIfEmpty();
-    await ensureDefaultUsers();
-  } catch (err: any) {
-    console.log('[Server Startup] DB init/seed:', err.message);
-  }
+  // The schema comes from database/migrations (npm run db:migrate); this only
+  // reports pending migrations, then seeds an empty database.
+  const schemaState = await verifyDbSchema();
+  if (schemaState?.ok) await seedDatabase();
+  startOverdueChecks();
+  startInterestPosting();
 
   const httpServer = http.createServer(app);
 

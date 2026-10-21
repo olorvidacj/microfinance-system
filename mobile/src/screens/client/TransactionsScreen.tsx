@@ -1,133 +1,107 @@
-import React, { useCallback, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { FlatList, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppCard, Badge, EmptyState, LoadingView, ScreenHeader, SearchBar, SegmentedTabs } from '../../components';
+import { AppCard, EmptyState, ErrorView, LoadingView, ScreenHeader, SearchBar } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
-import { FinancialTransaction, TransactionType } from '../../types';
-import { formatCurrency, formatDateTime, humanizeStatus } from '../../utils/format';
+import { api, messageOf } from '../../services/api';
+import {
+  TRANSACTION_KINDS,
+  TRANSACTION_KIND_LABELS,
+  TRANSACTION_PERIODS,
+  manilaToday,
+  periodStart,
+  transactionsCsv,
+  type ClientTransactionView,
+  type TransactionKind,
+  type TransactionPeriod,
+} from '../../shared/client';
+import { formatCurrency, formatDate } from '../../utils/format';
 
-type TypeKey = 'ALL' | TransactionType;
+const KIND_OPTIONS: Array<TransactionKind | 'ALL'> = ['ALL', ...TRANSACTION_KINDS.filter((k) => k !== 'OTHER')];
 
-const TYPE_TABS: Array<{ key: TypeKey; label: string }> = [
-  { key: 'ALL', label: 'All' },
-  { key: 'REPAYMENT', label: 'Repayments' },
-  { key: 'LOAN_DISBURSEMENT', label: 'Disbursed' },
-  { key: 'SAVINGS_DEPOSIT', label: 'Savings' },
-];
-
-const TXN_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  REPAYMENT: 'arrow-undo-outline',
-  LOAN_PAYMENT: 'card-outline',
-  LOAN_DISBURSEMENT: 'arrow-forward-circle-outline',
-  SAVINGS_DEPOSIT: 'trending-up-outline',
-  SAVINGS_WITHDRAWAL: 'trending-down-outline',
-  LOAN_APPROVAL: 'checkmark-circle-outline',
-  FEE: 'receipt-outline',
-  ADJUSTMENT: 'swap-horizontal-outline',
-};
-
+/** The member's full history from the transaction register (same endpoint and filters as the web portal). */
 export const TransactionsScreen: React.FC = () => {
-  const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [rows, setRows] = useState<ClientTransactionView[] | null>(null);
+  const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [type, setType] = useState<TypeKey>('ALL');
+  const [kind, setKind] = useState<TransactionKind | 'ALL'>('ALL');
+  const [period, setPeriod] = useState<TransactionPeriod>('ALL');
 
-  const load = useCallback(async (params: { search?: string; type?: TransactionType | 'ALL' }, silent = false) => {
-    if (!silent) setLoaded(false);
-    setError(null);
+  const load = useCallback(async () => {
     try {
-      const res = await api.getTransactions({
-        search: params.search || undefined,
-        type: params.type && params.type !== 'ALL' ? params.type : undefined,
-      });
-      setTransactions(res);
-    } catch (err: any) {
-      setError(err?.message || 'Unable to load transactions.');
+      setRows(await api.getTransactions({ kind, search: search.trim(), from: periodStart(period, manilaToday()) }));
+      setError('');
+    } catch (err) {
+      setError(messageOf(err, 'Your transactions could not be loaded.'));
     } finally {
-      setLoaded(true);
       setRefreshing(false);
     }
-  }, []);
+  }, [kind, search, period]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load({ search, type });
-    }, [search, type])
-  );
+  useEffect(() => {
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+  }, [load]);
 
-  const changeType = (t: TypeKey) => {
-    setType(t);
-    load({ search, type: t }, true);
+  const exportCsv = async () => {
+    if (!rows?.length) return;
+    await Share.share({ title: `Transactions ${manilaToday()}`, message: transactionsCsv(rows) });
   };
 
-  const changeSearch = (s: string) => {
-    setSearch(s);
-    load({ search: s, type }, true);
-  };
-
-  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Transactions" /><LoadingView /></SafeAreaView>;
-
-  const totalOut = transactions
-    .filter((t) => ['REPAYMENT', 'LOAN_PAYMENT', 'SAVINGS_WITHDRAWAL', 'FEE'].includes(t.type))
-    .reduce((sum, t) => sum + t.amount, 0);
-  const totalIn = transactions
-    .filter((t) => ['LOAN_DISBURSEMENT', 'SAVINGS_DEPOSIT', 'LOAN_APPROVAL'].includes(t.type))
-    .reduce((sum, t) => sum + t.amount, 0);
+  if (error && !rows) return <SafeAreaView style={styles.safe}><ScreenHeader title="Transactions" /><ErrorView message={error} onRetry={load} /></SafeAreaView>;
+  if (!rows) return <SafeAreaView style={styles.safe}><ScreenHeader title="Transactions" /><LoadingView text="Loading transactions…" /></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title="Transactions" subtitle="Loan, savings, and fee activity" />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <ScreenHeader
+        title="Transactions"
+        subtitle="Loans, savings and solidarity fund"
+        right={
+          <TouchableOpacity onPress={exportCsv} disabled={!rows.length} accessibilityLabel="Export transactions">
+            <Ionicons name="share-outline" size={22} color={rows.length ? colors.primary : colors.textFaint} />
+          </TouchableOpacity>
+        }
+      />
       <View style={styles.searchWrap}>
-        <SearchBar value={search} onChangeText={changeSearch} placeholder="Search by reference or description" />
+        <SearchBar value={search} onChangeText={setSearch} placeholder="Search by reference or note" />
       </View>
-      <View style={styles.tabsWrap}>
-        <SegmentedTabs<TypeKey> tabs={TYPE_TABS} active={type} onChange={changeType} />
-      </View>
-
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryIn}>
-          <Text style={styles.summaryValue}>{formatCurrency(totalIn)}</Text>
-          <Text style={styles.summaryLabel}>Money in</Text>
-        </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryOut}>
-          <Text style={styles.summaryValue}>{formatCurrency(totalOut)}</Text>
-          <Text style={styles.summaryLabel}>Money out</Text>
-        </View>
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow} contentContainerStyle={styles.chipsContent}>
+        {TRANSACTION_PERIODS.map((p) => (
+          <Chip key={p.id} label={p.label} active={period === p.id} onPress={() => setPeriod(p.id)} />
+        ))}
+      </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow} contentContainerStyle={styles.chipsContent}>
+        {KIND_OPTIONS.map((k) => (
+          <Chip key={k} label={k === 'ALL' ? 'All types' : TRANSACTION_KIND_LABELS[k]} active={kind === k} onPress={() => setKind(k)} />
+        ))}
+      </ScrollView>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
-        data={transactions}
+        data={rows}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load({ search, type }, true); }} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
         renderItem={({ item }) => {
-          const isOut = ['REPAYMENT', 'LOAN_PAYMENT', 'SAVINGS_WITHDRAWAL', 'FEE'].includes(item.type);
+          const out = item.direction === 'OUT';
           return (
             <AppCard style={styles.txnCard} padded={false}>
               <View style={styles.txnRow}>
-                <View style={[styles.txnIcon, { backgroundColor: isOut ? colors.dangerSoft : colors.greenSoft }]}>
-                  <Ionicons name={TXN_ICONS[item.type] ?? 'swap-horizontal-outline'} size={17} color={isOut ? colors.danger : colors.greenDark} />
+                <View style={[styles.txnIcon, { backgroundColor: out ? colors.dangerSoft : colors.greenSoft }]}>
+                  <Ionicons name={out ? 'arrow-up-outline' : 'arrow-down-outline'} size={17} color={out ? colors.danger : colors.greenDark} />
                 </View>
                 <View style={styles.flex1}>
-                  <Text style={styles.txnType}>{humanizeStatus(item.type)}</Text>
-                  <Text style={styles.txnRef}>{item.referenceNumber}</Text>
-                  {item.loanNumber ? <Text style={styles.txnRef}>Loan {item.loanNumber}</Text> : null}
-                  <View style={{ marginTop: 3 }}>
-                    <Badge status={item.status} />
-                  </View>
+                  <Text style={styles.txnType}>{item.label}</Text>
+                  <Text style={styles.txnRef}>{item.reference}{item.account ? ` · ${item.account}` : ''}</Text>
+                  {item.notes ? <Text style={styles.txnRef} numberOfLines={2}>{item.notes}</Text> : null}
                 </View>
                 <View style={styles.txnAmtWrap}>
-                  <Text style={[styles.txnAmt, isOut ? styles.txnAmtOut : styles.txnAmtIn]}>
-                    {isOut ? '−' : '+'}{formatCurrency(item.amount)}
+                  <Text style={[styles.txnAmt, out ? styles.txnAmtOut : styles.txnAmtIn]}>
+                    {out ? '−' : '+'}{formatCurrency(item.amount)}
                   </Text>
-                  <Text style={styles.txnDate}>{formatDateTime(item.date)}</Text>
+                  <Text style={styles.txnDate}>{formatDate(item.date)}</Text>
                 </View>
               </View>
             </AppCard>
@@ -137,7 +111,7 @@ export const TransactionsScreen: React.FC = () => {
           <EmptyState
             icon="receipt-outline"
             title="No transactions found"
-            message={search ? 'Try a different search term or filter.' : 'Your transaction history will appear here.'}
+            message={search || kind !== 'ALL' || period !== 'ALL' ? 'Try other filters.' : 'Payments, loan releases and savings activity will appear here.'}
           />
         }
       />
@@ -145,41 +119,29 @@ export const TransactionsScreen: React.FC = () => {
   );
 };
 
+const Chip: React.FC<{ label: string; active: boolean; onPress: () => void }> = ({ label, active, onPress }) => (
+  <TouchableOpacity onPress={onPress} style={[styles.chip, active && styles.chipActive]} accessibilityLabel={label}>
+    <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  error: { fontSize: 12, color: colors.danger, textAlign: 'center', marginTop: 8 },
+  error: { fontSize: 12, color: colors.danger, textAlign: 'center', marginTop: 4, paddingHorizontal: 16 },
   searchWrap: { paddingHorizontal: 16, paddingTop: 8 },
-  tabsWrap: { paddingHorizontal: 16, paddingVertical: 10 },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 10,
-  },
-  summaryIn: { flex: 1 },
-  summaryOut: { flex: 1 },
-  summaryDivider: { width: 1, height: 30, backgroundColor: colors.borderLight, marginHorizontal: 14 },
-  summaryValue: { fontSize: 14, fontWeight: '900', color: colors.text },
-  summaryLabel: { fontSize: 10, color: colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
-  content: { padding: 16, paddingTop: 4, paddingBottom: 110, flexGrow: 1 },
+  chipsRow: { flexGrow: 0, marginTop: 8 },
+  chipsContent: { paddingHorizontal: 16 },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.round, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginRight: 6 },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
+  chipTextActive: { color: colors.white },
+  content: { padding: 16, paddingTop: 10, paddingBottom: 110, flexGrow: 1 },
   txnCard: { marginBottom: 8 },
   txnRow: { flexDirection: 'row', alignItems: 'center', padding: 12 },
   flex1: { flex: 1, marginRight: 8 },
-  txnIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
+  txnIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   txnType: { fontSize: 13, fontWeight: '700', color: colors.text },
-  txnRef: { fontSize: 10, color: colors.textFaint, marginTop: 1 },
+  txnRef: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
   txnAmtWrap: { alignItems: 'flex-end', marginLeft: 6 },
   txnAmt: { fontSize: 14, fontWeight: '800' },
   txnAmtIn: { color: colors.greenDark },

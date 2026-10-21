@@ -1,3 +1,7 @@
+import type { KycDossierView } from '../../components/kyc/KycReviewPanel';
+import type { KycQueueResultView, KycQueueRow } from '../../components/kyc/KycQueueView';
+import type { KycDecision } from '../../../shared/kyc-core';
+import type { ProductDto, SavingsProductDto } from '../../../shared/lending';
 import { authFetch } from '../../context/AuthContext';
 import type {
   AdminBranch,
@@ -8,9 +12,9 @@ import type {
   AdminTransaction,
   AdminUser,
   AuditLog,
-  KycRequest,
   LendingGroup,
 } from '../data/mockData';
+import type { PortfolioSummary } from '../../reports/portfolio';
 
 export interface AdminStats {
   totalUsers: number;
@@ -19,7 +23,8 @@ export interface AdminStats {
   totalLoanApplications: number;
   approvedLoans: number;
   approvalRate: number;
-  totalSavingsLiquidity: number;
+  /** Decimal pesos (src/reports/portfolio.ts). */
+  totalSavingsLiquidity: string;
   transactionsRecorded: number;
   activeGroups: number;
   totalClients: number;
@@ -31,6 +36,8 @@ export interface AdminStats {
 }
 
 export interface AdminOverview {
+  /** The figures shared with the branch app and the member portal. */
+  portfolio: PortfolioSummary;
   stats: AdminStats;
   loanTrend: { month: string; applications: number; approved: number }[];
   transactionChart: { month: string; deposits: number; withdrawals: number; loanPayments: number }[];
@@ -54,6 +61,11 @@ export interface ReportsData {
   };
   cards: Record<string, { title: string; value: string; highlight: string }[]>;
   tableRows: Record<string, { label: string; value: string }[]>;
+  /** All branches, exact (src/reports/portfolio.ts). */
+  portfolio: PortfolioSummary;
+  branches: { id: string; name: string; portfolio: PortfolioSummary }[];
+  /** Trial balance of every posted journal line. */
+  ledger: { debits: string; credits: string; difference: string; balanced: boolean };
 }
 
 export interface SavingsLedgerEntry {
@@ -89,36 +101,13 @@ export interface SavingsDetail {
 }
 
 export interface GroupDetail {
-  group: LendingGroup;
-  members: {
-    id: string;
-    name: string;
-    phone: string;
-    role: string;
-    loanAmount: number;
-    balance: number;
-    status: string;
-  }[];
-  loans: {
-    id: string;
-    loanId: string;
-    clientName: string;
-    product: string;
-    amount: number;
-    paid: number;
-    balance: number;
-    issued: string;
-    status: string;
-  }[];
-  collections: {
-    id: string;
-    date: string;
-    collected: number;
-    principal: number;
-    interest: number;
-    by: string;
-    method: string;
-  }[];
+  members: { id: string; name: string; phone: string; role: string; loanAmount: number; balance: number; coverOwed: number; status: string }[];
+  loans: { id: string; loanId: string; clientName: string; product: string; amount: number; paid: number; balance: number; issued: string; status: string }[];
+  collections: { id: string; date: string; collected: number; principal: number; interest: number; by: string; method: string }[];
+  fund: Awaited<ReturnType<typeof import('../../groups/service').fundView>>;
+  meetings: { date: string; present: number; total: number; recordedBy: string }[];
+  block: { blocked: boolean; reasons: string[] };
+  statusReason: string | null;
 }
 
 export interface LoanDetail {
@@ -152,6 +141,18 @@ export interface LoanDetail {
  * fetch. It also means a silent 401/403 here is a real authorization failure and
  * must surface as an error rather than an empty dashboard.
  */
+export class AdminApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    /** Per-field messages from a validation refusal. */
+    readonly fieldErrors: Record<string, string> = {},
+  ) {
+    super(message);
+    this.name = 'AdminApiError';
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await authFetch(url, {
     ...init,
@@ -159,13 +160,15 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let detail = '';
+    let fields: Record<string, string> = {};
     try {
       const body = await res.json();
       detail = body?.error || body?.message || '';
+      fields = body?.fields || body?.errors || {};
     } catch {}
-    if (res.status === 401) throw new Error('Your session has expired. Please sign in again.');
-    if (res.status === 403) throw new Error(detail || 'You do not have permission to perform this action.');
-    throw new Error(detail || `Admin data request failed (${res.status})`);
+    if (res.status === 401) throw new AdminApiError('Your session has expired. Please sign in again.', 401);
+    if (res.status === 403) throw new AdminApiError(detail || 'You do not have permission to perform this action.', 403);
+    throw new AdminApiError(detail || `Admin data request failed (${res.status})`, res.status, fields);
   }
   return res.json() as Promise<T>;
 }
@@ -238,13 +241,9 @@ export const adminApi = {
     patch: { fullName?: string; staffRole?: string; role?: string; staffId?: string | null; isActive?: boolean; phone?: string }
   ): Promise<{ success: boolean; message?: string }> => put<{ success: boolean; message?: string }>(`/api/admin/users/${id}`, patch),
 
-  systemSettings: (): Promise<Record<string, any>> => get<{ success: boolean; settings: Record<string, any> }>('/api/admin/system-settings').then((r) => r.settings),
-
-  saveSystemSettings: (patch: Record<string, unknown>): Promise<Record<string, any>> =>
-    request<{ success: boolean; settings: Record<string, any> }>('/api/admin/system-settings', {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    }).then((r) => r.settings),
+  /** The KYC documents members must provide (kyc_required_documents). */
+  kycRequiredDocuments: (): Promise<{ id: string; documentType: string; documentName: string; description: string | null; isActive: boolean }[]> =>
+    get<{ documents: { id: string; documentType: string; documentName: string; description: string | null; isActive: boolean }[] }>('/api/admin/kyc/required-documents').then((r) => r.documents),
 
   /**
    * Triggers a real password reset link. The endpoint is deliberately
@@ -254,18 +253,25 @@ export const adminApi = {
   sendPasswordReset: (email: string): Promise<{ success: boolean; message?: string }> =>
     post<{ success: boolean; message?: string }>('/api/auth/forgot-password', { email }),
 
-  approveSensitive: (input: {
-    operationType: string;
-    targetId: string;
-    amount?: number;
-    justification?: string;
-  }): Promise<{ success: boolean }> => post<{ success: boolean }>('/api/admin/approve-sensitive', input),
   clients: (): Promise<AdminClient[]> => get<{ clients: AdminClient[] }>('/api/admin/clients').then((r) => r.clients || []),
   loans: (): Promise<AdminLoan[]> => get<{ loans: AdminLoan[] }>('/api/admin/loans').then((r) => r.loans || []),
   savings: (): Promise<AdminSavingsAccount[]> => get<{ accounts: AdminSavingsAccount[] }>('/api/admin/savings').then((r) => r.accounts || []),
   transactions: (): Promise<AdminTransaction[]> => get<{ transactions: AdminTransaction[] }>('/api/admin/transactions').then((r) => r.transactions || []),
   groups: (): Promise<LendingGroup[]> => get<{ groups: LendingGroup[] }>('/api/admin/groups').then((r) => r.groups || []),
-  kycRequests: (): Promise<KycRequest[]> => get<{ requests: KycRequest[] }>('/api/admin/kyc-requests').then((r) => r.requests || []),
+  /** Head-office KYC queue across all branches. */
+  kycQueue: (params: { status?: string; search?: string } = {}): Promise<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] }> => {
+    const qs = new URLSearchParams();
+    if (params.status) qs.set('status', params.status);
+    if (params.search) qs.set('search', params.search);
+    return get<{ requests: KycQueueRow[]; counts: KycQueueResultView['counts'] }>(`/api/admin/kyc-requests${qs.toString() ? `?${qs}` : ''}`).then((r) => ({ data: r.requests, counts: r.counts }));
+  },
+  kyc: {
+    get: (borrowerId: string): Promise<KycDossierView> => get<{ data: KycDossierView }>(`/api/admin/kyc/${encodeURIComponent(borrowerId)}`).then((r) => r.data),
+    claim: (borrowerId: string) => post(`/api/admin/kyc/${encodeURIComponent(borrowerId)}/claim`, {}),
+    release: (borrowerId: string) => post(`/api/admin/kyc/${encodeURIComponent(borrowerId)}/release`, {}),
+    decide: (borrowerId: string, body: { decision: KycDecision; reason: string; sections: string[] }, idempotencyKey: string) =>
+      request(`/api/admin/kyc/${encodeURIComponent(borrowerId)}/decision`, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': idempotencyKey } }),
+  },
   notifications: (): Promise<AdminNotification[]> => get<{ notifications: AdminNotification[] }>('/api/admin/notifications').then((r) => r.notifications || []),
   auditLogs: (): Promise<AuditLog[]> => get<{ logs: AuditLog[] }>('/api/admin/audit-logs').then((r) => r.logs || []),
   branches: (): Promise<AdminBranch[]> => get<{ branches: AdminBranch[] }>('/api/admin/branches').then((r) => r.branches || []),
@@ -274,10 +280,16 @@ export const adminApi = {
   savingsDetail: (id: string): Promise<SavingsDetail> => get<{ data: SavingsDetail }>(`/api/admin/savings/${id}`).then((r) => r.data),
   groupDetail: (id: string): Promise<GroupDetail> => get<{ data: GroupDetail }>(`/api/admin/groups/${id}`).then((r) => r.data),
   overview: (): Promise<AdminOverview> => get<{ data: AdminOverview }>('/api/admin/overview').then((r) => r.data),
-  reports: (): Promise<ReportsData> =>
-    get<{ charts: ReportsData['charts']; cards: ReportsData['cards']; tableRows: ReportsData['tableRows'] }>('/api/admin/reports').then((r) => ({
-      charts: r.charts || { client: [], kyc: [], loan: [], repayment: [], savings: [], transactions: [], groups: [], branches: [] },
-      cards: r.cards || {},
-      tableRows: r.tableRows || {},
-    })),
+  reports: (): Promise<ReportsData> => get<ReportsData>('/api/admin/reports'),
+  savingsProducts: {
+    list: (): Promise<(SavingsProductDto & { id: string })[]> => get<{ data: (SavingsProductDto & { id: string })[] }>('/api/admin/savings-products').then((r) => r.data || []),
+    create: (dto: SavingsProductDto): Promise<SavingsProductDto & { id: string }> => post<{ data: SavingsProductDto & { id: string } }>('/api/admin/savings-products', dto).then((r) => r.data),
+    update: (id: string, dto: SavingsProductDto): Promise<SavingsProductDto & { id: string }> =>
+      put<{ data: SavingsProductDto & { id: string } }>(`/api/admin/savings-products/${encodeURIComponent(id)}`, dto).then((r) => r.data),
+  },
+  loanProducts: {
+    list: (): Promise<ProductDto[]> => get<{ data: ProductDto[] }>('/api/admin/loan-products').then((r) => r.data || []),
+    create: (dto: ProductDto): Promise<ProductDto> => post<{ data: ProductDto }>('/api/admin/loan-products', dto).then((r) => r.data),
+    update: (id: string, dto: ProductDto): Promise<ProductDto> => put<{ data: ProductDto }>(`/api/admin/loan-products/${encodeURIComponent(id)}`, dto).then((r) => r.data),
+  },
 };

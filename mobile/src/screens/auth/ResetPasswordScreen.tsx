@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppButton, AppTextInput, PasswordStrengthIndicator } from '../../components';
 import { AuthLayout } from './AuthLayout';
 import { colors } from '../../theme';
-import { api } from '../../services/api';
+import { api, messageOf } from '../../services/api';
 import { validators } from '../../utils/validation';
 import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
 import { AuthStackParamList } from '../../navigation/types';
@@ -39,8 +39,8 @@ export const ResetPasswordScreen: React.FC<Props> = ({ navigation, route }) => {
       } catch {
         navigation.popToTop();
       }
-    } catch (err: any) {
-      setServerError(err?.message || 'Password reset failed. Please try again.');
+    } catch (err) {
+      setServerError(messageOf(err, 'Password reset failed. Please try again.'));
     } finally {
       setLoading(false);
     }

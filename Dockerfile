@@ -14,6 +14,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=build /app/dist ./dist
+# The server checks the database against these at start (src/db/initDb.ts).
+COPY --from=build /app/database/migrations ./database/migrations
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 

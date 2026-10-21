@@ -4,5 +4,7 @@ export { Avatar } from './Avatar';
 export type { AvatarProps } from './Avatar';
 export { AppSidebar } from './AppSidebar';
 export type { AppSidebarProps, AppNavItem, AppNavSection } from './AppSidebar';
+export { RailSidebar, railLabelClass } from './RailSidebar';
+export type { RailSidebarProps } from './RailSidebar';
 export { AppShell } from './AppShell';
 export type { AppShellProps } from './AppShell';
