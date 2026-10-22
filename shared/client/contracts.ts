@@ -18,7 +18,7 @@ import type {
   SavingsStatus,
   SavingsTxnKind,
 } from '../lending';
-import type { KycStatus, QualityMetrics } from '../kyc-core';
+import type { Discrepancy, KycStatus, QualityMetrics } from '../kyc-core';
 import type { TransactionKind } from './transactions';
 
 // ---------------------------------------------------------------------------
@@ -544,6 +544,8 @@ export interface KycStatusView {
   rejectionReason: string | null;
   correctionReason: string | null;
   correctionDetails: { sections: string[]; reason: string | null } | null;
+  /** After a rejection: whether the member may correct and submit again. */
+  resubmissionAllowed: boolean;
   requiredDocuments: KycRequirementStatusView[];
   member: KycMemberPrefillView;
   submission: KycApplicationView;
@@ -589,11 +591,22 @@ export interface IdScanView {
 export interface FaceMatchResultView {
   status: 'MATCH' | 'LOW_CONFIDENCE' | 'NO_MATCH' | 'UNAVAILABLE' | 'FAILED';
   matchStatus: 'MATCH' | 'LOW_CONFIDENCE' | 'NO_MATCH' | 'UNAVAILABLE' | 'FAILED';
+  /** True only for a match reported by a face-verification service. */
   isMatch: boolean;
+  provider: string | null;
+  /** What the result means, never more than the service said. */
+  summary: string;
   matchConfidence: number | null;
   details: string | null;
   recommendation: 'RETRY_SELFIE' | 'CONTINUE' | 'MANUAL_REVIEW';
   processedAt: string;
+}
+
+/** GET /api/client/kyc-status in full: the status plus the latest ID reading, face check and the differences found. */
+export interface KycStatusFullView extends KycStatusView {
+  extractedIdData: IdScanFieldsView | null;
+  faceMatchResult: FaceMatchResultView | null;
+  discrepancies: Discrepancy[];
 }
 
 /** POST /api/client/kyc/match-face */

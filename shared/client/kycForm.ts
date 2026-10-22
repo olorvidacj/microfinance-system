@@ -85,6 +85,8 @@ export interface KycFormState {
   documentOwnership: boolean;
   authorizedReview: boolean;
   privacyNotice: boolean;
+  /** Consent to use the selfie (biometric data) to check it against the ID photo. */
+  biometricConsent: boolean;
   penaltyAcknowledgment: boolean;
 }
 
@@ -165,6 +167,7 @@ export const EMPTY_KYC_FORM: KycFormState = {
   documentOwnership: false,
   authorizedReview: false,
   privacyNotice: false,
+  biometricConsent: false,
   penaltyAcknowledgment: false,
 };
 
@@ -285,6 +288,7 @@ export function kycFormFrom(status: { member: KycMemberPrefillView; submission: 
     documentOwnership: flag(dec, 'documentOwnership'),
     authorizedReview: flag(dec, 'authorizedReview'),
     privacyNotice: flag(dec, 'privacyNotice'),
+    biometricConsent: flag(dec, 'biometricConsent'),
     penaltyAcknowledgment: flag(dec, 'penaltyAcknowledgment'),
   };
 }
@@ -365,6 +369,7 @@ export function buildKycApplication(f: KycFormState): KycApplicationPayload {
       documentOwnership: f.documentOwnership,
       authorizedReview: f.authorizedReview,
       privacyNotice: f.privacyNotice,
+      biometricConsent: f.biometricConsent,
       penaltyAcknowledgment: f.penaltyAcknowledgment,
     },
   };
@@ -405,6 +410,7 @@ const ISSUE_FIELD: Readonly<Record<string, keyof KycFormState>> = {
   'declarations.truthfulInformation': 'truthfulInformation',
   'declarations.documentOwnership': 'documentOwnership',
   'declarations.privacyNotice': 'privacyNotice',
+  'declarations.biometricConsent': 'biometricConsent',
 };
 
 /** The server's checks for the given steps, as messages per form field. */

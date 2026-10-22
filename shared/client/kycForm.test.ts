@@ -43,6 +43,7 @@ const complete = (): KycFormState => ({
   truthfulInformation: true,
   documentOwnership: true,
   privacyNotice: true,
+  biometricConsent: true,
 });
 
 describe('KYC form (web and app)', () => {

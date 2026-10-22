@@ -2,6 +2,7 @@ import jpeg from 'jpeg-js';
 import * as schema from '../db/schema';
 import type { AppDb } from './errors';
 import type { KycAutomation } from './automation';
+import type { FaceVerifier } from './faceVerification';
 import type { FaceMatchStatus, OcrResult } from '../../shared/kyc-core';
 
 /** A JPEG with sharp, evenly lit "printed text"; `blur` smears it until it fails the focus check. */
@@ -45,7 +46,7 @@ export function textJpeg(width: number, height: number, opts: { blur?: number } 
 export const ID_FRONT_B64 = () => `data:image/jpeg;base64,${textJpeg(1000, 630).toString('base64')}`;
 export const SELFIE_B64 = () => `data:image/jpeg;base64,${textJpeg(640, 640).toString('base64')}`;
 
-export function fakeAutomation(opts: { face?: FaceMatchStatus; confidence?: number; ocrFields?: OcrResult['fields'] } = {}): KycAutomation {
+export function fakeAutomation(opts: { ocrFields?: OcrResult['fields'] } = {}): KycAutomation {
   return {
     provider: 'fake',
     async scanId() {
@@ -61,8 +62,16 @@ export function fakeAutomation(opts: { face?: FaceMatchStatus; confidence?: numb
         processedAt: new Date().toISOString(),
       };
     },
-    async compareFaces() {
-      return { status: opts.face ?? 'MATCH', provider: 'fake', confidence: opts.confidence ?? 91, details: 'fake' };
+  };
+}
+
+/** A face verifier answering as told; provider "fake" is not a trusted face-verification service. */
+export function fakeFaceVerifier(opts: { status?: FaceMatchStatus; confidence?: number | null; provider?: string | null } = {}): FaceVerifier {
+  const provider = opts.provider === undefined ? 'fake' : opts.provider;
+  return {
+    provider,
+    async compare() {
+      return { status: opts.status ?? 'MATCH', provider, confidence: opts.confidence === undefined ? 97 : opts.confidence, details: 'fake' };
     },
   };
 }
@@ -134,6 +143,6 @@ export function completeApplication(idNumber = '0111-2345678-9', mobileNumber = 
     contactInfo: { mobileNumber },
     employment: { employmentStatus: 'Self-Employed', businessName: 'JDC Store', natureOfBusiness: 'Retail', monthlyIncome: 25000, monthlyExpenses: 12000, sourceOfIncome: 'Business' },
     governmentId: { idType: 'UMID', idNumber, nameOnId: 'JUAN SANTOS DELA CRUZ', ocrData: { forged: true }, faceMatchResult: { isMatch: true } },
-    declarations: { truthfulInformation: true, documentOwnership: true, privacyNotice: true },
+    declarations: { truthfulInformation: true, documentOwnership: true, privacyNotice: true, biometricConsent: true },
   };
 }

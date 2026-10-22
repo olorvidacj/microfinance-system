@@ -1,8 +1,7 @@
 import crypto from 'crypto';
-import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {
-  ALWAYS_REQUIRED_KINDS,
   DOCUMENT_KIND_LABELS,
   IMAGE_ONLY_KINDS,
   KYC_DECISIONS,
@@ -10,8 +9,9 @@ import {
   assertTransition,
   assessImageQuality,
   composeFullName,
+  KYC_SECTION_LABELS,
   documentKindFor,
-  faceCheckBlocksSubmission,
+  faceCheckIsVerification,
   findDiscrepancies,
   firstIssueStep,
   isEditableByClient,
@@ -22,11 +22,18 @@ import {
   normalizeIdNumber,
   normalizePhilippineMobile,
   parseKycDecision,
+  parseSections,
+  requiredDocumentKinds,
+  sectionOfDocument,
+  sectionOfField,
+  sectionOpen,
   validateKycApplication,
+  type Discrepancy,
   type DocumentKind,
   type FaceCheck,
   type KycApplicationPayload,
   type KycIssue,
+  type KycSection,
   type KycStatus,
   type OcrResult,
   type QualityReport,
@@ -35,6 +42,7 @@ import { HttpError, translateDbError, type AppDb } from './errors';
 import { decodeImage, sniffMime } from './imageDecode';
 import { putKycObject, readKycObject, signedKycUrl, type StoredObjectRef } from './storage';
 import type { KycAutomation } from './automation';
+import type { FaceVerifier } from './faceVerification';
 import { openRegularAccountTx } from '../savings/service';
 
 // ---------------------------------------------------------------------------
@@ -243,6 +251,9 @@ async function moveTo(
 async function beginEditing(tx: AppDb, app: Submission, borrower: Borrower, actor: ClientActor, now: string): Promise<Submission> {
   const status = normaliseKycStatus(app.status);
   if (status === 'IN_PROGRESS' || status === 'CORRECTION_REQUIRED') return app;
+  if (status === 'REJECTED' && app.resubmissionAllowed === false) {
+    throw new HttpError(409, 'This application was rejected without resubmission. Please contact your branch about the decision.', 'RESUBMISSION_NOT_ALLOWED', { kycStatus: status });
+  }
   if (status === 'NOT_STARTED' || status === 'REJECTED') {
     const updated = await moveTo(tx, app, 'IN_PROGRESS', 'client', {}, now);
     await audit(tx, {
@@ -259,6 +270,68 @@ async function beginEditing(tx: AppDb, app: Submission, borrower: Borrower, acto
   throw new HttpError(409, `Your KYC application is ${kycStatusLabel(status).toLowerCase()} and cannot be changed right now.`, 'NOT_EDITABLE', {
     kycStatus: status,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Limits and correction scope
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-member limits, counted from the KYC audit log so they hold across
+ * restarts and servers. ID reading and face checks call paid services.
+ */
+export const KYC_LIMITS = {
+  uploads: { actions: ['DOCUMENT_UPLOADED'], max: 40, windowMs: 60 * 60 * 1000, message: 'Too many uploads in the last hour. Please wait a little and try again.' },
+  idScans: { actions: ['ID_SCANNED'], max: 10, windowMs: 60 * 60 * 1000, message: 'Your ID was read many times in the last hour. Please wait a little and try again.' },
+  faceChecks: { actions: ['FACE_CHECKED'], max: 10, windowMs: 60 * 60 * 1000, message: 'Your selfie was checked many times in the last hour. Please wait a little and try again.' },
+  submissions: { actions: ['SUBMITTED', 'RESUBMITTED'], max: 5, windowMs: 24 * 60 * 60 * 1000, message: 'Your application was submitted several times today. Please contact your branch.' },
+} as const;
+
+async function assertKycRate(db: AppDb, borrowerId: string, limit: (typeof KYC_LIMITS)[keyof typeof KYC_LIMITS]): Promise<void> {
+  const since = new Date(Date.now() - limit.windowMs).toISOString();
+  const [r] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.kycAuditLog)
+    .where(and(eq(schema.kycAuditLog.borrowerId, borrowerId), inArray(schema.kycAuditLog.action, [...limit.actions]), gte(schema.kycAuditLog.createdAt, since)));
+  if (Number(r?.n ?? 0) >= limit.max) throw new HttpError(429, limit.message, 'RATE_LIMITED');
+}
+
+/** The sections staff asked the member to change, while additional information is required. */
+function requestedSections(app: Submission | undefined): KycSection[] | null {
+  if (!app || normaliseKycStatus(app.status) !== 'CORRECTION_REQUIRED') return null;
+  const sections = parseSections(app.correctionSections);
+  return sections.length ? sections : null;
+}
+
+function refuseOutsideRequest(app: Submission, section: KycSection): never {
+  const asked = (requestedSections(app) ?? []).map((s) => KYC_SECTION_LABELS[s].toLowerCase()).join(', ');
+  throw new HttpError(409, `Your branch asked for changes to: ${asked}. ${KYC_SECTION_LABELS[section]} cannot be changed now.`, 'NOT_REQUESTED', {
+    section,
+    requestedSections: requestedSections(app),
+  });
+}
+
+function assertSectionOpen(app: Submission, section: KycSection): void {
+  if (!sectionOpen(section, requestedSections(app))) refuseOutsideRequest(app, section);
+}
+
+/** While changes are requested, a draft may only change the requested parts (and the declarations). */
+function assertDraftInScope(app: Submission, set: ReturnType<typeof draftSet>): void {
+  const requested = requestedSections(app);
+  if (!requested) return;
+  const stored: Record<string, unknown> = {
+    personalInfo: app.personalInfo,
+    address: app.address,
+    contactInfo: app.contactInfo,
+    employment: app.employment,
+    governmentId: app.governmentId,
+  };
+  for (const key of ['personalInfo', 'address', 'contactInfo', 'employment', 'governmentId'] as const) {
+    if (!(key in set)) continue;
+    const section = sectionOfField(key);
+    if (!section || sectionOpen(section, requested)) continue;
+    if (stableStringify((set as Record<string, unknown>)[key] ?? null) !== stableStringify(stored[key] ?? null)) refuseOutsideRequest(app, section);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -301,10 +374,27 @@ export async function saveDraft(db: AppDb, actor: ClientActor, payload: DraftPay
     let app = await lockApplication(tx, borrower.id, now);
     app = await beginEditing(tx, app, borrower, actor, now);
     const set = draftSet(payload);
+    assertDraftInScope(app, set);
+    const consentBefore = Boolean((app.declarations as Record<string, unknown> | null)?.biometricConsent);
     if (Object.keys(set).length > 0) {
       [app] = await tx.update(schema.kycSubmissions).set({ ...set, updatedAt: now }).where(eq(schema.kycSubmissions.id, app.id)).returning();
     }
+    await recordConsentChange(tx, borrower, app, actor, consentBefore, now);
     return { submissionId: app.id, status: normaliseKycStatus(app.status) };
+  });
+}
+
+/** The consent to biometric processing is recorded when it is given or withdrawn. */
+async function recordConsentChange(tx: AppDb, borrower: Borrower, app: Submission, actor: ClientActor, before: boolean, now: string) {
+  const after = Boolean((app.declarations as Record<string, unknown> | null)?.biometricConsent);
+  if (after === before) return;
+  await audit(tx, {
+    borrower,
+    submissionId: app.id,
+    actor,
+    action: after ? 'CONSENT_GIVEN' : 'CONSENT_WITHDRAWN',
+    metadata: { consent: 'BIOMETRIC_SELFIE_COMPARISON', notice: 'RA 10173 sensitive personal information: selfie compared with the ID portrait for identity verification' },
+    now,
   });
 }
 
@@ -445,6 +535,8 @@ export async function uploadDocument(db: AppDb, actor: ClientActor, input: Uploa
   if (pre[0] && !isEditableByClient(pre[0].status)) {
     throw new HttpError(409, `Your KYC application is ${kycStatusLabel(pre[0].status).toLowerCase()} and documents cannot be changed right now.`, 'NOT_EDITABLE');
   }
+  if (pre[0]) assertSectionOpen(pre[0], sectionOfDocument(input.kind));
+  await assertKycRate(db, actor.borrowerId, KYC_LIMITS.uploads);
 
   const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
   const ref = await putKycObject({ borrowerId: actor.borrowerId, kind: input.kind, buffer, mime });
@@ -523,6 +615,9 @@ function declaredIdentity(app: Submission, borrower: Borrower) {
 }
 
 export async function runIdScan(db: AppDb, automation: KycAutomation, actor: ClientActor) {
+  const [pre] = await db.select().from(schema.kycSubmissions).where(eq(schema.kycSubmissions.borrowerId, actor.borrowerId)).limit(1);
+  if (pre) assertSectionOpen(pre, 'ID_UPLOAD');
+  await assertKycRate(db, actor.borrowerId, KYC_LIMITS.idScans);
   const docs = await currentDocuments(db, actor.borrowerId);
   const front = currentOf(docs, 'ID_FRONT');
   if (!front) throw new HttpError(409, 'Upload a photo of the front of your ID first.', 'MISSING_DOCUMENT');
@@ -560,7 +655,18 @@ export async function runIdScan(db: AppDb, automation: KycAutomation, actor: Cli
   });
 }
 
-export async function runFaceCheck(db: AppDb, automation: KycAutomation, actor: ClientActor): Promise<FaceCheck> {
+/**
+ * Compares the stored selfie with the stored ID photo through the configured
+ * face-verification service. Needs the member's consent. Without a service
+ * the result says so, and a branch officer compares the photos.
+ */
+export async function runFaceCheck(db: AppDb, verifier: FaceVerifier, actor: ClientActor): Promise<FaceCheck> {
+  const [pre] = await db.select().from(schema.kycSubmissions).where(eq(schema.kycSubmissions.borrowerId, actor.borrowerId)).limit(1);
+  if (!(pre?.declarations as Record<string, unknown> | null)?.biometricConsent) {
+    throw new HttpError(400, 'Agree to the use of your selfie for identity verification first.', 'CONSENT_REQUIRED', { field: 'declarations.biometricConsent' });
+  }
+  assertSectionOpen(pre, 'FACE_MATCH');
+  await assertKycRate(db, actor.borrowerId, KYC_LIMITS.faceChecks);
   const docs = await currentDocuments(db, actor.borrowerId);
   const front = currentOf(docs, 'ID_FRONT');
   const selfie = currentOf(docs, 'SELFIE');
@@ -570,7 +676,7 @@ export async function runFaceCheck(db: AppDb, automation: KycAutomation, actor: 
   const selfieRef = refOf(selfie);
   if (!frontRef || !selfieRef) throw new HttpError(409, 'Please upload your ID and selfie again.', 'MISSING_DOCUMENT');
 
-  const result = await automation.compareFaces(
+  const result = await verifier.compare(
     { buffer: await readKycObject(frontRef), mime: front.mimeType || 'image/jpeg' },
     { buffer: await readKycObject(selfieRef), mime: selfie.mimeType || 'image/jpeg' },
   );
@@ -598,15 +704,17 @@ export async function runFaceCheck(db: AppDb, automation: KycAutomation, actor: 
   return check;
 }
 
-async function requiredKinds(tx: AppDb): Promise<DocumentKind[]> {
+/** The documents this application needs, given the ID type the member chose. */
+async function requiredKinds(tx: AppDb, idType: string | null | undefined): Promise<DocumentKind[]> {
   const configured = await tx.select().from(schema.kycRequiredDocuments).where(eq(schema.kycRequiredDocuments.isActive, true));
-  const kinds = new Set<DocumentKind>(ALWAYS_REQUIRED_KINDS);
-  for (const r of configured) {
-    const k = documentKindFor(r.documentType);
-    if (k !== 'OTHER') kinds.add(k);
-  }
-  return [...kinds];
+  return requiredDocumentKinds(
+    configured.map((r) => documentKindFor(r.documentType)),
+    idType,
+  );
 }
+
+const chosenIdType = (app: Submission | undefined, borrower: Borrower) =>
+  ((app?.governmentId as Record<string, unknown> | null)?.idType as string | undefined) ?? app?.idType ?? borrower.idType;
 
 export class KycSubmissionIncomplete extends HttpError {
   constructor(readonly issues: KycIssue[]) {
@@ -624,6 +732,7 @@ export async function submitApplication(
 ): Promise<{ status: KycStatus; referenceNumber: string; version: number }> {
   const now = new Date().toISOString();
   const today = manilaToday();
+  await assertKycRate(db, actor.borrowerId, KYC_LIMITS.submissions);
   return inKycTransaction(db, 'client', async (tx) => {
     const borrower = await loadBorrower(tx, actor.borrowerId);
     let app = await lockApplication(tx, borrower.id, now);
@@ -631,9 +740,12 @@ export async function submitApplication(
     app = await beginEditing(tx, app, borrower, actor, now);
     if (payload) {
       const set = draftSet(payload);
+      assertDraftInScope(app, set);
+      const consentBefore = Boolean((app.declarations as Record<string, unknown> | null)?.biometricConsent);
       if (Object.keys(set).length > 0) {
         [app] = await tx.update(schema.kycSubmissions).set({ ...set, updatedAt: now }).where(eq(schema.kycSubmissions.id, app.id)).returning();
       }
+      await recordConsentChange(tx, borrower, app, actor, consentBefore, now);
     }
 
     const fields: KycApplicationPayload = {
@@ -647,7 +759,7 @@ export async function submitApplication(
     const issues = validateKycApplication(fields, today);
 
     const docs = await currentDocuments(tx, borrower.id);
-    for (const kind of await requiredKinds(tx)) {
+    for (const kind of await requiredKinds(tx, chosenIdType(app, borrower))) {
       if (!currentOf(docs, kind)) {
         const step = kind === 'ID_FRONT' || kind === 'ID_BACK' ? 'ID_UPLOAD' : kind === 'SELFIE' ? 'FACE_MATCH' : 'DOCUMENTS';
         issues.push({ step, field: `documents.${kind}`, message: `Upload your ${DOCUMENT_KIND_LABELS[kind].toLowerCase()}.` });
@@ -657,10 +769,9 @@ export async function submitApplication(
     const front = currentOf(docs, 'ID_FRONT');
     const selfie = currentOf(docs, 'SELFIE');
     if (front && selfie) {
+      // Any result goes to the reviewer, who decides; a mismatch is flagged, never decided here.
       if (!face || face.idDocumentId !== front.id || face.selfieDocumentId !== selfie.id) {
-        issues.push({ step: 'FACE_MATCH', field: 'faceCheck', message: 'Complete the face verification step with your current ID and selfie.' });
-      } else if (faceCheckBlocksSubmission(face)) {
-        issues.push({ step: 'FACE_MATCH', field: 'faceCheck', message: 'Your selfie does not appear to match your ID photo. Please retake the selfie in good light.' });
+        issues.push({ step: 'FACE_MATCH', field: 'faceCheck', message: 'Complete the selfie step with your current ID and selfie.' });
       }
     }
     if (front && !app.ocrResult) {
@@ -863,6 +974,13 @@ export interface DecisionInput {
   reason: unknown;
   /** Sections the member must fix, for a resubmission request. */
   sections?: unknown;
+  /** For a rejection: whether the member may correct and submit again (default yes). */
+  allowResubmission?: unknown;
+  /**
+   * For an approval without a face-verification match: the reviewer confirms
+   * they compared the selfie with the ID photo themselves.
+   */
+  faceReviewed?: unknown;
   idempotencyKey?: string | null;
 }
 
@@ -877,7 +995,12 @@ export async function decideApplication(
   const reason = String(input.reason ?? '').trim();
   if (reason.length < 3) throw new HttpError(400, 'Give a reason for this decision; the member will see it.', 'REASON_REQUIRED');
   if (reason.length > 1000) throw new HttpError(400, 'The reason is too long (1000 characters at most).', 'REASON_TOO_LONG');
-  const sections = Array.isArray(input.sections) ? input.sections.map((s) => String(s)).slice(0, 10) : [];
+  const sections = parseSections(input.sections);
+  if (decision === 'REQUEST_RESUBMISSION' && sections.length === 0) {
+    throw new HttpError(400, 'Choose which parts of the application the member must change.', 'SECTIONS_REQUIRED', { field: 'sections' });
+  }
+  const allowResubmission = input.allowResubmission === undefined ? true : input.allowResubmission === true;
+  const faceReviewed = input.faceReviewed === true;
   const key = input.idempotencyKey ? String(input.idempotencyKey).slice(0, 100) : null;
   const target = KYC_DECISIONS[decision];
   const claimedAt = new Date();
@@ -905,12 +1028,21 @@ export async function decideApplication(
       throw new HttpError(409, `${app.claimedByName || 'Another reviewer'} is reviewing this application.`, 'CLAIMED');
     }
 
+    // A face-verification match helps; anything less needs the reviewer's own comparison.
+    const face = app.faceCheck as FaceCheck | null;
+    if (decision === 'APPROVE' && !faceCheckIsVerification(face) && !faceReviewed) {
+      throw new HttpError(409, 'The selfie has not been verified against the ID by a face-verification service. Compare them yourself and confirm before approving.', 'FACE_REVIEW_REQUIRED', {
+        faceCheckStatus: face?.status ?? null,
+        provider: face?.provider ?? null,
+      });
+    }
+
     const common = { reviewedBy: actor.userId, reviewedByName: actor.name, reviewedAt: now, lastIdempotencyKey: key };
     const set =
       decision === 'APPROVE'
         ? { ...common, decisionReason: reason, verifiedAt: now }
         : decision === 'REJECT'
-          ? { ...common, rejectionReason: reason, resubmissionAllowed: true }
+          ? { ...common, rejectionReason: reason, resubmissionAllowed: allowResubmission }
           : { ...common, correctionReason: reason, correctionSections: sections, correctionDetails: { sections, reason } };
     await moveTo(tx, app, target, 'staff', set, now);
 
@@ -927,7 +1059,13 @@ export async function decideApplication(
       previousStatus: 'UNDER_REVIEW',
       newStatus: target,
       reason,
-      metadata: { referenceNumber: app.referenceNumber, sections, idempotencyKey: key },
+      metadata: {
+        referenceNumber: app.referenceNumber,
+        sections,
+        idempotencyKey: key,
+        ...(decision === 'REJECT' ? { allowResubmission } : {}),
+        ...(decision === 'APPROVE' ? { faceVerifiedByService: faceCheckIsVerification(face), faceComparedByReviewer: faceReviewed } : {}),
+      },
       now,
     });
 
@@ -935,9 +1073,23 @@ export async function decideApplication(
     if (decision === 'APPROVE') {
       await notifyMember(tx, borrower, 'KYC_APPROVED', 'KYC verified', `Your KYC application${ref} has been verified. You can now apply for loans and use your savings account.`, now);
     } else if (decision === 'REJECT') {
-      await notifyMember(tx, borrower, 'KYC_REJECTED', 'KYC application rejected', `Your KYC application${ref} was rejected. Reason: ${reason} You can update your application and submit it again.`, now);
+      await notifyMember(
+        tx,
+        borrower,
+        'KYC_REJECTED',
+        'KYC application rejected',
+        `Your KYC application${ref} was rejected. Reason: ${reason} ${allowResubmission ? 'You can update your application and submit it again.' : 'Please contact your branch if you have questions about this decision.'}`,
+        now,
+      );
     } else {
-      await notifyMember(tx, borrower, 'KYC_RESUBMISSION_REQUIRED', 'KYC needs changes', `Your KYC application${ref} needs changes before it can be verified: ${reason}`, now);
+      await notifyMember(
+        tx,
+        borrower,
+        'KYC_RESUBMISSION_REQUIRED',
+        'KYC: additional information required',
+        `Your KYC application${ref} needs changes to ${sections.map((x) => KYC_SECTION_LABELS[x].toLowerCase()).join(', ')} before it can be approved: ${reason}`,
+        now,
+      );
     }
     return { status: target as KycStatus, replayed: false };
   });
@@ -968,8 +1120,8 @@ export interface DocumentRequirement {
   document: DocumentView | null;
 }
 
-async function requirementsView(tx: AppDb, docs: KycDocumentRow[]): Promise<DocumentRequirement[]> {
-  const kinds = await requiredKinds(tx);
+async function requirementsView(tx: AppDb, docs: KycDocumentRow[], idType: string | null | undefined): Promise<DocumentRequirement[]> {
+  const kinds = await requiredKinds(tx, idType);
   const out: DocumentRequirement[] = [];
   for (const kind of kinds) {
     const doc = currentOf(docs, kind);
@@ -990,7 +1142,8 @@ function decisionView(app: Submission | undefined) {
     decisionReason: app?.decisionReason ?? null,
     rejectionReason: app?.rejectionReason ?? null,
     correctionReason: app?.correctionReason ?? null,
-    correctionSections: (app?.correctionSections as string[]) ?? [],
+    correctionSections: parseSections(app?.correctionSections),
+    resubmissionAllowed: app?.resubmissionAllowed !== false,
     verifiedAt: app?.verifiedAt ?? null,
   };
 }
@@ -1052,9 +1205,9 @@ export async function clientKycView(db: AppDb, borrowerId: string) {
     checks: {
       ocr: (app?.ocrResult as OcrResult) ?? null,
       faceCheck: (app?.faceCheck as FaceCheck) ?? null,
-      discrepancies: (app?.discrepancies as unknown[]) ?? [],
+      discrepancies: (app?.discrepancies as Discrepancy[] | null) ?? [],
     },
-    requirements: await requirementsView(db, docs),
+    requirements: await requirementsView(db, docs, chosenIdType(app, borrower)),
   };
 }
 
@@ -1077,7 +1230,7 @@ const QUEUE_FILTERS: Readonly<Record<string, KycStatus[]>> = {
   NOT_STARTED: ['NOT_STARTED'],
 };
 
-export async function kycQueue(db: AppDb, scope: StaffScope, filters: { status?: string; search?: string; branchId?: string }) {
+export async function kycQueue(db: AppDb, scope: StaffScope, filters: { status?: string; search?: string; branchId?: string; submittedFrom?: string; submittedTo?: string }) {
   const branch = scope.viewAll ? filters.branchId || null : scope.branchId;
   if (!scope.viewAll && !branch) throw new HttpError(403, 'This account is not associated with a branch.', 'NO_BRANCH');
   const rows = await db
@@ -1107,6 +1260,8 @@ export async function kycQueue(db: AppDb, scope: StaffScope, filters: { status?:
       reviewedAt: s?.reviewedAt ?? null,
       faceCheckStatus: face?.status ?? null,
       faceConfidence: face?.confidence ?? null,
+      /** A match reported by a face-verification service (not an estimate). */
+      faceVerified: faceCheckIsVerification(face),
       ocrStatus: ocr?.status ?? null,
       discrepancyCount: Array.isArray(s?.discrepancies) ? (s?.discrepancies as unknown[]).length : 0,
       lastUpdated: s?.updatedAt ?? b.lastActivityDate ?? b.joinedDate,
@@ -1127,8 +1282,18 @@ export async function kycQueue(db: AppDb, scope: StaffScope, filters: { status?:
 
   const wanted = filters.status ? QUEUE_FILTERS[String(filters.status).toUpperCase()] : undefined;
   const q = String(filters.search ?? '').trim().toLowerCase();
+  // Submission dates are Manila calendar days (YYYY-MM-DD), inclusive.
+  const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  const from = day(filters.submittedFrom);
+  const to = day(filters.submittedTo);
+  const submittedDay = (iso: string | null) => (iso ? manilaToday(new Date(iso)) : null);
   const filtered = items
     .filter((i) => !wanted || wanted.includes(i.kycStatus))
+    .filter((i) => {
+      if (!from && !to) return true;
+      const d = submittedDay(i.submittedAt);
+      return d !== null && (!from || d >= from) && (!to || d <= to);
+    })
     .filter(
       (i) =>
         !q ||
@@ -1217,9 +1382,9 @@ export async function kycDossier(db: AppDb, scope: StaffScope, borrowerId: strin
     checks: {
       ocr: (app?.ocrResult as OcrResult) ?? null,
       faceCheck: (app?.faceCheck as FaceCheck) ?? null,
-      discrepancies: (app?.discrepancies as unknown[]) ?? [],
+      discrepancies: (app?.discrepancies as Discrepancy[] | null) ?? [],
     },
-    requirements: await requirementsView(db, current),
+    requirements: await requirementsView(db, current, chosenIdType(app, borrower)),
     documents: await Promise.all(allDocs.map(async (d) => ({ ...(await toView(d)), current: currentIds.has(d.id) }))),
     snapshots,
     auditTrail: auditTrail.map((a) => ({

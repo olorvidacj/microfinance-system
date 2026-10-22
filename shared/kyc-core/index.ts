@@ -5,3 +5,5 @@ export * from './imageQuality';
 export * from './discrepancies';
 export * from './types';
 export * from './profile';
+export * from './sections';
+export * from './liveFrame';

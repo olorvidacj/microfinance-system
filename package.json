@@ -19,6 +19,7 @@
     "db:verify": "tsx scripts/db/verify.mts"
   },
   "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.1155.0",
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/vite": "^4.1.14",

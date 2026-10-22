@@ -1,4 +1,3 @@
-import { FACE_MATCH_THRESHOLDS } from './config';
 import type { Discrepancy, ExtractedIdentity } from './discrepancies';
 import type { QualityReport } from './imageQuality';
 
@@ -39,18 +38,28 @@ export interface FaceCheck {
   processedAt: string;
 }
 
-export function classifyFaceMatch(confidence: number): Extract<FaceMatchStatus, 'MATCH' | 'LOW_CONFIDENCE' | 'NO_MATCH'> {
-  if (confidence >= FACE_MATCH_THRESHOLDS.match) return 'MATCH';
-  if (confidence >= FACE_MATCH_THRESHOLDS.lowConfidence) return 'LOW_CONFIDENCE';
-  return 'NO_MATCH';
+/**
+ * Face-verification services whose result is evidence of a match. Results
+ * from anything else (including the AI estimates stored before 2026-10-22,
+ * provider "gemini:...") are not face verification.
+ */
+export const TRUSTED_FACE_PROVIDERS: readonly string[] = ['aws-rekognition'];
+
+/** Whether a face check is a real verification match. A reviewer still decides the application. */
+export function faceCheckIsVerification(check: FaceCheck | null | undefined): boolean {
+  return check?.status === 'MATCH' && TRUSTED_FACE_PROVIDERS.includes(String(check.provider ?? ''));
 }
 
-/**
- * A clear mismatch blocks submission; the member must retake the selfie.
- * Low confidence and an unavailable check go through, flagged for the reviewer.
- */
-export function faceCheckBlocksSubmission(check: FaceCheck | null | undefined): boolean {
-  return check?.status === 'NO_MATCH';
+/** How a face check reads to members and staff; never claims more than the provider said. */
+export function faceCheckSummary(check: FaceCheck | null | undefined): string {
+  if (!check) return 'Not checked yet';
+  if (!TRUSTED_FACE_PROVIDERS.includes(String(check.provider ?? ''))) {
+    return check.provider ? 'Not verified: an AI estimate, not face verification. Compare the photos yourself.' : 'No face-verification service: compare the photos yourself.';
+  }
+  if (check.status === 'MATCH') return `Matches the ID portrait (${check.confidence}% similarity)`;
+  if (check.status === 'LOW_CONFIDENCE') return `Uncertain (${check.confidence}% similarity): compare the photos yourself`;
+  if (check.status === 'NO_MATCH') return `May not match (${check.confidence}% similarity): compare the photos yourself`;
+  return check.details ?? 'The check could not be completed: compare the photos yourself.';
 }
 
 export interface AutomatedChecks {

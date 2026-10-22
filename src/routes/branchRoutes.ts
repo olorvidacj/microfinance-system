@@ -654,6 +654,8 @@ branchRouter.get('/kyc-queue', requireBranch(['manage_kyc', 'view_client_info', 
       status: req.query.status ? String(req.query.status) : undefined,
       search: req.query.search ? String(req.query.search) : undefined,
       branchId: req.query.branchId ? String(req.query.branchId) : undefined,
+      submittedFrom: req.query.submittedFrom ? String(req.query.submittedFrom) : undefined,
+      submittedTo: req.query.submittedTo ? String(req.query.submittedTo) : undefined,
     });
     res.json({ success: true, data: items, counts });
   } catch (err) {
@@ -703,6 +705,8 @@ branchRouter.post('/kyc/:id/review', requireBranch(['manage_kyc']), async (req, 
       decision: body.decision,
       reason: body.reason ?? body.notes,
       sections: body.sections,
+      allowResubmission: body.allowResubmission,
+      faceReviewed: body.faceReviewed,
       idempotencyKey: req.get('Idempotency-Key') || null,
     });
     res.json({ success: true, ...result });

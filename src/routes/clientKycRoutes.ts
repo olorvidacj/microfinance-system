@@ -1,8 +1,10 @@
-import { Router, type Request } from 'express';
+import { Router } from 'express';
+import type { AuthedRequest } from './clientMobileRoutes';
 import { eq } from 'drizzle-orm';
 import { getDb, schema } from '../db/index';
 import { HttpError, type AppDb } from '../kyc/errors';
 import { defaultAutomation } from '../kyc/automation';
+import { defaultFaceVerifier } from '../kyc/faceVerification';
 import {
   clientKycView,
   runFaceCheck,
@@ -13,9 +15,10 @@ import {
   type ClientActor,
   type DocumentView,
 } from '../kyc/service';
-import { documentKindFor, kycStatusLabel, type FaceCheck, type OcrResult } from '../../shared/kyc-core';
-import type { FaceMatchResultView, FaceMatchView, IdScanFieldsView, IdScanView, KycApplicationView, KycStatusView, KycUploadView } from '../../shared/client';
+import { documentKindFor, faceCheckIsVerification, faceCheckSummary, kycStatusLabel, type FaceCheck, type OcrResult } from '../../shared/kyc-core';
+import type { FaceMatchResultView, FaceMatchView, IdScanFieldsView, IdScanView, KycApplicationView, KycStatusFullView, KycStatusView, KycUploadView } from '../../shared/client';
 import { sendError } from './httpErrors';
+import { perUserLimit } from './requestLimit';
 
 /**
  * Member-facing KYC API (/api/client/kyc*). The response shapes keep the
@@ -23,14 +26,26 @@ import { sendError } from './httpErrors';
  */
 export const clientKycRouter = Router();
 
+// Uploads are decoded and analysed before anything is stored; cap how often one member can send them.
+// (Draft saves are small and autosaved, so they are not counted here.)
+clientKycRouter.post(
+  ['/kyc/documents/upload', '/kyc/selfie', '/kyc/process-id', '/kyc/match-face', '/kyc/submit'],
+  perUserLimit({
+    max: 60,
+    windowMs: 10 * 60 * 1000,
+    key: (req: AuthedRequest) => (req.authUser?.id ? `kyc:${req.authUser.id}` : null),
+    message: 'Too many requests in a short time. Please wait a few minutes and try again.',
+  }),
+);
+
 function database(): AppDb {
   const db = getDb();
   if (!db) throw new HttpError(503, 'The database is not available right now.', 'DB_UNAVAILABLE');
   return db as unknown as AppDb;
 }
 
-async function clientActor(req: Request): Promise<ClientActor> {
-  const auth = (req as any).authUser as { id: string; role: string; fullName?: string | null; email: string } | undefined;
+async function clientActor(req: AuthedRequest): Promise<ClientActor> {
+  const auth = req.authUser;
   if (!auth) throw new HttpError(401, 'Please sign in.', 'UNAUTHENTICATED');
   if (auth.role !== 'CLIENT') throw new HttpError(403, 'Only members can manage their own KYC.', 'FORBIDDEN');
   const db = database();
@@ -87,12 +102,14 @@ function legacyFace(check: FaceCheck | null): FaceMatchResultView | null {
   return {
     status: check.status,
     matchStatus: check.status,
-    isMatch: check.status === 'MATCH',
+    isMatch: faceCheckIsVerification(check),
+    provider: check.provider,
+    summary: faceCheckSummary(check),
     matchConfidence: check.confidence,
     details:
       check.details ??
       (check.status === 'UNAVAILABLE' ? 'Automated face comparison is not available; a branch officer will compare your photos.' : null),
-    recommendation: check.status === 'NO_MATCH' ? 'RETRY_SELFIE' : check.status === 'MATCH' ? 'CONTINUE' : 'MANUAL_REVIEW',
+    recommendation: check.status === 'NO_MATCH' || (check.status === 'FAILED' && /Retake/.test(check.details ?? '')) ? 'RETRY_SELFIE' : faceCheckIsVerification(check) ? 'CONTINUE' : 'MANUAL_REVIEW',
     processedAt: check.processedAt,
   };
 }
@@ -120,6 +137,7 @@ clientKycRouter.get('/kyc-status', async (req, res) => {
       rejectionReason: view.rejectionReason,
       correctionReason: view.correctionReason,
       correctionDetails: view.correctionSections.length ? { sections: view.correctionSections, reason: view.correctionReason } : null,
+      resubmissionAllowed: view.resubmissionAllowed,
       requiredDocuments: view.requirements.map((r) => ({
         type: r.kind,
         name: r.label,
@@ -131,15 +149,13 @@ clientKycRouter.get('/kyc-status', async (req, res) => {
       member: view.member,
       submission: view.application as KycApplicationView,
     };
-    res.json({
-      success: true,
+    const full: KycStatusFullView = {
       ...status,
-      submissionId: view.referenceNumber,
-      uploadedDocuments: docs,
       extractedIdData: legacyScan(view.checks.ocr),
       faceMatchResult: legacyFace(view.checks.faceCheck),
       discrepancies: view.checks.discrepancies,
-    });
+    };
+    res.json({ success: true, ...full, submissionId: view.referenceNumber, uploadedDocuments: docs });
   } catch (err) {
     sendError(res, err, 'kyc-status');
   }
@@ -221,16 +237,21 @@ clientKycRouter.post('/kyc/selfie', async (req, res) => {
   }
 });
 
-/** Stores the ID photo(s), then reads them with the automated scanner. */
+/**
+ * Stores any new ID photo (front, back or both), then reads the stored ones
+ * with the automated scanner. With no new photo it reads the stored ID again.
+ */
 clientKycRouter.post('/kyc/process-id', async (req, res) => {
   try {
     const actor = await clientActor(req);
     const { frontImageBase64, backImageBase64, fileName } = req.body || {};
-    if (!frontImageBase64) throw new HttpError(400, 'Upload a photo of the front of your ID.', 'NO_FILE');
     const db = database();
-    const front = await uploadDocument(db, actor, { kind: 'ID_FRONT', base64: String(frontImageBase64), fileName });
-    const back = backImageBase64 ? await uploadDocument(db, actor, { kind: 'ID_BACK', base64: String(backImageBase64) }) : null;
+    if (frontImageBase64) await uploadDocument(db, actor, { kind: 'ID_FRONT', base64: String(frontImageBase64), fileName });
+    if (backImageBase64) await uploadDocument(db, actor, { kind: 'ID_BACK', base64: String(backImageBase64) });
     const { ocr, discrepancies } = await runIdScan(db, defaultAutomation(), actor);
+    const stored = (await clientKycView(db, actor.borrowerId)).requirements;
+    const front = stored.find((r) => r.kind === 'ID_FRONT')?.document ?? null;
+    const back = stored.find((r) => r.kind === 'ID_BACK')?.document ?? null;
     const scan = legacyScan(ocr);
     const body: IdScanView = {
       validation: {
@@ -239,7 +260,7 @@ clientKycRouter.post('/kyc/process-id', async (req, res) => {
         confidenceScore: ocr.confidence,
         detectedType: ocr.detectedIdType,
         validationWarnings: scan?.validationWarnings ?? [],
-        qualityChecks: front.quality?.metrics ?? null,
+        qualityChecks: front?.quality?.metrics ?? null,
         qualityMessage:
           ocr.status === 'UNAVAILABLE'
             ? 'Your ID photo passed the quality check. Automatic reading is not available, so please type your details exactly as printed.'
@@ -250,7 +271,7 @@ clientKycRouter.post('/kyc/process-id', async (req, res) => {
                 : 'Your ID was read. Please check every field against the card.',
       },
       extractedData: scan,
-      document: { id: front.id, frontFileUrl: front.url, backFileUrl: back?.url ?? null },
+      document: { id: front?.id ?? '', frontFileUrl: front?.url ?? null, backFileUrl: back?.url ?? null },
     };
     res.json({ success: true, ...body, discrepancies });
   } catch (err) {
@@ -258,16 +279,20 @@ clientKycRouter.post('/kyc/process-id', async (req, res) => {
   }
 });
 
-/** Stores the selfie, then compares it with the stored ID photo (never one sent by the browser). */
+/**
+ * Stores a new selfie if one is sent, then compares the stored selfie with the
+ * stored ID photo (never images supplied for the comparison by the browser).
+ * With no new selfie it compares again, e.g. after a new ID photo.
+ */
 clientKycRouter.post('/kyc/match-face', async (req, res) => {
   try {
     const actor = await clientActor(req);
     const { selfieImageBase64 } = req.body || {};
-    if (!selfieImageBase64) throw new HttpError(400, 'Take a selfie first.', 'NO_FILE');
     const db = database();
-    const selfie = await uploadDocument(db, actor, { kind: 'SELFIE', base64: String(selfieImageBase64) });
-    const check = await runFaceCheck(db, defaultAutomation(), actor);
-    const body: FaceMatchView = { matchResult: legacyFace(check), selfie: { id: selfie.id, fileUrl: selfie.url } };
+    if (selfieImageBase64) await uploadDocument(db, actor, { kind: 'SELFIE', base64: String(selfieImageBase64) });
+    const check = await runFaceCheck(db, defaultFaceVerifier(), actor);
+    const selfie = (await clientKycView(db, actor.borrowerId)).requirements.find((r) => r.kind === 'SELFIE')?.document ?? null;
+    const body: FaceMatchView = { matchResult: legacyFace(check), selfie: { id: selfie?.id ?? '', fileUrl: selfie?.url ?? null } };
     res.json({ success: true, ...body });
   } catch (err) {
     sendError(res, err, 'kyc-match-face');

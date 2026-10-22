@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { findDiscrepancies, nameSimilarity } from './discrepancies';
-import { classifyFaceMatch, faceCheckBlocksSubmission } from './types';
+import { faceCheckIsVerification, faceCheckSummary, type FaceCheck } from './types';
 
 const TODAY = '2026-10-20';
 
@@ -35,22 +35,21 @@ describe('findDiscrepancies', () => {
   });
 });
 
-describe('face match classification', () => {
-  it.each([
-    [95, 'MATCH'],
-    [80, 'MATCH'],
-    [79, 'LOW_CONFIDENCE'],
-    [55, 'LOW_CONFIDENCE'],
-    [54, 'NO_MATCH'],
-  ])('confidence %d is %s', (c, s) => {
-    expect(classifyFaceMatch(c)).toBe(s);
+describe('face checks', () => {
+  const base: FaceCheck = { status: 'MATCH', provider: 'aws-rekognition', confidence: 98, details: null, idDocumentId: null, selfieDocumentId: null, processedAt: '' };
+
+  it('counts only a match from a face-verification service as verification', () => {
+    expect(faceCheckIsVerification(base)).toBe(true);
+    expect(faceCheckIsVerification({ ...base, status: 'LOW_CONFIDENCE' })).toBe(false);
+    expect(faceCheckIsVerification({ ...base, provider: 'gemini:gemini-2.5-flash' })).toBe(false);
+    expect(faceCheckIsVerification({ ...base, provider: null, status: 'UNAVAILABLE' })).toBe(false);
+    expect(faceCheckIsVerification(null)).toBe(false);
   });
 
-  it('only a clear mismatch blocks submission', () => {
-    const base = { provider: null, confidence: null, details: null, idDocumentId: null, selfieDocumentId: null, processedAt: '' };
-    expect(faceCheckBlocksSubmission({ ...base, status: 'NO_MATCH' })).toBe(true);
-    expect(faceCheckBlocksSubmission({ ...base, status: 'UNAVAILABLE' })).toBe(false);
-    expect(faceCheckBlocksSubmission({ ...base, status: 'LOW_CONFIDENCE' })).toBe(false);
-    expect(faceCheckBlocksSubmission(null)).toBe(false);
+  it('never describes an estimate or an unavailable check as a match', () => {
+    expect(faceCheckSummary({ ...base, provider: 'gemini:gemini-2.5-flash' })).toMatch(/Not verified/);
+    expect(faceCheckSummary({ ...base, provider: null, status: 'UNAVAILABLE' })).toMatch(/compare the photos yourself/);
+    expect(faceCheckSummary(base)).toMatch(/Matches the ID portrait \(98% similarity\)/);
+    expect(faceCheckSummary({ ...base, status: 'NO_MATCH', confidence: 30 })).toMatch(/May not match/);
   });
 });

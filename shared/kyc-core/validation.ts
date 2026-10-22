@@ -410,14 +410,17 @@ export function validateKycApplication(p: KycApplicationPayload, today: string):
   if (!d?.truthfulInformation) push('CONSENT', 'declarations.truthfulInformation', 'Confirm that your information is true and correct.');
   if (!d?.documentOwnership) push('CONSENT', 'declarations.documentOwnership', 'Confirm that the documents are yours.');
   if (!d?.privacyNotice) push('CONSENT', 'declarations.privacyNotice', 'Accept the Data Privacy Notice (RA 10173).');
+  // The selfie is biometric data (RA 10173 sensitive personal information): it is used only with consent.
+  if (!d?.biometricConsent) push('FACE_MATCH', 'declarations.biometricConsent', 'Agree to the use of your selfie to check that it matches your ID photo.');
 
   return issues;
 }
 
-const STEP_ORDER: readonly KycStep[] = ['ID_UPLOAD', 'FACE_MATCH', 'PERSONAL_INFO', 'ADDRESS', 'CONTACT', 'FINANCIAL', 'DOCUMENTS', 'CONSENT'];
+/** The order of the member's guided flow: personal details, ID, selfie, work and documents, then the declarations. */
+export const KYC_STEP_ORDER: readonly KycStep[] = ['PERSONAL_INFO', 'CONTACT', 'ADDRESS', 'ID_UPLOAD', 'FACE_MATCH', 'FINANCIAL', 'DOCUMENTS', 'CONSENT'];
 
 /** The first step the member should return to, given a list of issues. */
 export function firstIssueStep(issues: readonly KycIssue[]): KycStep | null {
-  for (const step of STEP_ORDER) if (issues.some((i) => i.step === step)) return step;
+  for (const step of KYC_STEP_ORDER) if (issues.some((i) => i.step === step)) return step;
   return null;
 }
