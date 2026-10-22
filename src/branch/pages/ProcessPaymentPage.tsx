@@ -1,181 +1,268 @@
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Banknote, CheckCircle2, HandCoins } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { CheckCircle2, HandCoins } from 'lucide-react';
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  allocatePayment,
+  centsFromDb,
+  formatPeso,
+  parsePesos,
+  validatePayment,
+  type InstallmentBalance,
+  type PaymentErrors,
+  type ReceiptDocument,
+} from '../../../shared/lending';
 import { PageHeader } from '../../portal/components/ui/PageHeader';
 import { Button } from '../../portal/components/ui/Button';
 import { Card, CardHeader, CardTitle, CardBody } from '../../portal/components/ui/Card';
-import { Amount } from '../../portal/components/ui/Amount';
 import { Field, Input, Select, Textarea } from '../../portal/components/ui/Field';
-import { LoadingState, ErrorState } from '../../portal/components/ui/States';
+import { LoadingState, ErrorState, EmptyState } from '../../portal/components/ui/States';
+import { StatusBadge } from '../../portal/components/ui/StatusBadge';
 import { useToast } from '../../portal/components/ui/Toast';
+import { ReceiptModal } from '../../components/ReceiptModal';
+import { manilaToday, peso } from '../../components/lending';
 import { useBranchData } from '../hooks/useBranchData';
-import { collectionsService, loansService } from '../services';
-import { PaymentReceipt } from '../types';
-import { ReceiptViewer } from '../components/ReceiptViewer';
+import { loansService, paymentsService, type PayoffQuote } from '../services';
+import { BranchApiError } from '../services/api';
 
-const PAYMENT_METHODS = ['Cash', 'GCash', 'Maya', 'Bank Transfer', 'Postal Money Order', 'Check'];
+const newKey = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+const KIND_TEXT: Record<string, string> = {
+  PARTIAL: 'Partial payment: less than what is due now.',
+  FULL: 'Full payment of what is due.',
+  ADVANCE: 'Advance payment: the extra goes to the next installments.',
+  OVERPAYMENT: 'Overpayment: the loan is settled and the excess is held for the member (refund or savings).',
+};
+
+function balances(q: PayoffQuote): InstallmentBalance[] {
+  return q.installments.map((i) => ({
+    number: i.number,
+    dueDate: i.dueDate,
+    principalDue: centsFromDb(i.principalDue),
+    interestDue: centsFromDb(i.interestDue),
+    penaltyDue: centsFromDb(i.penaltyDue),
+    principalPaid: centsFromDb(i.principalPaid),
+    interestPaid: centsFromDb(i.interestPaid),
+    penaltyPaid: centsFromDb(i.penaltyPaid),
+  }));
+}
 
 const ProcessPaymentPage: React.FC = () => {
   const [params] = useSearchParams();
   const toast = useToast();
-
   const loansFetcher = useCallback(() => loansService.list({ status: 'Active' }), []);
   const loans = useBranchData(loansFetcher);
-  const active = (loans.data || []).filter((l) => ['Disbursed', 'Active', 'In Arrears'].includes(l.status));
+  const active = loans.data || [];
 
-  const initialLoan = useMemo(() => {
-    const preset = params.get('loan');
-    return preset && (loans.data || []).some((l) => l.id === preset) ? preset : '';
-  }, [params, loans.data]);
-
-  const [loanId, setLoanId] = useState(initialLoan);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [loanId, setLoanId] = useState(params.get('loan') || '');
+  const [quote, setQuote] = useState<PayoffQuote | null>(null);
+  const [quoteError, setQuoteError] = useState('');
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState(PAYMENT_METHODS[0]);
+  const [method, setMethod] = useState('CASH');
   const [reference, setReference] = useState('');
+  const [date, setDate] = useState(manilaToday());
   const [notes, setNotes] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
+  const [touched, setTouched] = useState(false);
+  const [serverErrors, setServerErrors] = useState<PaymentErrors>({});
+  const [saving, setSaving] = useState(false);
+  const [receipt, setReceipt] = useState<ReceiptDocument | null>(null);
+  const [key, setKey] = useState(newKey);
 
-  useEffect(() => {
-    if (initialLoan) setLoanId(initialLoan);
-  }, [initialLoan]);
-
-  const selected = active.find((l) => l.id === loanId);
-
-  useEffect(() => {
-    if (selected && !amount) {
-      setAmount(String(selected.remainingBalance > 0 ? Math.min(selected.remainingBalance, 1000) : 0));
+  const loadQuote = useCallback(async (id: string) => {
+    setQuote(null);
+    setQuoteError('');
+    if (!id) return;
+    try {
+      setQuote(await paymentsService.payoff(id));
+    } catch (err) {
+      setQuoteError(err instanceof Error ? err.message : 'The loan balance could not be loaded.');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id]);
+  }, []);
+
+  useEffect(() => {
+    if (!loanId && active.length) setLoanId(active[0].id);
+  }, [active, loanId]);
+  useEffect(() => {
+    loadQuote(loanId);
+    setAmount('');
+    setTouched(false);
+    setServerErrors({});
+    setKey(newKey());
+  }, [loanId, loadQuote]);
+
+  const today = manilaToday();
+  const validation = useMemo(() => validatePayment({ amount, method, referenceNumber: reference, paymentDate: date, notes }, today), [amount, method, reference, date, notes, today]);
+  const errors: PaymentErrors = { ...(touched ? validation.errors : {}), ...serverErrors };
+  const preview = useMemo(() => {
+    const cents = parsePesos(amount);
+    if (!quote || !cents) return null;
+    try {
+      return allocatePayment(balances(quote), cents, date);
+    } catch {
+      return null;
+    }
+  }, [quote, amount, date]);
 
   const submit = async () => {
-    if (!selected) {
-      toast.error('Select a loan account.');
-      return;
-    }
-    const amt = Number(amount) || 0;
-    if (amt <= 0 || amt > selected.remainingBalance) {
-      toast.error('Amount must be between 0 and the outstanding balance.');
-      return;
-    }
-    setLoading(true);
+    setTouched(true);
+    setServerErrors({});
+    if (!validation.ok || !quote) return;
+    setSaving(true);
     try {
-      const result = await collectionsService.recordPayment({
-        loanId: selected.id,
-        amount: amt,
-        date,
-        paymentMethod: method,
-        transactionReference: reference || undefined,
-        notes: notes || undefined,
-      });
-      setReceipt(result.receipt);
-      setAmount('');
+      const r = await paymentsService.post(quote.loanId, { amount, method, referenceNumber: reference.trim() || undefined, paymentDate: date, notes: notes.trim() || undefined }, key);
+      toast.success(`${r.payment.receiptNumber}: ${peso(r.payment.amount)} posted${r.loan.status === 'Closed' ? ' and the loan is now closed' : ''}.`);
+      setReceipt(r.receipt);
       setReference('');
       setNotes('');
-      toast.success('Payment recorded');
-    } catch (err: any) {
-      toast.error(err?.message || 'Unable to record payment.');
+      setKey(newKey());
+      await loadQuote(quote.loanId);
+      setAmount('');
+      setTouched(false);
+      loans.reload();
+    } catch (err) {
+      if (err instanceof BranchApiError) setServerErrors(err.fieldErrors as PaymentErrors);
+      toast.error(err instanceof Error ? err.message : 'The payment could not be posted.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  if (loans.loading) return <LoadingState label="Loading active loans…" />;
+  if (loans.error) return <ErrorState message={loans.error} onRetry={loans.reload} />;
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      <PageHeader
-        title="Process payment"
-        subtitle="Record a loan collection and issue an official receipt"
-      />
-
-      {loans.loading ? (
-        <LoadingState label="Loading loan accounts…" />
-      ) : loans.error ? (
-        <ErrorState message={loans.error} onRetry={loans.reload} />
+    <div className="space-y-5">
+      <PageHeader title="Record payment" subtitle="Counter collections are allocated to penalty, then interest, then principal, oldest installment first." />
+      {active.length === 0 ? (
+        <EmptyState icon={<HandCoins className="h-6 w-6" />} title="No active loans" description="Payments can only be recorded against released, active loans." />
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><HandCoins className="h-4 w-4" /> Payment details</CardTitle>
-          </CardHeader>
-          <CardBody className="space-y-4">
-            <Field label="Loan account" required hint="Only disbursed / active loans are shown.">
-              <Select value={loanId} onChange={(e) => setLoanId(e.target.value)}>
-                <option value="">— Select loan —</option>
-                {active.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.loanNumber} · {l.borrowerName} ({l.productName})
-                  </option>
-                ))}
-              </Select>
-            </Field>
-
-            {selected && (
-              <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-slate-400">Borrower</p>
-                  <p className="text-sm font-semibold text-slate-800">{selected.borrowerName}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400">Outstanding balance</p>
-                  <Amount value={selected.remainingBalance} className="text-base font-bold" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400">Next payment</p>
-                  <p className="text-sm font-medium text-slate-700">
-                    {selected.daysInArrears && selected.daysInArrears > 0
-                      ? `${selected.daysInArrears} days overdue`
-                      : selected.nextPaymentDate || '—'}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Amount (₱)" required>
-                <Input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  max={selected?.remainingBalance}
-                />
-              </Field>
-              <Field label="Date" required>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              </Field>
-              <Field label="Payment method">
-                <Select value={method} onChange={(e) => setMethod(e.target.value)}>
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m}>{m}</option>
+        <div className="grid gap-5 lg:grid-cols-5">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Payment</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              <Field label="Loan" required>
+                <Select id="pay-loan" value={loanId} onChange={(e) => setLoanId(e.target.value)}>
+                  {active.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.loanNumber} · {l.borrowerName}
+                    </option>
                   ))}
                 </Select>
               </Field>
-              <Field label="Transaction reference" hint="GCash ref no., check no., etc.">
-                <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Optional" />
-              </Field>
-            </div>
-
-            <Field label="Notes">
-              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes" />
-            </Field>
-
-            <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <Banknote className="h-4 w-4" />
-                {selected
-                  ? `Max collectable: ${selected.remainingBalance.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}`
-                  : 'Select a loan to continue.'}
+              {quoteError && <p className="text-sm text-rose-700">{quoteError}</p>}
+              {quote && (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <button type="button" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-left hover:border-amber-400" onClick={() => setAmount(quote.due)}>
+                    <p className="text-xs font-semibold uppercase text-amber-700">Due now</p>
+                    <p className="text-lg font-bold tabular-nums text-amber-900">{peso(quote.due)}</p>
+                    {quote.daysPastDue > 0 && <p className="text-xs text-rose-700">{quote.daysPastDue} days past due</p>}
+                  </button>
+                  <button type="button" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left hover:border-emerald-400" onClick={() => setAmount(quote.payoff)}>
+                    <p className="text-xs font-semibold uppercase text-emerald-700">Pay off</p>
+                    <p className="text-lg font-bold tabular-nums text-emerald-900">{peso(quote.payoff)}</p>
+                    <p className="text-xs text-emerald-700">Closes the loan</p>
+                  </button>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Amount received (₱)" required error={errors.amount}>
+                  <Input id="pay-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                </Field>
+                <Field label="Payment date" required error={errors.paymentDate}>
+                  <Input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} />
+                </Field>
+                <Field label="Method" required error={errors.method}>
+                  <Select id="pay-method" value={method} onChange={(e) => setMethod(e.target.value)}>
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>
+                        {PAYMENT_METHOD_LABELS[m]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Reference number" required={method !== 'CASH'} error={errors.referenceNumber}>
+                  <Input id="pay-reference" value={reference} onChange={(e) => setReference(e.target.value)} placeholder={method === 'CASH' ? 'Optional' : 'Bank / e-wallet reference'} />
+                </Field>
               </div>
-              <Button variant="brand" onClick={submit} loading={loading} disabled={!selected}>
-                <CheckCircle2 className="h-4 w-4" /> Record payment
+              <Field label="Notes" error={errors.notes}>
+                <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+              </Field>
+              <Button variant="brand" fullWidth onClick={submit} loading={saving} disabled={!quote}>
+                <CheckCircle2 className="h-4 w-4" /> Post payment {preview ? formatPeso(preview.amount) : ''}
               </Button>
-            </div>
-          </CardBody>
-        </Card>
-      )}
+              {quote && (
+                <Link to={`/staff/app/loans/${quote.loanId}`} className="block text-center text-xs font-semibold text-emerald-700 hover:underline">
+                  Open {quote.loanNumber}
+                </Link>
+              )}
+            </CardBody>
+          </Card>
 
-      <ReceiptViewer receipt={receipt} onClose={() => setReceipt(null)} />
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>How this payment will be applied</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              {!quote ? (
+                <LoadingState label="Loading balance…" />
+              ) : (
+                <>
+                  {preview ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                      <p className="font-semibold text-slate-800">{KIND_TEXT[preview.kind]}</p>
+                      <p className="mt-1 text-slate-600">
+                        Penalty {formatPeso(preview.penalty)} · Interest {formatPeso(preview.interest)} · Principal {formatPeso(preview.principal)}
+                        {preview.excess > 0 ? ` · Overpayment ${formatPeso(preview.excess)}` : ''}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">Enter an amount to see how it is split.</p>
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          {['#', 'Due', 'Status', 'Owed', 'This payment', 'Left after'].map((h) => (
+                            <th key={h} className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 tabular-nums">
+                        {quote.installments.map((i) => {
+                          const owed = centsFromDb(i.principalDue) + centsFromDb(i.interestDue) + centsFromDb(i.penaltyDue) - centsFromDb(i.principalPaid) - centsFromDb(i.interestPaid) - centsFromDb(i.penaltyPaid);
+                          const line = preview?.lines.find((l) => l.number === i.number);
+                          const applied = line ? line.penalty + line.interest + line.principal : 0;
+                          return (
+                            <tr key={i.number} className={applied ? 'bg-emerald-50/50' : ''}>
+                              <td className="px-3 py-2 text-slate-400">{i.number}</td>
+                              <td className="px-3 py-2">{i.dueDate}</td>
+                              <td className="px-3 py-2">
+                                <StatusBadge status={i.status} />
+                              </td>
+                              <td className="px-3 py-2">
+                                {formatPeso(owed)}
+                                {centsFromDb(i.penaltyDue) > 0 && <span className="block text-[11px] text-rose-600">incl. penalty {peso(i.penaltyDue)}</span>}
+                              </td>
+                              <td className="px-3 py-2 font-semibold text-emerald-700">{applied ? formatPeso(applied) : '—'}</td>
+                              <td className="px-3 py-2">{formatPeso(owed - applied)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      )}
+      <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { ApiError, clientRequest } from './clientApi';
+import type { KycApplicationPayload } from '../../../shared/kyc-core';
 import {
   ClientProfile,
   KycStatusData,
@@ -10,16 +11,22 @@ import {
 
 export const profileService = {
   async get(): Promise<ClientProfile> {
-    const payload = await clientRequest('/api/client/profile', undefined, (p) => p?.profile);
-    return (payload || {}) as ClientProfile;
+    const profile: ClientProfile | undefined = await clientRequest('/api/client/profile', undefined, (p) => p?.profile);
+    if (!profile) throw new ApiError('Your profile could not be loaded.');
+    return profile;
   },
 
-  async update(updates: Partial<ClientProfile>): Promise<void> {
+  async update(updates: Record<string, string>): Promise<void> {
     const payload = await clientRequest('/api/client/profile', {
       method: 'PATCH',
       body: JSON.stringify(updates),
     });
     if (!payload?.success) throw new ApiError(payload?.message || 'Profile update failed');
+  },
+
+  /** Change the signed-in member's password (current one required). */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await clientRequest('/api/client/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
   },
 
   async uploadAvatar(avatarUrl: string): Promise<void> {
@@ -34,15 +41,7 @@ export const profileService = {
     return payload || { kycStatus: 'NOT_STARTED', isVerified: false, requiredDocuments: [], uploadedDocuments: [] };
   },
 
-  async saveDraft(data: {
-    personalInfo?: any;
-    address?: any;
-    contactInfo?: any;
-    employment?: any;
-    governmentId?: any;
-    declarations?: any;
-    currentStep?: number;
-  }): Promise<any> {
+  async saveDraft(data: KycApplicationPayload & { currentStep?: number }): Promise<any> {
     const payload = await clientRequest('/api/client/kyc/save-draft', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -51,14 +50,7 @@ export const profileService = {
     return payload;
   },
 
-  async submitKyc(data: {
-    personalInfo: any;
-    address: any;
-    contactInfo: any;
-    employment: any;
-    governmentId: any;
-    declarations: any;
-  }): Promise<any> {
+  async submitKyc(data: KycApplicationPayload): Promise<any> {
     const payload = await clientRequest('/api/client/kyc/submit', {
       method: 'POST',
       body: JSON.stringify(data),

@@ -29,7 +29,10 @@ export const StatusBadge: React.FC<{
 };
 
 export function toneFor(status: string): Tone {
-  const s = status?.toUpperCase() || '';
+  const s = (status || '').toUpperCase().replace(/[\s-]+/g, '_');
+  if (['DRAFT', 'INACTIVE'].includes(s)) return 'slate';
+  if (['WRITTEN_OFF'].includes(s)) return 'red';
+  if (['PARTIAL', 'DUE'].includes(s)) return 'amber';
   if (['VERIFIED', 'ACTIVE', 'COMPLETED', 'PAID_OFF', 'APPROVED', 'DISBURSED', 'SUCCESS', 'CONFIRMED'].some((k) => s.includes(k)))
     return 'green';
   if (['REJECTED', 'FAILED', 'OVERDUE', 'LATE', 'CANCELLED', 'BLOCKED', 'ARREARS'].some((k) => s.includes(k))) return 'red';

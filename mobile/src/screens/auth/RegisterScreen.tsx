@@ -13,9 +13,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppButton, AppTextInput, PasswordStrengthIndicator } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
+import { api, messageOf } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { AuthStackParamList } from '../../navigation/types';
+import type { UserSession } from '../../types';
 import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
@@ -59,10 +60,10 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
   const [registeredSession, setRegisteredSession] = useState<{
     fullName: string;
     email?: string;
-    session: any;
+    session: UserSession;
   } | null>(null);
 
-  const update = (key: keyof FormData, value: any) => {
+  const update = <K extends keyof FormData>(key: K, value: FormData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => {
       const next = { ...prev };
@@ -160,8 +161,8 @@ export const RegisterScreen: React.FC<Props> = ({ navigation }) => {
         email: session.user?.email || form.email.trim(),
         session,
       });
-    } catch (err: any) {
-      setGeneralError(err?.message || 'Registration failed. Please check your details and try again.');
+    } catch (err) {
+      setGeneralError(messageOf(err, 'Registration failed. Please check your details and try again.'));
     } finally {
       setSubmitting(false);
     }

@@ -7,9 +7,12 @@ import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AdminUser, formatDate } from '../data/mockData';
+import { Avatar } from '../../ui';
 import { adminApi } from '../services/adminApi';
 import { PasswordStrengthIndicator } from '../../components/common/PasswordStrengthIndicator';
 import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
+import { hasPermission, normalizeRole } from '../../auth/permissions';
+import { useAdminBranch } from '../branchScope';
 
 const ROLES = ['Administrator', 'Manager', 'Loan Officer', 'Teller', 'Client Services Staff', 'Bookkeeper', 'Auditor'];
 const STATUSES = ['Active', 'Inactive', 'Pending', 'Suspended'];
@@ -19,22 +22,27 @@ interface UserFormState {
   email: string;
   phone: string;
   role: string;
-  branch: string;
+  /** The branch a staff login works in; HEAD_OFFICE for every branch. */
+  branchId: string;
   password: string;
 }
 
-const EMPTY_FORM: UserFormState = { fullName: '', email: '', phone: '', role: 'Teller', branch: 'Tacloban Main', password: '' };
+/** Staff with all-branch access may work from head office instead of one branch. */
+const HEAD_OFFICE = 'all';
+const canWorkFromHeadOffice = (role: string) => hasPermission(normalizeRole(role), 'view_all_records');
 
-/** Maps a console role label onto the coarse account role the API expects. */
-const toAccountRole = (role: string): 'STAFF' | 'CLIENT' =>
-  role === 'Client Services Staff' || role === 'Client' ? 'CLIENT' : 'STAFF';
+const EMPTY_FORM: UserFormState = { fullName: '', email: '', phone: '', role: 'Teller', branchId: '', password: '' };
+
+/** Every role in the list is a staff position (Client Services Staff included); members register themselves. */
+const toAccountRole = (role: string): 'STAFF' | 'CLIENT' => (role === 'Client' ? 'CLIENT' : 'STAFF');
 
 export const UserManagementPage: React.FC = () => {
+  const { branchId: viewing, branches } = useAdminBranch();
   const [users, setUsers] = useState<AdminUser[]>([]);
 
   useEffect(() => {
-    adminApi.users().then(setUsers).catch(() => setUsers([]));
-  }, []);
+    adminApi.users(viewing).then(setUsers).catch(() => setUsers([]));
+  }, [viewing]);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -61,18 +69,33 @@ export const UserManagementPage: React.FC = () => {
     setTimeout(() => setToast(''), 2500);
   };
 
-  const openAdd = () => { setEditUser(null); setForm(EMPTY_FORM); setShowAddModal(true); };
-  const openEdit = (u: AdminUser) => { setEditUser(u); setForm({ fullName: u.fullName, email: u.email, phone: u.phone, role: u.role, branch: u.branch, password: '' }); setShowAddModal(true); };
+  // A new staff member starts in the branch the console is showing.
+  const openAdd = () => { setEditUser(null); setForm({ ...EMPTY_FORM, branchId: viewing ?? '' }); setShowAddModal(true); };
+  const openEdit = (u: AdminUser) => { setEditUser(u); setForm({ fullName: u.fullName, email: u.email, phone: u.phone, role: u.role, branchId: u.branchId ?? '', password: '' }); setShowAddModal(true); };
 
-  const reload = () => adminApi.users().then(setUsers).catch((e: Error) => showToast(e.message));
+  const reload = () => adminApi.users(viewing).then(setUsers).catch((e: Error) => showToast(e.message));
+
+  const editingMember = editUser?.accountRole === 'CLIENT';
+  const branchProblem = (): string => {
+    if (editingMember || toAccountRole(form.role) !== 'STAFF') return '';
+    if (!form.branchId) return 'Choose the branch this staff member works in.';
+    if (form.branchId === HEAD_OFFICE && !canWorkFromHeadOffice(form.role)) return `A ${form.role} works in one branch. Choose a branch, not head office.`;
+    return '';
+  };
 
   const saveUser = async () => {
+    const problem = branchProblem();
+    if (problem) {
+      showToast(problem);
+      return;
+    }
     if (editUser) {
       try {
         await adminApi.updateUser(editUser.id, {
           fullName: form.fullName,
-          staffRole: toAccountRole(form.role) === 'STAFF' ? form.role : undefined,
+          staffRole: !editingMember && toAccountRole(form.role) === 'STAFF' ? form.role : undefined,
           phone: form.phone,
+          ...(!editingMember && form.branchId !== (editUser.branchId ?? '') ? { branchId: form.branchId } : {}),
         });
         await reload();
         setShowAddModal(false);
@@ -99,6 +122,7 @@ export const UserManagementPage: React.FC = () => {
         role: accountRole,
         staffRole: accountRole === 'STAFF' ? form.role : undefined,
         phone: form.phone,
+        branchId: accountRole === 'STAFF' ? form.branchId : undefined,
       });
       setShowAddModal(false);
       await reload();
@@ -191,7 +215,7 @@ export const UserManagementPage: React.FC = () => {
               header: 'Staff Member',
               render: (u) => (
                 <div className="flex items-center gap-3">
-                  <img src={u.avatar} alt={u.fullName} className="w-9 h-9 rounded-xl object-cover border border-slate-200 shadow-sm shrink-0" />
+                  <Avatar src={u.avatar} name={u.fullName} size={36} className="rounded-xl border border-slate-200" />
                   <div className="min-w-0">
                     <p className="font-bold text-slate-900 truncate">{u.fullName}</p>
                     <p className="text-[11px] font-mono text-slate-400">{u.id}</p>
@@ -229,7 +253,7 @@ export const UserManagementPage: React.FC = () => {
               render: (u) => (
                 <span className="inline-flex items-center gap-1 text-xs text-slate-600">
                   <Building className="w-3.5 h-3.5 text-amber-600" />
-                  {u.branch}
+                  {u.branch || (u.accountRole === 'STAFF' ? 'No branch' : '—')}
                 </span>
               ),
             },
@@ -296,10 +320,20 @@ export const UserManagementPage: React.FC = () => {
             </select>
           </div>
           <div>
-            <label className={labelCls}>Branch Assignment</label>
-            <select className={inputCls} value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })}>
-              {['Tacloban Main', 'Palo Branch', 'Dulag Branch', 'Ormoc Extension', 'All Branches'].map((b) => <option key={b} value={b}>{b}</option>)}
-            </select>
+            <label className={labelCls} htmlFor="user-branch">Branch Assignment</label>
+            {editingMember ? (
+              <p className="px-3.5 py-2.5 text-xs sm:text-sm text-slate-600">{editUser?.branch || '—'} (the branch the member joined)</p>
+            ) : (
+              <>
+                <select id="user-branch" className={inputCls} value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
+                  <option value="">Choose a branch…</option>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {(canWorkFromHeadOffice(form.role) || form.branchId === HEAD_OFFICE) && <option value={HEAD_OFFICE}>All branches (head office)</option>}
+                </select>
+                {branchProblem() && form.branchId && <p className="mt-1 text-[11px] text-rose-600">{branchProblem()}</p>}
+                <p className="mt-1 text-[11px] text-slate-500">The staff app works in this branch. A change applies on their next action.</p>
+              </>
+            )}
           </div>
           {!editUser && (
             <div className="md:col-span-2 space-y-2">
@@ -334,7 +368,7 @@ export const UserManagementPage: React.FC = () => {
         {viewUser && (
           <div className="space-y-4">
             <div className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
-              <img src={viewUser.avatar} alt={viewUser.fullName} className="w-16 h-16 rounded-xl object-cover border border-slate-200 shadow-sm" />
+              <Avatar src={viewUser.avatar} name={viewUser.fullName} size={64} className="rounded-xl border border-slate-200" />
               <div>
                 <h4 className="font-bold text-slate-900 text-lg">{viewUser.fullName}</h4>
                 <p className="text-xs text-slate-500">{viewUser.id} · {viewUser.email}</p>
@@ -354,7 +388,7 @@ export const UserManagementPage: React.FC = () => {
               </div>
               <div className="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
                 <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Branch Location</p>
-                <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-800">{viewUser.branch}</p>
+                <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-800">{viewUser.branch || (viewUser.accountRole === 'STAFF' ? 'No branch assigned' : '—')}</p>
               </div>
               <div className="p-3 rounded-xl bg-slate-50/70 border border-slate-100">
                 <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Registration Date</p>

@@ -5,7 +5,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppButton, AppTextInput } from '../../components';
 import { AuthLayout } from './AuthLayout';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
+import { api, messageOf } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { firstError } from '../../utils/validation';
 import { AuthStackParamList } from '../../navigation/types';
@@ -45,8 +45,8 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
       const session = await api.login(identifier.trim(), password);
       await saveRememberme(identifier.trim(), remember);
       await signIn(session);
-    } catch (err: any) {
-      setShowError(err?.message || 'Sign in failed. Please check your credentials and try again.');
+    } catch (err) {
+      setShowError(messageOf(err, 'Sign in failed. Please check your credentials and try again.'));
     } finally {
       setLoading(false);
     }
@@ -114,12 +114,6 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
         <AppButton title="Sign In" onPress={handleSignIn} loading={loading} size="lg" icon={<Ionicons name="log-in-outline" size={18} color={colors.white} />} />
 
-        <View style={styles.demoNote}>
-          <Ionicons name="flask-outline" size={13} color={colors.textFaint} />
-          <Text style={styles.demoText}>
-            Demo: use <Text style={styles.demoCode}>demo</Text> / any password · Branch personnel: any password containing "branch"
-          </Text>
-        </View>
       </View>
     </AuthLayout>
   );
@@ -172,22 +166,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.teal,
     fontWeight: '700',
-  },
-  demoNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  demoText: {
-    fontSize: 11,
-    color: colors.textFaint,
-    marginLeft: 4,
-    textAlign: 'center',
-  },
-  demoCode: {
-    fontWeight: '700',
-    color: colors.textMuted,
   },
   signupWrap: {
     flexDirection: 'row',

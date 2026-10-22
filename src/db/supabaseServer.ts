@@ -47,26 +47,49 @@ export function isPlaceholderSupabaseUrl(url?: string | null): boolean {
   );
 }
 
+function supabaseUrlFromEnv(): string {
+  return process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+}
+
+/** Whether this server is pointed at a real Supabase project (whatever keys it has). */
+export function isSupabaseConfigured(): boolean {
+  const url = supabaseUrlFromEnv();
+  return Boolean(url) && !isPlaceholderSupabaseUrl(url);
+}
+
+/**
+ * A client that always acts as the service role.
+ *
+ * supabase-js sends the current session's access token instead of the key once
+ * anything signs in on a client. Pinning Authorization to the service key means
+ * a sign-in can never turn this client into a user: Storage and PostgREST calls
+ * stay service-role whatever happens on its auth API.
+ */
+export function createServiceRoleClient(url: string, serviceKey: string, fetchImpl: typeof fetch = timeoutFetch): SupabaseClient {
+  return createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: fetchImpl, headers: { Authorization: `Bearer ${serviceKey}` } },
+  });
+}
+
+/**
+ * The shared service-role client, or null when this server has no service-role
+ * key. It never falls back to the anon key: an anon client here would make
+ * every server-side upload and write an anonymous request, refused by RLS.
+ * Use it for admin and data work only, never to sign a user in.
+ */
 export function getServerSupabase(): SupabaseClient | null {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+  const supabaseUrl = supabaseUrlFromEnv();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
   if (supabaseMarkedFailed) return null;
-  if (!supabaseUrl || !serviceKey || isPlaceholderSupabaseUrl(supabaseUrl)) {
+  if (!serviceKey || !isSupabaseConfigured()) {
     return null;
   }
 
   if (!serverSupabaseClient) {
     try {
-      serverSupabaseClient = createClient(supabaseUrl, serviceKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-        global: {
-          fetch: timeoutFetch,
-        },
-      });
+      serverSupabaseClient = createServiceRoleClient(supabaseUrl, serviceKey);
     } catch (err) {
       console.error('[Server Supabase] Failed to initialize server-side client:', err);
       return null;
@@ -74,6 +97,21 @@ export function getServerSupabase(): SupabaseClient | null {
   }
 
   return serverSupabaseClient;
+}
+
+/**
+ * A new client for one user-facing auth call (password sign-in, email codes,
+ * password reset). The session such a call creates stays in this throwaway
+ * client and is never shared with other requests. Uses the public anon key,
+ * as these are public flows; the service key only when no anon key is set.
+ */
+export function createAuthFlowClient(fetchImpl: typeof fetch = timeoutFetch): SupabaseClient | null {
+  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (supabaseMarkedFailed || !key || !isSupabaseConfigured()) return null;
+  return createClient(supabaseUrlFromEnv(), key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: fetchImpl },
+  });
 }
 
 export async function testServerSupabaseConnection(): Promise<{

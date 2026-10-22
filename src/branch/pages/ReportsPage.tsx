@@ -22,7 +22,7 @@ const REPORT_TYPES = [
   { id: 'groups', label: 'Groups' },
 ];
 
-const MONEY_FIELDS = ['principalAmount', 'remainingBalance', 'amount', 'outstanding', 'outstandingBalance', 'totalGroupSavings', 'savingsBalance', 'totalSavings', 'total', 'deposits', 'withdrawals'];
+const MONEY_FIELDS = ['principalAmount', 'remainingBalance', 'amount', 'balanceAfter', 'outstanding', 'outstandingBalance', 'totalGroupSavings', 'savingsBalance', 'totalSavings', 'totalBalances', 'total', 'deposits', 'withdrawals', 'interest', 'fundBalance'];
 
 const exportCsv = (report: ReportRow) => {
   if (!report.rows.length) return;
@@ -104,7 +104,7 @@ const ReportBody: React.FC<{ report: ReportRow }> = ({ report }) => {
             <div key={k} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
               <p className="text-xs text-slate-400">{k}</p>
               <p className="mt-0.5 text-base font-bold tabular-nums text-slate-800">
-                {typeof v === 'number' && MONEY_FIELDS.includes(k) ? <Amount value={v} /> : typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}
+                {(typeof v === 'number' || typeof v === 'string') && MONEY_FIELDS.includes(k) && /^-?\d+(\.\d+)?$/.test(String(v)) ? <Amount value={v} /> : typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}
               </p>
             </div>
           ))}
@@ -130,7 +130,7 @@ const ReportBody: React.FC<{ report: ReportRow }> = ({ report }) => {
                 <tr key={i} className="hover:bg-slate-50">
                   {Object.entries(row).map(([k, v]) => (
                     <td key={k} className="whitespace-nowrap px-4 py-2.5 text-sm tabular-nums text-slate-700">
-                      {typeof v === 'number' && MONEY_FIELDS.includes(k) ? <Amount value={v} /> : v === null || v === undefined ? '—' : String(v)}
+                      {(typeof v === 'number' || typeof v === 'string') && MONEY_FIELDS.includes(k) && /^-?\d+(\.\d+)?$/.test(String(v)) ? <Amount value={v} /> : v === null || v === undefined ? '—' : String(v)}
                     </td>
                   ))}
                 </tr>

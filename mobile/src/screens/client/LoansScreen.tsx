@@ -1,12 +1,13 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppButton, AppCard, Badge, LoadingView, ScreenHeader, SectionHeader, SegmentedTabs } from '../../components';
+import { AppButton, AppCard, Badge, ErrorView, LoadingView, ScreenHeader, SectionHeader, SegmentedTabs } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
-import { LoanItem, LoanApplication, PaymentItem } from '../../types';
+import { api, messageOf } from '../../services/api';
+import type { ClientLoansView, LoanSummaryView, PaymentView } from '../../shared/client';
+import { paymentMethodLabel } from '../../shared/lending';
 import { formatCurrency, formatDate } from '../../utils/format';
 
 type TabKey = 'active' | 'applications' | 'history';
@@ -14,65 +15,59 @@ type TabKey = 'active' | 'applications' | 'history';
 export const LoansScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const [tab, setTab] = useState<TabKey>('active');
-  const [loaded, setLoaded] = useState(false);
+  const [loans, setLoans] = useState<ClientLoansView | null>(null);
+  const [payments, setPayments] = useState<PaymentView[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState<LoanItem[]>([]);
-  const [completed, setCompleted] = useState<LoanItem[]>([]);
-  const [applications, setApplications] = useState<LoanApplication[]>([]);
-  const [payments, setPayments] = useState<PaymentItem[]>([]);
+  const [error, setError] = useState('');
 
   const load = useCallback(async (silent = false) => {
-    if (!silent) setLoaded(false);
-    setError(null);
+    if (!silent) setLoading(true);
     try {
-      const [loansRes, appsRes, payRes] = await Promise.all([
-        api.getLoans(),
-        api.getLoanApplications(),
-        api.getPayments(),
-      ]);
-      setActive(loansRes.activeLoans);
-      setCompleted(loansRes.completedLoans);
-      setApplications([...appsRes].sort((a, b) => (a.applicationDate < b.applicationDate ? 1 : -1)));
-      setPayments([...payRes].sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1)));
-    } catch (err: any) {
-      setError(err?.message || 'Unable to load loans.');
+      const [l, p] = await Promise.all([api.getLoans(), api.getPayments()]);
+      setLoans(l);
+      setPayments(p);
+      setError('');
+    } catch (err) {
+      setError(messageOf(err, 'Your loans could not be loaded.'));
     } finally {
-      setLoaded(true);
+      setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      load(!!loans);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [load]),
   );
 
-  const activeCount = active.length;
-  const pendingApps = applications.filter((a) => ['PENDING', 'UNDER_REVIEW'].includes(String(a.status).toUpperCase())).length;
+  if (loading) return <SafeAreaView style={styles.safe}><ScreenHeader title="My Loans" /><LoadingView text="Loading your loans…" /></SafeAreaView>;
+  if (error || !loans) return <SafeAreaView style={styles.safe}><ScreenHeader title="My Loans" /><ErrorView message={error || 'No data.'} onRetry={() => load()} /></SafeAreaView>;
 
-  const openDetail = (loan: LoanItem) => navigation.navigate('LoanDetail', { loan });
-
-  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="My Loans" /><LoadingView /></SafeAreaView>;
+  const active = loans.running;
+  const applications = [...loans.pending, ...loans.finished.filter((l) => l.status === 'Rejected' || l.status === 'Cancelled')];
+  const pendingApps = loans.pending.filter((a) => a.status === 'Submitted' || a.status === 'Under Review').length;
+  const openDetail = (loan: LoanSummaryView) => navigation.navigate('LoanDetail', { loanId: loan.id });
+  const refresh = <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScreenHeader
         title="My Loans"
         right={
-          <TouchableOpacity onPress={() => navigation.navigate('LoanApplication')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('LoanApplication')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityLabel="Apply for a loan">
             <Ionicons name="add-circle" size={26} color={colors.primary} />
           </TouchableOpacity>
         }
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.tabsWrap}>
         <SegmentedTabs<TabKey>
           tabs={[
-            { key: 'active', label: 'Active', count: activeCount },
+            { key: 'active', label: 'Active', count: active.length },
             { key: 'applications', label: 'Applications', count: applications.length },
-            { key: 'history', label: 'History' },
+            { key: 'history', label: 'Payments' },
           ]}
           active={tab}
           onChange={setTab}
@@ -82,7 +77,7 @@ export const LoansScreen: React.FC = () => {
       {pendingApps > 0 && tab === 'applications' ? (
         <View style={styles.pendingNote}>
           <Ionicons name="hourglass-outline" size={15} color={colors.warning} />
-          <Text style={styles.pendingNoteText}>{pendingApps} application{pendingApps > 1 ? 's' : ''} being reviewed by the Credit Committee.</Text>
+          <Text style={styles.pendingNoteText}>{pendingApps} application{pendingApps > 1 ? 's are' : ' is'} being reviewed.</Text>
         </View>
       ) : null}
 
@@ -91,12 +86,8 @@ export const LoansScreen: React.FC = () => {
           data={active}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
-          ListHeaderComponent={
-            active.length ? (
-              <SectionHeader title="Active Loans" subtitle="Tap a loan to view the schedule and payments" />
-            ) : null
-          }
+          refreshControl={refresh}
+          ListHeaderComponent={active.length ? <SectionHeader title="Active Loans" subtitle="Tap a loan to see its schedule and payments" /> : null}
           renderItem={({ item }) => (
             <TouchableOpacity onPress={() => openDetail(item)} activeOpacity={0.85}>
               <AppCard style={styles.loanCard} padded={false}>
@@ -106,24 +97,24 @@ export const LoansScreen: React.FC = () => {
                       <Text style={styles.loanName}>{item.productName}</Text>
                       <Text style={styles.loanNo}>{item.loanNumber} · {item.termMonths} months</Text>
                     </View>
-                    <Badge status={item.status} />
+                    <Badge status={item.overdue ? 'OVERDUE' : item.status} />
                   </View>
                   <View style={styles.loanBottom}>
                     <View>
                       <Text style={styles.balanceLabel}>REMAINING BALANCE</Text>
                       <Text style={styles.balanceValue}>{formatCurrency(item.remainingBalance)}</Text>
                       <Text style={styles.balanceSub}>
-                        {item.nextPaymentDate ? `Next: ${formatDate(item.nextPaymentDate)} · ${formatCurrency(item.monthlyInstallment)}` : `Installment: ${formatCurrency(item.monthlyInstallment)}`}
+                        {item.nextDue ? `Next: ${formatDate(item.nextDue.dueDate)} · ${formatCurrency(item.nextDue.amount)}` : 'Nothing due'}
                       </Text>
                     </View>
                     <View style={styles.chevron}>
                       <Ionicons name="chevron-forward" size={18} color={colors.primary} />
                     </View>
                   </View>
-                  {['OVERDUE', 'IN_ARREARS'].includes(String(item.status).toUpperCase()) ? (
+                  {item.overdue ? (
                     <View style={styles.overdueRow}>
                       <Ionicons name="alert-circle" size={13} color={colors.danger} />
-                      <Text style={styles.overdueRowText}>Payment is overdue. Pay now to avoid penalties.</Text>
+                      <Text style={styles.overdueRowText}>A payment is overdue. Paying now stops further penalties.</Text>
                     </View>
                   ) : null}
                 </View>
@@ -132,9 +123,9 @@ export const LoansScreen: React.FC = () => {
           )}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Ionicons name="leaf-outline" size={34} color={colors.primarySoft ? '#BFDBFE' : colors.textFaint} />
+              <Ionicons name="leaf-outline" size={34} color={colors.textFaint} />
               <Text style={styles.emptyTitle}>No active loans</Text>
-              <Text style={styles.emptyMsg}>You have no active loan at the moment. Apply for a new loan when you need credit.</Text>
+              <Text style={styles.emptyMsg}>Apply for a loan when you need credit.</Text>
               <AppButton title="Apply for a Loan" onPress={() => navigation.navigate('LoanApplication')} variant="secondary" style={{ marginTop: 14 }} />
             </View>
           }
@@ -146,34 +137,33 @@ export const LoansScreen: React.FC = () => {
           data={applications}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
-          ListHeaderComponent={
-            applications.length ? (
-              <SectionHeader title="Loan Applications" subtitle="Track the status through the Credit Committee" />
-            ) : null
-          }
+          refreshControl={refresh}
+          ListHeaderComponent={applications.length ? <SectionHeader title="Loan Applications" subtitle="Tap one to see where it is" /> : null}
           renderItem={({ item }) => (
-            <AppCard style={styles.appCard}>
-              <View style={styles.appTop}>
-                <View style={styles.flex1}>
-                  <Text style={styles.appName}>{item.productName}</Text>
-                  {/* @ts-ignore older payloads carry loanNumber */}
-                  <Text style={styles.appNo}>{item.loanNumber ?? item.id} {item.coopStep ? `· Step: ${item.coopStep}` : ''}</Text>
-                </View>
-                <Badge status={item.status} />
-              </View>
-              <View style={styles.appBottom}>
-                <View>
-                  <Text style={styles.appAmt}>{formatCurrency(item.principalAmount)}</Text>
-                  <Text style={styles.appSub}>{item.termMonths} months · applied {formatDate(item.applicationDate)}</Text>
-                </View>
-                {item.status === 'REJECTED' && item.rejectionReason ? (
-                  <View style={styles.rejectBox}>
-                    <Text style={styles.rejectText} numberOfLines={2}>{item.rejectionReason}</Text>
+            <TouchableOpacity onPress={() => openDetail(item)} activeOpacity={0.85}>
+              <AppCard style={styles.appCard}>
+                <View style={styles.appTop}>
+                  <View style={styles.flex1}>
+                    <Text style={styles.appName}>{item.productName}</Text>
+                    <Text style={styles.appNo}>{item.loanNumber}</Text>
                   </View>
-                ) : null}
-              </View>
-            </AppCard>
+                  <Badge status={item.status} />
+                </View>
+                <View style={styles.appBottom}>
+                  <View>
+                    <Text style={styles.appAmt}>{formatCurrency(item.principal)}</Text>
+                    <Text style={styles.appSub}>{item.termMonths} months · applied {formatDate(item.applicationDate)}</Text>
+                  </View>
+                  {(item.decisionReason && item.status === 'Rejected') || item.returnedReason || item.cancellationReason ? (
+                    <View style={styles.rejectBox}>
+                      <Text style={styles.rejectText} numberOfLines={3}>
+                        {item.status === 'Rejected' ? item.decisionReason : item.returnedReason || item.cancellationReason}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </AppCard>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
@@ -190,37 +180,35 @@ export const LoansScreen: React.FC = () => {
           data={payments}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.content}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
-          ListHeaderComponent={
-            payments.length ? (
-              <SectionHeader title="Payment History" subtitle="Recent payments you have made" />
-            ) : null
-          }
+          refreshControl={refresh}
+          ListHeaderComponent={payments.length ? <SectionHeader title="Payments" subtitle="Tap a payment for its receipt" /> : null}
           renderItem={({ item }) => (
-            <AppCard style={styles.payCard} padded={false}>
-              <View style={styles.payRow}>
-                <View style={styles.payIcon}>
-                  <Ionicons name={item.status === 'COMPLETED' ? 'checkmark' : 'time-outline'} size={16} color={item.status === 'COMPLETED' ? colors.green : colors.warning} />
-                </View>
-                <View style={styles.flex1}>
-                  <Text style={styles.payLoanNo}>{item.loanNumber}</Text>
-                  <Text style={styles.payRef}>Ref {item.referenceNumber} · {item.paymentMethod}</Text>
-                  <View style={{ marginTop: 4 }}>
-                    <Badge status={item.status} />
+            <TouchableOpacity onPress={() => navigation.navigate('PaymentReceipt', { paymentId: item.id })} activeOpacity={0.85}>
+              <AppCard style={styles.payCard} padded={false}>
+                <View style={styles.payRow}>
+                  <View style={styles.payIcon}>
+                    <Ionicons name={item.status === 'POSTED' ? 'checkmark' : 'arrow-undo-outline'} size={16} color={item.status === 'POSTED' ? colors.green : colors.danger} />
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={styles.payLoanNo}>{item.loanNumber}</Text>
+                    <Text style={styles.payRef}>{item.receiptNumber} · {paymentMethodLabel(item.method)}</Text>
+                    <View style={{ marginTop: 4 }}>
+                      <Badge status={item.status === 'POSTED' ? 'COMPLETED' : 'REVERSED'} />
+                    </View>
+                  </View>
+                  <View style={styles.payAmtWrap}>
+                    <Text style={styles.payAmt}>{formatCurrency(item.amount)}</Text>
+                    <Text style={styles.payDate}>{formatDate(item.paymentDate)}</Text>
                   </View>
                 </View>
-                <View style={styles.payAmtWrap}>
-                  <Text style={styles.payAmt}>{formatCurrency(item.amount)}</Text>
-                  <Text style={styles.payDate}>{formatDate(item.paymentDate)}</Text>
-                </View>
-              </View>
-            </AppCard>
+              </AppCard>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Ionicons name="card-outline" size={34} color={colors.textFaint} />
               <Text style={styles.emptyTitle}>No payments yet</Text>
-              <Text style={styles.emptyMsg}>Your repayment history will show here once you make your first payment.</Text>
+              <Text style={styles.emptyMsg}>Your payments will show here once the branch posts them.</Text>
             </View>
           }
         />

@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, FilePlus2, Percent, ReceiptText, Repeat, Wallet } from 'lucide-react';
 import { loanService } from '../services/loans';
 import { ClientLoan, ScheduleItem } from '../types';
+import type { ReceiptDocument } from '../../../shared/lending';
+import { ReceiptModal } from '../../components/ReceiptModal';
 import { formatCurrency, formatDate } from '../../utils/loanMath';
 import {
   Amount,
@@ -25,6 +27,8 @@ const LoanDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [loan, setLoan] = useState<ClientLoan | null>(null);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
+  const [receipt, setReceipt] = useState<ReceiptDocument | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -34,15 +38,11 @@ const LoanDetailPage: React.FC = () => {
       setLoading(true);
       setError('');
       try {
-        const [summary, sch] = await Promise.all([loanService.list(), loanService.schedule(id || '')]);
+        const detail = await loanService.get(id || '');
         if (!active) return;
-        const found = summary.allLoans.find((l) => l.id === id);
-        if (!found) {
-          setError('Loan not found.');
-          return;
-        }
-        setLoan(found);
-        setSchedule(sch);
+        setLoan(detail.loan);
+        setSchedule(detail.schedule);
+        setReceipt(detail.receipt);
       } catch (err: any) {
         if (active) setError(err.message || 'Unable to load loan details.');
       } finally {
@@ -66,7 +66,7 @@ const LoanDetailPage: React.FC = () => {
       </div>
     );
 
-  const isActive = !['COMPLETED', 'PAID_OFF', 'CANCELLED', 'REJECTED'].includes(loan.status);
+  const isActive = loan.status === 'ACTIVE';
   const paidCount = schedule.filter((s) => s.status === 'PAID').length;
   const amountPaid = schedule.filter((s) => s.status === 'PAID').reduce((sum, s) => sum + s.amountDue, 0);
   const totalDue = schedule.reduce((sum, s) => sum + s.amountDue, 0);
@@ -106,6 +106,15 @@ const LoanDetailPage: React.FC = () => {
         </CardBody>
       </Card>
 
+      {receipt && (
+        <div>
+          <Button variant="outline" onClick={() => setShowReceipt(true)}>
+            <ReceiptText className="h-4 w-4" /> Release receipt {receipt.receiptNumber}
+          </Button>
+          <ReceiptModal receipt={showReceipt ? receipt : null} onClose={() => setShowReceipt(false)} />
+        </div>
+      )}
+
       {isActive && (
         <div className="flex flex-wrap gap-2">
           <Link to="/portal/payments">
@@ -126,7 +135,7 @@ const LoanDetailPage: React.FC = () => {
         <MiniStat label="Principal amount" value={formatCurrency(loan.principalAmount)} icon={Wallet} />
         <MiniStat label="Annual rate" value={`${loan.interestRate}%`} icon={Percent} />
         <MiniStat label="Term" value={`${loan.termMonths} months`} icon={Repeat} />
-        <MiniStat label="Monthly installment" value={formatCurrency(loan.monthlyInstallment)} icon={CalendarDays} />
+        <MiniStat label={`${loan.frequency ?? 'Regular'} installment`} value={formatCurrency(loan.monthlyInstallment)} icon={CalendarDays} />
       </div>
 
       {/* Loan details */}
@@ -136,10 +145,12 @@ const LoanDetailPage: React.FC = () => {
         </CardHeader>
         <CardBody>
           <InfoRow label="Loan number" value={<span className="font-mono">{loan.loanNumber}</span>} />
-          <InfoRow label="Disbursed" value={formatDate(loan.startDate || loan.applicationDate)} />
+          <InfoRow label="Released" value={loan.disbursedDate ? formatDate(loan.disbursedDate) : 'Not yet released'} />
           <InfoRow label="Maturity date" value={formatDate(loan.maturityDate)} />
-          <InfoRow label="Amount disbursed" value={formatCurrency(loan.principalAmount)} />
-          <InfoRow label="Interest" value={`${loan.interestRate}% p.a. · ${loan.interestType?.replace(/_/g, ' ') || '—'}`} />
+          <InfoRow label="Principal" value={formatCurrency(loan.principalAmount)} />
+          {loan.totalFees ? <InfoRow label="Fees deducted at release" value={formatCurrency(loan.totalFees)} /> : null}
+          {loan.netProceeds !== undefined && <InfoRow label="Net amount released" value={formatCurrency(loan.netProceeds)} />}
+          <InfoRow label="Interest" value={`${loan.interestRate}% a year · ${loan.interestType || '—'} · ${loan.frequency ?? ''} payments`} />
           <SectionDivider />
           <InfoRow label="Purpose" value={loan.purpose || '—'} muted={!loan.purpose} />
           <InfoRow label="Payments made" value={loan.repaymentsMade != null ? `${loan.repaymentsMade} of ${loan.repaymentsTotal}` : `${paidCount} of ${schedule.length}`} />
@@ -173,7 +184,7 @@ const LoanDetailPage: React.FC = () => {
                 <Td className="text-slate-500">{formatCurrency(s.interest)}</Td>
                 <Td className="text-slate-500">{formatCurrency(s.remainingBalance)}</Td>
                 <Td>
-                  <StatusBadge status={s.status} tone={s.status === 'DUE' ? 'red' : s.status === 'UPCOMING' ? 'slate' : 'green'} />
+                  <StatusBadge status={s.status} tone={s.status === 'OVERDUE' ? 'red' : s.status === 'DUE' || s.status === 'PARTIAL' ? 'amber' : s.status === 'UPCOMING' ? 'slate' : 'green'} />
                 </Td>
                 <Td className="text-xs text-slate-400">{s.receiptNumber || '—'}</Td>
               </Tr>

@@ -40,6 +40,7 @@ export type SystemPermission =
   
   // Cashier / Teller Permissions
   | 'process_loan_repayments'
+  | 'disburse_loans'
   | 'process_savings_deposits'
   | 'process_savings_withdrawals'
   | 'generate_receipts'
@@ -98,6 +99,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'manage_loan_applications',
       'monitor_loan_repayment',
       'process_loan_repayments',
+      'disburse_loans',
       'process_savings_deposits',
       'process_savings_withdrawals',
       'generate_receipts',
@@ -202,6 +204,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
     ],
     permissions: [
       'process_loan_repayments',
+      'disburse_loans',
       'process_savings_deposits',
       'process_savings_withdrawals',
       'generate_receipts',
@@ -275,6 +278,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'manage_loan_applications',
       'monitor_loan_repayment',
       'process_loan_repayments',
+      'disburse_loans',
       'process_savings_deposits',
       'process_savings_withdrawals',
       'generate_receipts',
@@ -325,6 +329,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       'manage_loan_applications',
       'monitor_loan_repayment',
       'process_loan_repayments',
+      'disburse_loans',
       'process_savings_deposits',
       'process_savings_withdrawals',
       'generate_receipts',
@@ -397,6 +402,7 @@ export const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
     ],
     permissions: [
       'process_loan_repayments',
+      'disburse_loans',
       'process_savings_deposits',
       'process_savings_withdrawals',
       'generate_receipts',
@@ -765,6 +771,7 @@ export const PERMISSION_CATEGORIES: {
     description: 'Financial transactions, installment receipts, savings deposits and cash withdrawals',
     permissions: [
       { key: 'process_loan_repayments', label: 'Process Loan Repayments', description: 'Receive counter cash/transfer payments and post to loan schedule' },
+      { key: 'disburse_loans', label: 'Release Loan Funds', description: 'Disburse approved loans by cash, bank transfer or e-wallet and issue the release voucher' },
       { key: 'process_savings_deposits', label: 'Process Savings Deposits', description: 'Accept member deposits to passbook and capital build-up accounts' },
       { key: 'process_savings_withdrawals', label: 'Process Savings Withdrawals', description: 'Execute approved cash withdrawals from member savings' },
       { key: 'generate_receipts', label: 'Generate Official Receipts', description: 'Issue, print, and download official receipts and transaction proofs' },

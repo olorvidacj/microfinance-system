@@ -21,6 +21,8 @@ import {
   UserRound,
   Users,
   Wallet,
+  Calculator,
+  Globe,
 } from 'lucide-react';
 import { setStoredToken, useAuth } from '../../../context/AuthContext';
 import { normalizeRole } from '../../../auth/permissions';
@@ -68,10 +70,14 @@ const PRIMARY_OPERATIONS_NAV: NavItem[] = [
   { to: '/staff/app/clients', label: 'Client Management', icon: Users, permissions: ['view_client_info', 'register_clients', 'manage_kyc'] },
   { to: '/staff/app/kyc', label: 'KYC Verification', icon: FileCheck2, permissions: ['manage_kyc', 'view_client_info'], badgeKey: 'kyc' },
   { to: '/staff/app/loans', label: 'Loan Management', icon: HandCoins, permissions: ['review_client_loan_info', 'monitor_loan_repayment'] },
-  { to: '/staff/app/applications', label: 'Loan Applications', icon: FileText, permissions: ['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications'] },
+  { to: '/staff/app/applications', label: 'Loan Applications', icon: FileText, permissions: ['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications', 'disburse_loans'] },
+  { to: '/staff/app/calculator', label: 'Loan Calculator', icon: Calculator, permissions: [] },
   { to: '/staff/app/savings', label: 'Savings Management', icon: PiggyBank, permissions: ['process_savings_deposits', 'process_savings_withdrawals'] },
+  { to: '/staff/app/online-payments', label: 'Online Payments', icon: Globe, permissions: ['process_savings_deposits', 'process_savings_withdrawals'] },
   { to: '/staff/app/transactions', label: 'Financial Transactions', icon: ScrollText, permissions: ['view_transaction_records'] },
   { to: '/staff/app/payments', label: 'Record Payment', icon: Wallet, permissions: ['process_loan_repayments'] },
+  { to: '/staff/app/payment-proofs', label: 'Payment Proofs', icon: FileCheck2, permissions: ['process_loan_repayments'] },
+  { to: '/staff/app/collections', label: 'Collections', icon: HandCoins, permissions: ['process_loan_repayments', 'monitor_loan_repayment'] },
   { to: '/staff/app/groups', label: 'Lending Groups', icon: UserCheck, permissions: ['view_client_info', 'manage_loan_applications', 'register_clients'] },
   { to: '/staff/app/reports', label: 'Reports & Analytics', icon: PieChart, permissions: ['view_transaction_records', 'view_all_records', 'monitor_loan_repayment'] },
   { to: '/staff/app/performance', label: 'Branch Performance', icon: TrendingUp, permissions: [] },
@@ -400,7 +406,7 @@ const BranchAssignmentGate: React.FC = () => {
       // Persist the refreshed JWT returned by the backend so branch-scoped API
       // authorization carries the confirmed branchId.
       if (data.token) {
-        setStoredToken(data.token);
+        setStoredToken('staff', data.token);
       }
       if (data.staff?.branch) {
         await refreshUser();

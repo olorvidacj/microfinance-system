@@ -115,7 +115,8 @@ export function getDb(overrideUrl?: string) {
         ssl: isRemoteCloudDb ? { rejectUnauthorized: false } : false,
         connectionTimeoutMillis: 5000,
         idleTimeoutMillis: 30000,
-        max: 10,
+        // The local PGlite socket server (npm run db:local) serves one connection at a time.
+        max: Number(process.env.DB_POOL_MAX) || 10,
       });
 
       pool.on('error', (err: any) => {

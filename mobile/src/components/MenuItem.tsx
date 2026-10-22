@@ -33,6 +33,8 @@ export const MenuItem: React.FC<MenuItemProps> = ({
       onPress={onPress}
       activeOpacity={0.7}
       disabled={!onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
       <View style={[styles.iconWrap, { backgroundColor: danger ? colors.dangerSoft : colors.primarySoft }]}>
         <Ionicons name={icon} size={18} color={danger ? colors.danger : colors.primary} />

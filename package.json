@@ -10,8 +10,13 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "db:local": "tsx scripts/local-db.mts",
     "mobile": "npm --prefix mobile start",
-    "mobile:tunnel": "npm --prefix mobile run tunnel"
+    "mobile:tunnel": "npm --prefix mobile run tunnel",
+    "db:migrate": "tsx scripts/db/migrate.mts",
+    "db:seed": "tsx scripts/db/seed.mts",
+    "db:verify": "tsx scripts/db/verify.mts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -22,10 +27,12 @@
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
+    "jpeg-js": "^0.4.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "nodemailer": "^10.0.10",
     "pg": "^8.23.0",
+    "pngjs": "^7.0.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-router-dom": "^7.18.3",
@@ -33,11 +40,14 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.15",
+    "@electric-sql/pglite-socket": "^0.0.20",
     "@types/canvas-confetti": "^1.9.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.18",
     "autoprefixer": "^10.4.21",
     "drizzle-kit": "^0.31.10",
@@ -45,6 +55,18 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "vitest": "^5.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "@google/genai@2.30.0": true,
+    "protobufjs@7.6.6": true
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.25.12"
+    }
   }
 }

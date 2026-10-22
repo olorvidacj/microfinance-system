@@ -1,9 +1,7 @@
 import crypto from 'crypto';
 import { getDb, schema, markConnectionStringFailed } from '../db/index';
-import { initDbSchema } from '../db/initDb';
 import { getServerSupabase, isServerSupabaseFailed, markServerSupabaseFailed } from '../db/supabaseServer';
-import { INITIAL_STAFF } from '../data/initialData';
-import { eq, or, ilike } from 'drizzle-orm';
+import { eq, or, ilike, sql } from 'drizzle-orm';
 
 export interface AuthUserRecord {
   id: string;
@@ -57,14 +55,9 @@ export function hashPassword(password: string): string {
   return `${salt}:${derived}`;
 }
 
-export const DEFAULT_ADMIN_PASS_HASH = hashPassword(process.env.HOSCOMCO_BOOTSTRAP_PASSWORD || 'Admin@123');
-
 export function verifyPassword(password: string, stored: string): boolean {
   try {
     if (!stored || !password) return false;
-    // Allow direct match
-    if (stored === password) return true;
-
     const [salt, expectedHash] = stored.split(':');
     if (!salt || !expectedHash) return false;
     const derived = crypto.scryptSync(password, salt, 64);
@@ -79,41 +72,9 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 const inMemoryUsers = new Map<string, AuthUserRecord>();
 
-// Pre-seed default Administrator
-const defaultAdmin: AuthUserRecord = {
-  id: 'u-bootstrap-admin',
-  email: (process.env.HOSCOMCO_BOOTSTRAP_EMAIL || 'admin@HOSCOMCO.coop').toLowerCase(),
-  passwordHash: DEFAULT_ADMIN_PASS_HASH,
-  fullName: 'System Administrator',
-  role: 'STAFF',
-  staffRole: 'ADMINISTRATOR',
-  staffId: 'staff-08',
-  phone: '+63 917 555 0100',
-  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-  isActive: true,
-  branchId: 'all',
-};
-inMemoryUsers.set(defaultAdmin.id, defaultAdmin);
-
-// Seed initial staff
-for (const s of INITIAL_STAFF) {
-  const staffUserId = `u-${s.id}`;
-  if (!inMemoryUsers.has(staffUserId)) {
-    inMemoryUsers.set(staffUserId, {
-      id: staffUserId,
-      email: s.email.toLowerCase(),
-      passwordHash: DEFAULT_ADMIN_PASS_HASH,
-      fullName: s.name,
-      role: 'STAFF',
-      staffRole: s.role,
-      staffId: s.id,
-      phone: '+63 917 555 0100',
-      avatar: s.avatar,
-      isActive: true,
-      branchId: s.assignedBranchId || null,
-    });
-  }
-}
+// No accounts are pre-seeded here. Staff logins exist only as database rows
+// (seedBootstrapAdmin in src/db/seed.ts creates the one bootstrap administrator), so a missing
+// database row can never fall back to a built-in account with a known password.
 
 // ---------- Signed Tokens (HMAC-SHA256) ----------
 
@@ -166,38 +127,27 @@ export function verifyToken(token: string): TokenPayload | null {
 // ---------- Real Database & In-Memory Fallback User Store ----------
 
 class AuthStore {
+  /**
+   * The branch a staff login works in: the assigned branch id, 'all' for
+   * head-office accounts, or null when unassigned. Never a default branch:
+   * an unassigned account must be refused branch access, not placed in one.
+   */
   async resolveBranchId(staffId?: string | null): Promise<string | null> {
     if (!staffId) return null;
     const db = getDb();
-    if (db) {
-      try {
-        const rows = await db
-          .select()
-          .from(schema.staff)
-          .where(eq(schema.staff.id, staffId))
-          .limit(1);
-        if (rows.length > 0 && rows[0].assignedBranchId) {
-          const ab = String(rows[0].assignedBranchId);
-          if (ab !== 'all' && ab !== 'unassigned') return ab;
-          return 'br-main';
-        }
-      } catch (err: any) {
-        const msg = String(err?.message || '');
-        if (msg.includes('ENOTFOUND') || msg.includes('tenant') || msg.includes('ECONNREFUSED')) {
-          markConnectionStringFailed();
-        }
+    if (!db) return null;
+    try {
+      const rows = await db.select({ assignedBranchId: schema.staff.assignedBranchId }).from(schema.staff).where(eq(schema.staff.id, staffId)).limit(1);
+      const ab = String(rows[0]?.assignedBranchId ?? '').trim();
+      if (!ab || ab.toLowerCase() === 'unassigned') return null;
+      return ab.toLowerCase() === 'all' ? 'all' : ab;
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (msg.includes('ENOTFOUND') || msg.includes('tenant') || msg.includes('ECONNREFUSED')) {
+        markConnectionStringFailed();
       }
+      return null;
     }
-
-    // Check in-memory staff
-    const match = INITIAL_STAFF.find((s) => s.id === staffId);
-    if (match && match.assignedBranchId) {
-      const ab = String(match.assignedBranchId);
-      if (ab !== 'all' && ab !== 'unassigned') return ab;
-      return 'br-main';
-    }
-
-    return 'br-main';
   }
 
   private async decorate(record: AuthUserRecord | null): Promise<AuthUserRecord | null> {
@@ -215,7 +165,7 @@ class AuthStore {
     const db = getDb();
     if (db) {
       try {
-        const rows = await db.select().from(schema.users).where(eq(schema.users.email, normalized)).limit(1);
+        const rows = await db.select().from(schema.users).where(sql`lower(${schema.users.email}) = ${normalized}`).limit(1);
         if (rows.length > 0) return this.decorate(rows[0] as unknown as AuthUserRecord);
       } catch (err: any) {
         const msg = String(err?.message || '');
@@ -554,33 +504,4 @@ class AuthStore {
 
 export const authStore = new AuthStore();
 
-export async function ensureDefaultUsers(): Promise<void> {
-  // Initializes DB schema tables if database connection is available
-  await initDbSchema().catch(() => {});
-
-  if (process.env.HOSCOMCO_SKIP_BOOTSTRAP === '1') return;
-  try {
-    const db = getDb();
-    if (!db) return;
-    const [existing] = await db.select({ id: schema.users.id }).from(schema.users).limit(1);
-    if (existing) return;
-
-    const password = process.env.HOSCOMCO_BOOTSTRAP_PASSWORD || 'Admin@123';
-    await db.insert(schema.users).values({
-      id: 'u-bootstrap-admin',
-      email: process.env.HOSCOMCO_BOOTSTRAP_EMAIL || 'admin@HOSCOMCO.coop',
-      passwordHash: hashPassword(password),
-      fullName: 'System Administrator',
-      role: 'STAFF',
-      staffRole: 'ADMINISTRATOR',
-      staffId: 'staff-08',
-      isActive: true,
-    });
-  } catch (err: any) {
-    const msg = String(err?.message || '');
-    if (msg.includes('ENOTFOUND') || msg.includes('tenant') || msg.includes('ECONNREFUSED')) {
-      markConnectionStringFailed();
-    }
-  }
-}
 

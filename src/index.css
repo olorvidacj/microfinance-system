@@ -114,3 +114,28 @@
     animation: HOSCOMCO-scale-up 180ms ease-out both;
   }
 }
+
+/* Printing a receipt prints only the receipt, not the page behind its modal. */
+@media print {
+  body * {
+    visibility: hidden !important;
+    /* Elements with transition-all would otherwise fade out instead of hiding. */
+    transition: none !important;
+  }
+  #printable-receipt,
+  #printable-receipt *,
+  #printable-statement,
+  #printable-statement * {
+    visibility: visible !important;
+  }
+  #printable-receipt,
+  #printable-statement {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .print-hidden {
+    display: none !important;
+  }
+}

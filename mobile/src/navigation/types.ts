@@ -28,10 +28,10 @@ export type HomeStackParamList = {
 
 export type LoansStackParamList = {
   LoansList: undefined;
-  LoanDetail: { loanId: string } | { loan: LoanItem };
+  LoanDetail: { loanId: string };
   LoanApplication: undefined;
   Payments: { loanId?: string } | undefined;
-  PaymentReceipt: { receipt: PaymentReceipt };
+  PaymentReceipt: { paymentId: string };
 };
 
 export type SavingsStackParamList = {

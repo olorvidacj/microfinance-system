@@ -1,16 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Calculator,
-  FileText,
-  Plus,
-  Search,
-  Banknote,
-  CheckCircle2,
-  Clock,
-  CheckCheck,
-  AlertCircle,
-} from 'lucide-react';
+import { Banknote, Calculator, FileText, Plus, Search } from 'lucide-react';
+import { LOAN_PURPOSES, LOAN_PURPOSE_LABELS, centsToDecimal, validateApplicationTerms, type LoanProduct } from '../../../shared/lending';
+import { isKycVerified } from '../../../shared/kyc-core';
 import { PageHeader } from '../../portal/components/ui/PageHeader';
 import { Button } from '../../portal/components/ui/Button';
 import { Card } from '../../portal/components/ui/Card';
@@ -18,22 +10,24 @@ import { StatusBadge } from '../../portal/components/ui/StatusBadge';
 import { Amount } from '../../portal/components/ui/Amount';
 import { LoadingState, ErrorState, EmptyState } from '../../portal/components/ui/States';
 import { Modal } from '../../portal/components/ui/Modal';
-import { Field, Input, Select } from '../../portal/components/ui/Field';
+import { Field, Input, Select, Textarea } from '../../portal/components/ui/Field';
 import { useToast } from '../../portal/components/ui/Toast';
+import { LoanQuoteView, ProductTerms, useLoanQuote } from '../../components/lending';
 import { useBranchData } from '../hooks/useBranchData';
 import { useBranchPermission } from '../hooks/useBranchPermission';
 import { clientsService, loansService } from '../services';
-import { BranchLoan, LoanProduct } from '../types';
+import { BranchApiError } from '../services/api';
 import { LoanAssessmentPanel } from '../components/LoanAssessmentPanel';
 import { LoanDisbursementModal } from '../components/LoanDisbursementModal';
 
 const STATUS_TABS = [
-  { value: '', label: 'All Applications' },
-  { value: 'Submitted', label: 'Submitted / Review' },
-  { value: 'For Assessment', label: 'For Assessment' },
-  { value: 'Approved', label: 'Approved (For Disbursement)' },
-  { value: 'Active', label: 'Disbursed / Active' },
-  { value: 'Completed', label: 'Completed' },
+  { value: '', label: 'All' },
+  { value: 'Submitted,Under Review', label: 'Waiting for review' },
+  { value: 'Draft', label: 'Drafts / returned' },
+  { value: 'Approved', label: 'Approved (to release)' },
+  { value: 'Active', label: 'Active' },
+  { value: 'Rejected,Cancelled', label: 'Rejected / cancelled' },
+  { value: 'Closed,Written Off', label: 'Closed' },
 ];
 
 const LoanApplicationsPage: React.FC = () => {
@@ -41,13 +35,15 @@ const LoanApplicationsPage: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const toast = useToast();
   const canOriginate = useBranchPermission(['process_loan_applications']);
-  const canManage = useBranchPermission(['manage_loan_applications', 'approve_sensitive_operations']);
+  const canManage = useBranchPermission(['manage_loan_applications']);
+  const canDisburse = useBranchPermission(['disburse_loans']);
 
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
+  // Tellers come here to release approved loans.
+  const [status, setStatus] = useState(() => (!canOriginate && !canManage && canDisburse ? 'Approved' : ''));
   const [newOpen, setNewOpen] = useState(false);
-  const [assessing, setAssessing] = useState<BranchLoan | null>(null);
-  const [disbursing, setDisbursing] = useState<BranchLoan | null>(null);
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  const [disbursing, setDisbursing] = useState<string | null>(null);
 
   useEffect(() => {
     if (params.get('new') === '1' && canOriginate) {
@@ -57,19 +53,15 @@ const LoanApplicationsPage: React.FC = () => {
     }
   }, [params, setParams, canOriginate]);
 
-  const fetcher = useCallback(
-    async () => loansService.list({ status: status || undefined, search: search || undefined }),
-    [status, search]
-  );
+  const fetcher = useCallback(async () => loansService.applications({ status: status || undefined, search: search || undefined }), [status, search]);
   const { data, loading, error, reload } = useBranchData(fetcher);
-
   const rows = data || [];
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Loan Applications & Portfolio"
-        subtitle="Origination pipeline, credit assessments, approvals, and fund disbursements"
+        title="Loan applications"
+        subtitle="Applications, reviews, approvals and releases"
         actions={
           canOriginate && (
             <Button variant="brand" onClick={() => setNewOpen(true)}>
@@ -79,58 +71,39 @@ const LoanApplicationsPage: React.FC = () => {
         }
       />
 
-      {/* Filter Tabs & Search */}
       <Card className="p-4">
         <div className="space-y-3">
-          {/* Status Tabs */}
           <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-3">
-            {STATUS_TABS.map((t) => {
-              const active = status === t.value;
-              return (
-                <button
-                  key={t.value}
-                  onClick={() => setStatus(t.value)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
-                    active
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
+            {STATUS_TABS.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setStatus(t.value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${status === t.value ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              className="pl-9"
-              placeholder="Search by borrower name, phone, or loan application number…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <Input className="pl-9" placeholder="Search by member name, phone or loan number…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
       </Card>
 
       {loading ? (
-        <LoadingState label="Loading loan pipeline…" />
+        <LoadingState label="Loading applications…" />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : rows.length === 0 ? (
-        <EmptyState
-          icon={<FileText className="h-6 w-6" />}
-          title="No applications found"
-          description="No loan applications match your current status filter or search query."
-        />
+        <EmptyState icon={<FileText className="h-6 w-6" />} title="No applications" description="Nothing matches this filter." />
       ) : (
         <Card>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  {['Application', 'Client', 'Product', 'Principal', 'Term', 'Applied', 'Officer', 'Status', 'Actions'].map((h) => (
+                  {['Loan', 'Member', 'Product', 'Amount', 'Term', 'Applied', 'Officer', 'Status', ''].map((h) => (
                     <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       {h}
                     </th>
@@ -139,54 +112,40 @@ const LoanApplicationsPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.map((app) => {
-                  const s = String(app.status || '').toUpperCase();
-                  const isPendingReview = ['DRAFT', 'SUBMITTED', 'PENDING', 'UNDER REVIEW', 'UNDER_REVIEW'].includes(s);
-                  const isForAssessment = ['FOR ASSESSMENT', 'FOR_ASSESSMENT', 'RECOMMENDED'].includes(s);
-                  const isApproved = ['APPROVED', 'FOR_DISBURSEMENT'].includes(s);
-                  const isDisbursed = ['ACTIVE', 'DISBURSED', 'IN ARREARS', 'IN_ARREARS'].includes(s);
-
+                  const reviewable = app.status === 'Submitted' || app.status === 'Under Review';
                   return (
-                    <tr key={app.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-slate-900">
-                        <Link to={`/staff/app/loans/${app.id}`} className="text-emerald-700 hover:text-emerald-900 hover:underline">
+                    <tr key={app.id} className="hover:bg-slate-50/80">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm font-bold">
+                        <Link to={`/staff/app/loans/${app.id}`} className="text-emerald-700 hover:underline">
                           {app.loanNumber}
                         </Link>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-800 font-medium">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-800">
                         {app.borrowerName}
-                        {app.borrowerPhone && (
-                          <span className="block text-[11px] text-slate-400">{app.borrowerPhone}</span>
-                        )}
+                        {app.borrowerPhone && <span className="block text-[11px] text-slate-400">{app.borrowerPhone}</span>}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.productName}</td>
-                      <td className="whitespace-nowrap px-4 py-3 tabular-nums font-bold text-slate-900">
+                      <td className="whitespace-nowrap px-4 py-3 font-bold tabular-nums text-slate-900">
                         <Amount value={app.principalAmount} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.termMonths} mo</td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.applicationDate}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.loanOfficerName || '—'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600">{app.loanOfficerName || 'Unassigned'}</td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <StatusBadge status={app.status} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {(isPendingReview || isForAssessment) && canManage && (
-                            <Button size="sm" variant="brandOutline" onClick={() => setAssessing(app)}>
-                              <Calculator className="h-3.5 w-3.5" /> Assess & Review
+                          {reviewable && canManage && (
+                            <Button size="sm" variant="brandOutline" onClick={() => setReviewing(app.id)}>
+                              <Calculator className="h-3.5 w-3.5" /> Review
                             </Button>
                           )}
-
-                          {isApproved && canManage && (
-                            <Button
-                              size="sm"
-                              variant="brand"
-                              className="bg-emerald-700 hover:bg-emerald-800 text-white"
-                              onClick={() => setDisbursing(app)}
-                            >
-                              <Banknote className="h-3.5 w-3.5" /> Disburse
+                          {app.status === 'Approved' && canDisburse && (
+                            <Button size="sm" variant="brand" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => setDisbursing(app.id)}>
+                              <Banknote className="h-3.5 w-3.5" /> Release
                             </Button>
                           )}
-
                           <Button size="sm" variant="outline" onClick={() => navigate(`/staff/app/loans/${app.id}`)}>
                             View
                           </Button>
@@ -205,31 +164,15 @@ const LoanApplicationsPage: React.FC = () => {
         <NewApplicationModal
           open={newOpen}
           onClose={() => setNewOpen(false)}
-          onDone={() => {
+          onDone={(loanNumber, submitted) => {
             setNewOpen(false);
-            toast.success('Loan application submitted');
+            toast.success(submitted ? `Application ${loanNumber} filed.` : `Draft ${loanNumber} saved.`);
             reload();
           }}
         />
       )}
-
-      {/* Credit Assessment Panel */}
-      <LoanAssessmentPanel
-        loan={assessing}
-        onClose={() => setAssessing(null)}
-        onAction={() => reload()}
-        onDisbursePrompt={(l) => {
-          setAssessing(null);
-          setDisbursing(l);
-        }}
-      />
-
-      {/* Atomic Disbursement Modal */}
-      <LoanDisbursementModal
-        loan={disbursing}
-        onClose={() => setDisbursing(null)}
-        onSuccess={() => reload()}
-      />
+      <LoanAssessmentPanel loanId={reviewing} onClose={() => setReviewing(null)} onAction={() => reload()} />
+      <LoanDisbursementModal loanId={disbursing} onClose={() => setDisbursing(null)} onSuccess={() => reload()} />
     </div>
   );
 };
@@ -237,62 +180,73 @@ const LoanApplicationsPage: React.FC = () => {
 interface NewApplicationModalProps {
   open: boolean;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (loanNumber: string, submitted: boolean) => void;
 }
 
+const newKey = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
 const NewApplicationModal: React.FC<NewApplicationModalProps> = ({ open, onClose, onDone }) => {
-  const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [borrowers, setBorrowers] = useState<any[]>([]);
   const [products, setProducts] = useState<LoanProduct[]>([]);
   const [borrowerId, setBorrowerId] = useState('');
   const [productId, setProductId] = useState('');
   const [amount, setAmount] = useState('');
   const [term, setTerm] = useState('');
-  const [frequency, setFrequency] = useState('Monthly');
-  const [purpose, setPurpose] = useState('');
+  const [purpose, setPurpose] = useState('BUSINESS');
+  const [details, setDetails] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState('');
+  const [requestKey, setRequestKey] = useState(newKey);
 
   useEffect(() => {
     if (!open) return;
-    const load = async () => {
-      try {
-        const [b, p] = await Promise.all([clientsService.list(), loansService.products()]);
+    setTouched(false);
+    setServerErrors({});
+    setSubmitError('');
+    setRequestKey(newKey());
+    setLoadError('');
+    Promise.all([clientsService.list(), loansService.products()])
+      .then(([b, p]) => {
         setBorrowers(b);
         setProducts(p);
-        if (b.length > 0) setBorrowerId(b[0].id);
+        if (!borrowerId && b.length > 0) setBorrowerId(b[0].id);
         if (p.length > 0) {
-          setProductId(p[0].id);
-          setAmount(String(p[0].minAmount || 10000));
-          setTerm(String(p[0].minTermMonths || 6));
+          const first = p.find((x) => x.id === productId) ?? p[0];
+          setProductId(first.id);
+          setAmount(centsToDecimal(first.minAmount));
+          setTerm(String(first.minTermMonths));
         }
-      } catch {}
-    };
-    load();
+      })
+      .catch((err) => setLoadError(err?.message || 'Members or products could not be loaded.'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const selProd = products.find((p) => p.id === productId) || products[0];
+  const product = products.find((p) => p.id === productId) ?? null;
+  const borrower = borrowers.find((b) => b.id === borrowerId);
+  const { quote, error: quoteError } = useLoanQuote(product, amount, term);
+  const purposeDetails = purpose === 'OTHER' ? { explanation: details } : details.trim() ? { details } : {};
+  const validation = useMemo(() => validateApplicationTerms(product, { amount, termMonths: term, purpose, purposeDetails }), [product, amount, term, purpose, details]);
+  const errors: Record<string, string> = { ...(touched ? (validation.errors as Record<string, string>) : {}), ...serverErrors };
 
-  const handleSubmit = async () => {
-    if (!borrowerId || !productId || !amount || !term || !purpose) {
-      toast.error('All fields are required.');
+  const submit = async (asDraft: boolean) => {
+    setTouched(true);
+    setServerErrors({});
+    setSubmitError('');
+    if (!borrowerId) {
+      setSubmitError('Choose the member.');
       return;
     }
+    if (!validation.ok) return;
     setLoading(true);
     try {
-      await loansService.createApplication({
-        borrowerId,
-        productId,
-        productName: selProd?.name,
-        principalAmount: Number(amount),
-        termMonths: Number(term),
-        repaymentFrequency: frequency,
-        interestRate: selProd?.interestRate || 12,
-        interestType: selProd?.interestType || 'Flat Rate',
-        purpose,
-      });
-      onDone();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to submit loan application.');
+      const loan = await loansService.createApplication({ borrowerId, productId, amount, termMonths: term, purpose, purposeDetails, submit: !asDraft }, requestKey);
+      onDone(loan.loanNumber, !asDraft);
+    } catch (err) {
+      if (err instanceof BranchApiError) setServerErrors(err.fieldErrors);
+      setSubmitError(err instanceof Error ? err.message : 'The application could not be filed.');
     } finally {
       setLoading(false);
     }
@@ -302,76 +256,88 @@ const NewApplicationModal: React.FC<NewApplicationModalProps> = ({ open, onClose
     <Modal
       open={open}
       onClose={onClose}
-      title="Originate Staff Loan Application"
-      size="lg"
+      title="New loan application"
+      size="xl"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button variant="brand" onClick={handleSubmit} loading={loading}>
-            Submit Application
+          <Button variant="outline" onClick={() => submit(true)} loading={loading}>
+            Save as draft
+          </Button>
+          <Button variant="brand" onClick={() => submit(false)} loading={loading}>
+            File application
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <Field label="Client / Borrower" required>
-          <Select value={borrowerId} onChange={(e) => setBorrowerId(e.target.value)}>
-            {borrowers.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.fullName} ({b.borrowerNumber}) · KYC: {b.kycStatus}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Loan Product" required>
-          <Select
-            value={productId}
-            onChange={(e) => {
-              setProductId(e.target.value);
-              const p = products.find((x) => x.id === e.target.value);
-              if (p) {
-                setAmount(String(p.minAmount));
-                setTerm(String(p.minTermMonths));
-              }
-            }}
-          >
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} (₱{Number(p.minAmount).toLocaleString()} - ₱{Number(p.maxAmount).toLocaleString()})
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Principal Amount (₱)" required>
-            <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      {loadError ? (
+        <ErrorState message={loadError} />
+      ) : (
+        <div className="space-y-4">
+          {submitError && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{submitError}</div>}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Member" required>
+              <Select value={borrowerId} onChange={(e) => setBorrowerId(e.target.value)}>
+                {borrowers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.fullName} ({b.borrowerNumber})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Loan product" required error={errors.product}>
+              <Select
+                value={productId}
+                onChange={(e) => {
+                  setProductId(e.target.value);
+                  const p = products.find((x) => x.id === e.target.value);
+                  if (p) {
+                    setAmount(centsToDecimal(p.minAmount));
+                    setTerm(String(p.minTermMonths));
+                  }
+                }}
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          {borrower && !isKycVerified(borrower.kycStatus) && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">This member's KYC is not verified yet, so the application will be refused.</p>
+          )}
+          {product && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <ProductTerms product={product} />
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Amount (₱)" required error={errors.amount}>
+              <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </Field>
+            <Field label="Term (months)" required error={errors.termMonths}>
+              <Input inputMode="numeric" value={term} onChange={(e) => setTerm(e.target.value)} />
+            </Field>
+            <Field label="Purpose" required error={errors.purpose}>
+              <Select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+                {LOAN_PURPOSES.map((p) => (
+                  <option key={p} value={p}>
+                    {LOAN_PURPOSE_LABELS[p]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <Field label={purpose === 'OTHER' ? 'What the loan is for' : 'Details (optional)'} required={purpose === 'OTHER'} error={errors.purposeDetails}>
+            <Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} />
           </Field>
-          <Field label="Term (Months)" required>
-            <Input type="number" value={term} onChange={(e) => setTerm(e.target.value)} />
-          </Field>
+          <LoanQuoteView quote={quote} error={quoteError} />
         </div>
-
-        <Field label="Repayment Frequency" required>
-          <Select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-            <option value="Monthly">Monthly</option>
-            <option value="Semi-Monthly">Semi-Monthly</option>
-            <option value="Weekly">Weekly</option>
-            <option value="Daily">Daily</option>
-          </Select>
-        </Field>
-
-        <Field label="Loan Purpose" required>
-          <Input
-            placeholder="e.g. Sari-sari store capital expansion"
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value)}
-          />
-        </Field>
-      </div>
+      )}
     </Modal>
   );
 };

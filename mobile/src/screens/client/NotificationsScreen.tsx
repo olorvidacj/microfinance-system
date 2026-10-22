@@ -3,10 +3,10 @@ import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { EmptyState, LoadingView, ScreenHeader, SegmentedTabs } from '../../components';
+import { EmptyState, ErrorView, LoadingView, ScreenHeader, SegmentedTabs } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
-import { MobileNotification } from '../../types';
+import { api, messageOf } from '../../services/api';
+import type { ClientNotificationView } from '../../shared/client';
 import { timeAgo } from '../../utils/format';
 
 type TabKey = 'all' | 'unread';
@@ -35,21 +35,21 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export const NotificationsScreen: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('all');
-  const [notifications, setNotifications] = useState<MobileNotification[]>([]);
+  const [notifications, setNotifications] = useState<ClientNotificationView[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoaded(false);
-    setError(null);
+  const load = useCallback(async () => {
     try {
       const res = await api.getNotifications();
       setNotifications([...res.notifications].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
       setUnreadCount(res.unreadCount);
-    } catch (err: any) {
-      setError(err?.message || 'Unable to load notifications.');
+      setError('');
+    } catch (err) {
+      setError(messageOf(err, 'Your notifications could not be loaded.'));
     } finally {
       setLoaded(true);
       setRefreshing(false);
@@ -59,43 +59,49 @@ export const NotificationsScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
-  const openNotification = async (n: MobileNotification) => {
-    if (!n.isRead) {
+  const openNotification = async (n: ClientNotificationView) => {
+    if (n.isRead) return;
+    setActionError('');
+    try {
+      await api.markNotificationAsRead(n.id);
       setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, isRead: true } : x)));
       setUnreadCount((c) => Math.max(0, c - 1));
-      try {
-        await api.markNotificationAsRead(n.id);
-      } catch {}
+    } catch (err) {
+      setActionError(messageOf(err, 'The notification could not be marked as read.'));
     }
   };
 
   const markAllRead = async () => {
     if (unreadCount === 0) return;
-    setNotifications((prev) => prev.map((x) => ({ ...x, isRead: true })));
-    setUnreadCount(0);
+    setActionError('');
     try {
       await api.markAllNotificationsAsRead();
-    } catch {}
+      setNotifications((prev) => prev.map((x) => ({ ...x, isRead: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      setActionError(messageOf(err, 'Notifications could not be marked as read.'));
+    }
   };
 
   const visible = tab === 'all' ? notifications : notifications.filter((n) => !n.isRead);
 
-  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Notifications" /><LoadingView /></SafeAreaView>;
+  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Notifications" /><LoadingView text="Loading notifications…" /></SafeAreaView>;
+  if (error) return <SafeAreaView style={styles.safe}><ScreenHeader title="Notifications" /><ErrorView message={error} onRetry={() => { setLoaded(false); load(); }} /></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScreenHeader
         title="Notifications"
         right={
-          <TouchableOpacity onPress={markAllRead} disabled={unreadCount === 0} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <TouchableOpacity onPress={markAllRead} disabled={unreadCount === 0} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityLabel="Mark all as read">
             <Ionicons name="checkmark-done-outline" size={22} color={unreadCount === 0 ? colors.textFaint : colors.teal} />
           </TouchableOpacity>
         }
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
       <View style={styles.tabsWrap}>
         <SegmentedTabs<TabKey>
           tabs={[
@@ -111,7 +117,7 @@ export const NotificationsScreen: React.FC = () => {
         data={visible}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
         renderItem={({ item }) => {
           const icon = CATEGORY_ICONS[item.category] ?? 'notifications-outline';
           const color = CATEGORY_COLORS[item.category] ?? colors.textMuted;
@@ -125,9 +131,7 @@ export const NotificationsScreen: React.FC = () => {
                   <Text style={[styles.title, item.isRead && styles.titleRead]} numberOfLines={1}>{item.title}</Text>
                   {!item.isRead ? <View style={styles.dot} /> : null}
                 </View>
-                <Text style={[styles.message, item.isRead && styles.messageRead]} numberOfLines={2}>
-                  {item.message}
-                </Text>
+                <Text style={[styles.message, item.isRead && styles.messageRead]}>{item.message}</Text>
                 <Text style={styles.time}>{timeAgo(item.createdAt)}</Text>
               </View>
             </TouchableOpacity>
@@ -137,11 +141,7 @@ export const NotificationsScreen: React.FC = () => {
           <EmptyState
             icon={tab === 'unread' ? 'notifications-off-outline' : 'notifications-outline'}
             title={tab === 'unread' ? 'All caught up' : 'No notifications yet'}
-            message={
-              tab === 'unread'
-                ? 'You have no unread notifications.'
-                : 'Loan updates, payment confirmations, and announcements will appear here.'
-            }
+            message={tab === 'unread' ? 'You have no unread notifications.' : 'Loan updates, payment confirmations, and announcements will appear here.'}
           />
         }
       />
@@ -151,37 +151,17 @@ export const NotificationsScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  error: { fontSize: 12, color: colors.danger, textAlign: 'center', marginTop: 8 },
+  error: { fontSize: 12, color: colors.danger, textAlign: 'center', marginTop: 8, paddingHorizontal: 16 },
   tabsWrap: { paddingHorizontal: 16, paddingVertical: 10 },
   content: { padding: 16, paddingTop: 6, paddingBottom: 110, flexGrow: 1 },
-  item: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
+  item: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.lg, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
   itemRead: { opacity: 0.7 },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
+  iconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   body: { flex: 1 },
   itemTop: { flexDirection: 'row', alignItems: 'center' },
   title: { flex: 1, fontSize: 14, fontWeight: '800', color: colors.text, marginRight: 6 },
   titleRead: { color: colors.textSecondary },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primaryBright,
-  },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primaryBright },
   message: { fontSize: 12, color: colors.textSecondary, marginTop: 3, lineHeight: 17 },
   messageRead: { color: colors.textMuted },
   time: { fontSize: 10, color: colors.textFaint, marginTop: 5 },

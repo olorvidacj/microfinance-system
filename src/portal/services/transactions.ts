@@ -1,25 +1,22 @@
-import { clientRequest } from './clientApi';
-import { FinancialTransaction, TransactionType } from '../types';
+import { ApiError, clientRequest } from './clientApi';
+import type { ClientTransactionView, TransactionKind } from '../../../shared/client';
 
 export interface TransactionsQuery {
-  period?: string;
-  type?: TransactionType | 'ALL';
+  kind?: TransactionKind | 'ALL';
   search?: string;
+  /** YYYY-MM-DD */
+  from?: string;
 }
 
 export const transactionService = {
-  async list(query?: TransactionsQuery): Promise<FinancialTransaction[]> {
+  async list(query: TransactionsQuery = {}): Promise<ClientTransactionView[]> {
     const params = new URLSearchParams();
-    if (query?.period) params.set('period', query.period);
-    if (query?.type && query.type !== 'ALL') params.set('type', query.type);
-    if (query?.search) params.set('search', query.search);
+    if (query.kind && query.kind !== 'ALL') params.set('kind', query.kind);
+    if (query.search) params.set('search', query.search);
+    if (query.from) params.set('from', query.from);
     const qs = params.toString() ? `?${params.toString()}` : '';
-    const payload = await clientRequest(`/api/client/transactions${qs}`);
-    return payload?.transactions || payload || [];
-  },
-
-  async detail(id: string): Promise<FinancialTransaction | undefined> {
-    const payload = await clientRequest(`/api/client/transactions/${id}`);
-    return payload?.transaction || payload;
+    const rows: ClientTransactionView[] | undefined = await clientRequest(`/api/client/transactions${qs}`, undefined, (p) => p?.transactions);
+    if (!Array.isArray(rows)) throw new ApiError('Your transactions could not be loaded.');
+    return rows;
   },
 };

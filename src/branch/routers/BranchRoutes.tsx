@@ -9,10 +9,13 @@ import KycQueuePage from '../pages/KycQueuePage';
 import LoanApplicationsPage from '../pages/LoanApplicationsPage';
 import LoansPage from '../pages/LoansPage';
 import LoanDetailsPage from '../pages/LoanDetailsPage';
+import LoanCalculatorPage from '../pages/LoanCalculatorPage';
+import PaymentProofsPage from '../pages/PaymentProofsPage';
 import CollectionsPage from '../pages/CollectionsPage';
 import ProcessPaymentPage from '../pages/ProcessPaymentPage';
 import SavingsPage from '../pages/SavingsPage';
 import SavingsTransactionsPage from '../pages/SavingsTransactionsPage';
+import SavingsRequestsPage from '../pages/SavingsRequestsPage';
 import GroupLendingPage from '../pages/GroupLendingPage';
 import GroupDetailPage from '../pages/GroupDetailPage';
 import TransactionLedgerPage from '../pages/TransactionLedgerPage';
@@ -21,10 +24,12 @@ import NotificationsPage from '../pages/NotificationsPage';
 import ReportsPage from '../pages/ReportsPage';
 import PersonnelProfilePage from '../pages/PersonnelProfilePage';
 import ActivityLogPage from '../pages/ActivityLogPage';
+import OnlinePaymentsPage from '../pages/OnlinePaymentsPage';
 
+/** Mounted at /staff/*, so paths here are relative to /staff. */
 export const BranchRoutes: React.FC = () => (
   <Routes>
-    <Route path="/staff/app" element={<BranchLayout />}>
+    <Route path="/app" element={<BranchLayout />}>
       <Route path="" element={<DashboardPage />} />
       <Route path="performance" element={<PerformancePage />} />
       <Route path="clients" element={<ClientsPage />} />
@@ -33,12 +38,16 @@ export const BranchRoutes: React.FC = () => (
       <Route path="applications" element={<LoanApplicationsPage />} />
       <Route path="loans" element={<LoansPage />} />
       <Route path="loans/:id" element={<LoanDetailsPage />} />
+      <Route path="calculator" element={<LoanCalculatorPage />} />
+      <Route path="payment-proofs" element={<PaymentProofsPage />} />
       <Route path="collections" element={<CollectionsPage />} />
       <Route path="payments" element={<ProcessPaymentPage />} />
       <Route path="savings" element={<SavingsPage />} />
+      <Route path="savings/requests" element={<SavingsRequestsPage />} />
       <Route path="savings/:id" element={<SavingsTransactionsPage />} />
       <Route path="groups" element={<GroupLendingPage />} />
       <Route path="groups/:id" element={<GroupDetailPage />} />
+      <Route path="online-payments" element={<OnlinePaymentsPage />} />
       <Route path="transactions" element={<TransactionLedgerPage />} />
       <Route path="documents" element={<DocumentsPage />} />
       <Route path="notifications" element={<NotificationsPage />} />
@@ -47,7 +56,7 @@ export const BranchRoutes: React.FC = () => (
       <Route path="activity" element={<ActivityLogPage />} />
       <Route path="*" element={<Navigate to="/staff/app" replace />} />
     </Route>
-    <Route path="/staff/login" element={<Navigate to="/staff/app" replace />} />
+    <Route path="/login" element={<Navigate to="/staff/app" replace />} />
     <Route path="*" element={<Navigate to="/staff/app" replace />} />
   </Routes>
 );

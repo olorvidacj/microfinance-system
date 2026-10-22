@@ -1,45 +1,27 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { CompositeScreenProps } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppButton, AppCard, Avatar, Badge, LoadingView, QuickAction, SectionHeader, StatCard } from '../../components';
+import { AppButton, AppCard, Avatar, Badge, ErrorView, LoadingView, QuickAction, SectionHeader, StatCard } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
+import { api, messageOf } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { ClientDashboardData, DashboardTransaction } from '../../types';
-import { daysUntil, formatCurrency, formatDate, greeting, humanizeStatus, percentComplete } from '../../utils/format';
+import type { ClientDashboardView } from '../../shared/client';
+import { isKycVerified, normaliseKycStatus } from '../../shared/kyc';
+import { centsFromDb, centsToDecimal } from '../../shared/lending';
+import { daysUntil, formatCurrency, formatDate, greeting, humanizeStatus } from '../../utils/format';
 import { HomeStackParamList, ClientTabParamList } from '../../navigation/types';
 
-type Props = CompositeScreenProps<
-  NativeStackScreenProps<HomeStackParamList, 'Home'>,
-  BottomTabScreenProps<ClientTabParamList>
->;
-
-const TXN_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  REPAYMENT: 'arrow-undo-outline',
-  LOAN_PAYMENT: 'card-outline',
-  LOAN_DISBURSEMENT: 'arrow-forward-circle-outline',
-  SAVINGS_DEPOSIT: 'trending-up-outline',
-  SAVINGS_WITHDRAWAL: 'trending-down-outline',
-  LOAN_APPROVAL: 'checkmark-circle-outline',
-  FEE: 'receipt-outline',
-  ADJUSTMENT: 'swap-horizontal-outline',
-};
+type Props = CompositeScreenProps<NativeStackScreenProps<HomeStackParamList, 'Home'>, BottomTabScreenProps<ClientTabParamList>>;
 
 export const HomeScreen: React.FC<Props> = ({ navigation }) => {
-  const { session, signOut } = useAuth();
-  const [dashboard, setDashboard] = useState<ClientDashboardData | null>(null);
+  const { session } = useAuth();
+  const [dashboard, setDashboard] = useState<ClientDashboardView | null>(null);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const mounted = useRef(true);
@@ -48,9 +30,12 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     if (!silent) setLoading(true);
     try {
       const data = await api.getDashboard();
-      if (mounted.current) setDashboard(data);
-    } catch (err: any) {
-      // Silent; the empty state explains the failure.
+      if (mounted.current) {
+        setDashboard(data);
+        setError('');
+      }
+    } catch (err) {
+      if (mounted.current) setError(messageOf(err, 'Your home screen could not be loaded.'));
     } finally {
       if (mounted.current) {
         setLoading(false);
@@ -67,92 +52,90 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     };
   }, [load]);
 
+  // Coming back to Home refreshes it (a KYC decision or a payment may have landed).
   useFocusEffect(
     useCallback(() => {
-      if (dashboard && dashboard.kycStatus === 'PENDING') {
-        // Refresh so KYC status stays current when returning to Home.
-        load(true);
-      }
-    }, [dashboard?.kycStatus])
+      if (dashboard) load(true);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
   );
 
-  if (loading) return <SafeAreaView style={styles.safe}><LoadingView /></SafeAreaView>;
+  if (loading) return <SafeAreaView style={styles.safe}><LoadingView text="Loading your home screen…" /></SafeAreaView>;
+  if (error || !dashboard) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ErrorView message={error || 'No data.'} onRetry={() => load()} />
+      </SafeAreaView>
+    );
+  }
 
   const user = session?.user;
-  const kycStatus = dashboard?.kycStatus ?? 'VERIFIED';
-  const kycIsVerified = kycStatus === 'VERIFIED';
-  const kycIsPending = ['PENDING', 'UNDER_REVIEW'].includes(kycStatus);
+  const kycStatus = normaliseKycStatus(dashboard.member.kycStatus);
+  const kycIsVerified = isKycVerified(kycStatus);
+  const kycIsPending = kycStatus === 'SUBMITTED' || kycStatus === 'UNDER_REVIEW';
   const kycNeedsCorrection = kycStatus === 'CORRECTION_REQUIRED';
-
-  const nextDueIn = dashboard?.nextPaymentDueDate ? daysUntil(dashboard.nextPaymentDueDate) : null;
-  const paidProgress = dashboard ? percentComplete(dashboard.totalPaid ?? 0, dashboard.totalBalance ?? 0) : 0;
-
-  const headerRight = (
-    <View style={styles.headerRight}>
-      <TouchableOpacity
-        style={styles.iconBtn}
-        onPress={() => navigation.navigate('NotificationsTab', { screen: 'Notifications' })}
-        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-      >
-        <Ionicons name="notifications-outline" size={21} color={colors.text} />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.navigate('MoreTab', { screen: 'Profile' })}>
-        <Avatar name={user?.fullName} size={38} uri={user?.avatar} />
-      </TouchableOpacity>
-    </View>
-  );
+  const { loans, savings } = dashboard;
+  const nextDue = loans.nextDue;
+  const nextDueIn = nextDue ? daysUntil(nextDue.dueDate) : null;
+  const totalPayable = loans.running.reduce((s, l) => s + centsFromDb(l.totalPayable), 0);
+  const totalPaid = loans.running.reduce((s, l) => s + centsFromDb(l.totalPaid), 0);
+  const paidProgress = totalPayable > 0 ? Math.min(100, Math.round((totalPaid / totalPayable) * 100)) : 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={dashboard?.recentTransactions ?? []}
+        data={dashboard.recentActivity}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
         ListHeaderComponent={
           <>
             <View style={styles.topRow}>
               <View style={styles.greetingWrap}>
                 <Text style={styles.greeting}>{greeting()}</Text>
-                <Text style={styles.name} numberOfLines={1}>{user?.fullName?.split(' ')[0] ?? 'Member'}</Text>
-                <Text style={styles.memberNo}>Member No. {dashboard?.memberNumber ?? '—'}</Text>
+                <Text style={styles.name} numberOfLines={1}>{dashboard.member.fullName.split(' ')[0] || 'Member'}</Text>
+                <Text style={styles.memberNo}>Member No. {dashboard.member.memberNumber}</Text>
               </View>
-              {headerRight}
+              <View style={styles.headerRight}>
+                <TouchableOpacity
+                  style={styles.iconBtn}
+                  onPress={() => navigation.navigate('NotificationsTab', { screen: 'Notifications' })}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  accessibilityLabel={`Notifications, ${dashboard.notifications.unread} unread`}
+                >
+                  <Ionicons name="notifications-outline" size={21} color={colors.text} />
+                  {dashboard.notifications.unread > 0 ? <View style={styles.dot} /> : null}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => navigation.navigate('MoreTab', { screen: 'Profile' })}>
+                  <Avatar name={dashboard.member.fullName} size={38} uri={user?.avatar} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {!kycIsVerified ? (
-              <AppCard style={kycNeedsCorrection ? { ...styles.kycCard, borderColor: colors.warningBorder } : styles.kycCard} padded={false}>
-                <View style={[styles.kycBanner, kycNeedsCorrection && styles.kycBannerCorrection]}>
-                  <View style={[styles.kycIcon, kycIsPending ? { backgroundColor: colors.warningSoft } : kycNeedsCorrection ? { backgroundColor: colors.warningSoft } : { backgroundColor: colors.dangerSoft }]}>
-                    <Ionicons
-                      name={kycIsPending ? 'time-outline' : 'alert-circle-outline'}
-                      size={22}
-                      color={kycIsPending ? colors.warning : colors.danger}
-                    />
+              <AppCard style={styles.kycCard} padded={false}>
+                <View style={styles.kycBanner}>
+                  <View style={[styles.kycIcon, { backgroundColor: kycIsPending || kycNeedsCorrection ? colors.warningSoft : colors.dangerSoft }]}>
+                    <Ionicons name={kycIsPending ? 'time-outline' : 'alert-circle-outline'} size={22} color={kycIsPending ? colors.warning : colors.danger} />
                   </View>
                   <View style={styles.kycBody}>
                     <Text style={styles.kycTitle}>
-                      {kycNeedsCorrection ? 'KYC needs corrections' : kycIsPending ? 'KYC under review' : 'Complete your KYC verification first.'}
+                      {kycNeedsCorrection ? 'KYC needs corrections' : kycIsPending ? 'KYC under review' : kycStatus === 'REJECTED' ? 'KYC not approved' : 'Complete your KYC verification first.'}
                     </Text>
                     <Text style={styles.kycText}>
                       {kycNeedsCorrection
-                        ? 'One or more of your documents need updating before you can apply for loans.'
+                        ? 'Some of your details or documents need updating before you can apply for loans.'
                         : kycIsPending
-                          ? 'Your documents are being verified by branch personnel. Loan applications open once approved.'
-                          : 'Verify your identity to unlock loans, e-signatures, and higher savings limits.'}
+                          ? 'Your documents are being checked by the branch. Loan applications open once approved.'
+                          : 'Verify your identity to open loans and savings.'}
                     </Text>
                     <View style={styles.kycActions}>
                       <AppButton
                         variant={kycNeedsCorrection ? 'secondary' : 'primary'}
                         size="sm"
                         style={{ alignSelf: 'flex-start', width: undefined, paddingHorizontal: 16 }}
-                        title={kycNeedsCorrection ? 'Submit Correction' : kycIsPending ? 'View Status' : 'Start KYC'}
-                        onPress={() => {
-                          if (kycIsPending) navigation.navigate('KycStatus');
-                          else navigation.navigate('KycForm');
-                        }}
+                        title={kycNeedsCorrection ? 'Update KYC' : kycIsPending ? 'View status' : 'Start KYC'}
+                        onPress={() => (kycIsPending ? navigation.navigate('KycStatus') : navigation.navigate('KycForm'))}
                       />
                     </View>
                   </View>
@@ -161,54 +144,89 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
             ) : (
               <View style={styles.verifiedRow}>
                 <Ionicons name="shield-checkmark" size={16} color={colors.green} />
-                <Text style={styles.verifiedText}>KYC Verified —{' '}</Text>
-                <Ionicons name="lock-closed" size={12} color={colors.textFaint} />
-                <Text style={styles.verifiedTextSub}>Loan services unlocked</Text>
+                <Text style={styles.verifiedText}>KYC verified</Text>
               </View>
             )}
 
+            {loans.overdueCount > 0 ? (
+              <TouchableOpacity onPress={() => navigation.navigate('LoansTab', { screen: 'Payments' })}>
+                <AppCard style={styles.overdueCard}>
+                  <Text style={styles.overdueText}>
+                    {loans.overdueCount === 1 ? 'One of your loans is' : `${loans.overdueCount} of your loans are`} behind. Paying now stops further penalties.
+                  </Text>
+                </AppCard>
+              </TouchableOpacity>
+            ) : null}
+
             <View style={styles.balanceCard}>
               <View>
-                <Text style={styles.balanceLabel}>OUTSTANDING LOAN</Text>
-                <Text style={styles.balanceValue}>{formatCurrency(dashboard?.remainingBalance)}</Text>
+                <Text style={styles.balanceLabel}>LOAN BALANCE</Text>
+                <Text style={styles.balanceValue}>{formatCurrency(loans.outstanding)}</Text>
                 <Text style={styles.balanceSub}>
-                  {dashboard?.activeLoansCount ?? 0} active loan{dashboard?.activeLoansCount === 1 ? '' : 's'} · {formatCurrency(dashboard?.totalActiveLoan)} total
+                  {loans.running.length} running loan{loans.running.length === 1 ? '' : 's'}
+                  {loans.pendingApplications.length ? ` · ${loans.pendingApplications.length} application${loans.pendingApplications.length === 1 ? '' : 's'} pending` : ''}
                 </Text>
               </View>
               <Ionicons name="wallet-outline" size={34} color="rgba(255,255,255,0.35)" />
             </View>
 
             <View style={styles.statRow}>
-              {nextDueIn !== null && nextDueIn !== undefined ? (
-                <View style={styles.statFlex}>
-                  <StatCard
-                    compact
-                    icon="calendar-outline"
-                    label="Next payment"
-                    value={formatCurrency(dashboard?.nextPayment)}
-                    color={colors.danger}
-                    bg={colors.dangerSoft}
-                    sub={dashboard?.nextPaymentDueDate ? `${formatDate(dashboard.nextPaymentDueDate)} · due in ${nextDueIn}d` : undefined}
-                  />
-                </View>
-              ) : null}
+              <View style={styles.statFlex}>
+                <StatCard
+                  compact
+                  icon="calendar-outline"
+                  label="Next payment"
+                  value={nextDue ? formatCurrency(nextDue.amount) : '—'}
+                  color={colors.danger}
+                  bg={colors.dangerSoft}
+                  sub={nextDue ? `${formatDate(nextDue.dueDate)}${nextDueIn !== null && nextDueIn >= 0 ? ` · in ${nextDueIn}d` : ' · overdue'}` : 'Nothing due'}
+                />
+              </View>
               <View style={styles.statFlex}>
                 <StatCard
                   compact
                   icon="wallet-outline"
-                  label="Savings balance"
-                  value={formatCurrency(dashboard?.savingsBalance)}
+                  label="Savings"
+                  value={formatCurrency(savings.total)}
                   color={colors.teal}
                   bg={colors.tealSoft}
-                  sub={dashboard?.savingsGoalName ? `${dashboard.savingsGoalName}` : undefined}
+                  sub={`${savings.accounts.length} account${savings.accounts.length === 1 ? '' : 's'}`}
                 />
               </View>
             </View>
 
+            {savings.accounts.map((a) => (
+              <TouchableOpacity key={a.id} onPress={() => navigation.navigate('SavingsTab', { screen: 'Savings' })} accessibilityLabel={`${a.productName} ${formatCurrency(a.balance)}`}>
+                <AppCard style={styles.txnCard} padded={false}>
+                  <View style={styles.txnRow}>
+                    <View style={styles.flex1}>
+                      <Text style={styles.txnDesc}>{a.productName}</Text>
+                      <Text style={styles.txnRef}>{a.passbookNumber}</Text>
+                    </View>
+                    <Text style={styles.txnAmt}>{formatCurrency(a.balance)}</Text>
+                  </View>
+                </AppCard>
+              </TouchableOpacity>
+            ))}
+
+            {dashboard.group ? (
+              <TouchableOpacity onPress={() => navigation.navigate('MoreTab', { screen: 'GroupLending' })}>
+                <AppCard style={styles.txnCard} padded={false}>
+                  <View style={styles.txnRow}>
+                    <Ionicons name="people-outline" size={18} color={colors.primary} style={{ marginRight: 10 }} />
+                    <View style={styles.flex1}>
+                      <Text style={styles.txnDesc}>{dashboard.group.name}</Text>
+                      <Text style={styles.txnRef}>Your group · {humanizeStatus(dashboard.group.role)}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                  </View>
+                </AppCard>
+              </TouchableOpacity>
+            ) : null}
+
             <View style={{ marginTop: 10 }}>
               <SectionHeader title="Quick Actions" />
             </View>
-
             <View style={styles.quickRow}>
               <QuickAction
                 label="Apply Loan"
@@ -218,40 +236,17 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
                 disabled={!kycIsVerified}
                 disabledLabel={!kycIsVerified ? 'Locked' : undefined}
               />
-              <QuickAction
-                label="Pay Loan"
-                caption="Submit payment proof"
-                icon="card-outline"
-                color={colors.teal}
-                bg={colors.tealSoft}
-                onPress={() => navigation.navigate('LoansTab', { screen: 'Payments' })}
-              />
-              <QuickAction
-                label="Savings"
-                caption="View deposits & goals"
-                icon="wallet-outline"
-                color={colors.green}
-                bg={colors.greenSoft}
-                onPress={() => navigation.navigate('SavingsTab', { screen: 'Savings' })}
-              />
-              <QuickAction
-                label="Transactions"
-                caption="Full history & receipts"
-                icon="receipt-outline"
-                color={colors.info}
-                bg={colors.infoSoft}
-                onPress={() => navigation.navigate('MoreTab', { screen: 'Transactions' })}
-              />
+              <QuickAction label="Pay Loan" caption="Send payment proof" icon="card-outline" color={colors.teal} bg={colors.tealSoft} onPress={() => navigation.navigate('LoansTab', { screen: 'Payments' })} />
+              <QuickAction label="Savings" caption="Statements & withdrawals" icon="wallet-outline" color={colors.green} bg={colors.greenSoft} onPress={() => navigation.navigate('SavingsTab', { screen: 'Savings' })} />
+              <QuickAction label="Transactions" caption="Full history" icon="receipt-outline" color={colors.info} bg={colors.infoSoft} onPress={() => navigation.navigate('MoreTab', { screen: 'Transactions' })} />
             </View>
 
-            {dashboard && (dashboard.totalBalance ?? 0) > 0 ? (
+            {totalPayable > 0 ? (
               <AppCard style={styles.repayCard}>
                 <View style={styles.repayHeader}>
                   <View style={styles.flex1}>
-                    <Text style={styles.repayTitle}>Loan Repayment</Text>
-                    <Text style={styles.repaySub}>
-                      {formatCurrency(dashboard.totalPaid ?? 0)} of {formatCurrency(dashboard.totalBalance)} paid
-                    </Text>
+                    <Text style={styles.repayTitle}>Loan repayment</Text>
+                    <Text style={styles.repaySub}>{formatCurrency(centsToDecimal(totalPaid))} of {formatCurrency(centsToDecimal(totalPayable))} paid</Text>
                   </View>
                   <Text style={styles.repayPct}>{paidProgress}%</Text>
                 </View>
@@ -265,9 +260,8 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
             <SectionHeader
               title="Recent Activity"
-              subtitle={dashboard?.recentTransactions?.length ? 'Your latest transactions' : undefined}
               right={
-                dashboard?.recentTransactions?.length ? (
+                dashboard.recentActivity.length ? (
                   <TouchableOpacity onPress={() => navigation.navigate('MoreTab', { screen: 'Transactions' })}>
                     <Text style={styles.seeAll}>See all</Text>
                   </TouchableOpacity>
@@ -277,37 +271,28 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           </>
         }
         renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => {
-              if (item.type === 'SAVINGS_DEPOSIT' || item.type === 'SAVINGS_WITHDRAWAL') {
-                navigation.navigate('SavingsTab', { screen: 'Savings' });
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <AppCard style={styles.txnCard} padded={false}>
-              <View style={styles.txnRow}>
-                <View style={styles.txnIcon}>
-                  <Ionicons name={TXN_ICONS[item.type] ?? 'swap-horizontal-outline'} size={16} color={colors.primary} />
-                </View>
-                <View style={styles.flex1}>
-                  <Text style={styles.txnDesc} numberOfLines={1}>{humanizeStatus(item.type)}</Text>
-                  <Text style={styles.txnRef}>{item.referenceNumber}</Text>
-                  <Badge status={item.status} />
-                </View>
-                <View style={styles.txnAmtWrap}>
-                  <Text style={[styles.txnAmt, (item.type === 'REPAYMENT' || item.type === 'LOAN_PAYMENT') && styles.txnAmtOut]}>
-                    {(item.type === 'REPAYMENT' || item.type === 'LOAN_PAYMENT') ? '−' : '+'}{formatCurrency(item.amount)}
-                  </Text>
-                  <Text style={styles.txnDate}>{formatDate(item.date)}</Text>
-                </View>
+          <AppCard style={styles.txnCard} padded={false}>
+            <View style={styles.txnRow}>
+              <View style={styles.txnIcon}>
+                <Ionicons name={item.direction === 'OUT' ? 'arrow-up-outline' : 'arrow-down-outline'} size={16} color={colors.primary} />
               </View>
-            </AppCard>
-          </TouchableOpacity>
+              <View style={styles.flex1}>
+                <Text style={styles.txnDesc} numberOfLines={1}>{item.label}</Text>
+                <Text style={styles.txnRef}>{item.reference}</Text>
+              </View>
+              <View style={styles.txnAmtWrap}>
+                <Text style={[styles.txnAmt, item.direction === 'OUT' && styles.txnAmtOut]}>
+                  {item.direction === 'OUT' ? '−' : '+'}
+                  {formatCurrency(item.amount)}
+                </Text>
+                <Text style={styles.txnDate}>{formatDate(item.date)}</Text>
+              </View>
+            </View>
+          </AppCard>
         )}
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>No recent transactions yet.</Text>
+            <Text style={styles.emptyText}>No activity yet.</Text>
           </View>
         }
       />
@@ -329,6 +314,9 @@ const styles = StyleSheet.create({
   name: { fontSize: 21, fontWeight: '800', color: colors.text, marginTop: 1 },
   memberNo: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center' },
+  dot: { position: 'absolute', top: 7, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger },
+  overdueCard: { marginBottom: 12, backgroundColor: colors.dangerSoft, borderColor: colors.danger, borderWidth: 1 },
+  overdueText: { fontSize: 13, fontWeight: '700', color: colors.danger },
   iconBtn: {
     width: 38,
     height: 38,

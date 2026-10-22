@@ -14,8 +14,13 @@ import {
   Clock,
 } from 'lucide-react';
 import { profileService } from '../services/profile';
+import { ApiError } from '../services/clientApi';
+import { ChangePasswordForm } from '../components/ChangePasswordForm';
+import { Avatar } from '../../ui';
 import { ClientProfile, KYCStatus, KycStatusData } from '../types';
-import { formatCurrency, formatDate } from '../../utils/loanMath';
+import { formatDate } from '../../utils/loanMath';
+import { formatMoney } from '../../../shared/client/format';
+import { centsFromDb } from '../../../shared/lending';
 import {
   Button,
   Card,
@@ -26,27 +31,25 @@ import {
   Field,
   Input,
   LoadingState,
-  Modal,
   Select,
   StatusBadge,
 } from '../components/ui';
 import { InfoRow, SectionDivider } from '../components/common';
 import { useToast } from '../components/ui/Toast';
+import { KycStatusBadge } from '../../components/KycStatusBadge';
+import { CIVIL_STATUSES, PROFILE_LOCKED_MESSAGE, normaliseKycStatus, validateProfileUpdate } from '../../../shared/kyc-core';
 
 const KYC_STEPS = ['Information', 'Documents', 'Review', 'Verification', 'Loan Eligibility'];
 
 const kycStepIndex = (status?: string): number => {
-  switch (status) {
-    case 'PENDING':
+  switch (normaliseKycStatus(status)) {
+    case 'IN_PROGRESS':
+    case 'SUBMITTED':
       return 1;
     case 'UNDER_REVIEW':
       return 2;
-    case 'VERIFIED':
+    case 'APPROVED':
       return 3;
-    case 'CORRECTION_REQUIRED':
-    case 'REJECTED':
-    case 'EXPIRED':
-    case 'NOT_STARTED':
     default:
       return 0;
   }
@@ -58,8 +61,7 @@ const ProfilePage: React.FC = () => {
   const [kyc, setKyc] = useState<KycStatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'overview' | 'kyc' | 'edit'>('overview');
-  const [editOpen, setEditOpen] = useState(false);
+  const [tab, setTab] = useState<'overview' | 'kyc' | 'edit' | 'security'>('overview');
 
   const load = async () => {
     setLoading(true);
@@ -86,6 +88,7 @@ const ProfilePage: React.FC = () => {
     { id: 'overview' as const, label: 'Overview' },
     { id: 'kyc' as const, label: 'KYC & Verification' },
     { id: 'edit' as const, label: 'Edit Profile' },
+    { id: 'security' as const, label: 'Password' },
   ];
 
   return (
@@ -95,7 +98,7 @@ const ProfilePage: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">My Profile</h1>
           <p className="text-sm text-slate-500">View and update your member details.</p>
         </div>
-        <Button onClick={() => setEditOpen(true)}>
+        <Button onClick={() => setTab('edit')}>
           <Pencil className="h-4 w-4" /> Edit profile
         </Button>
       </div>
@@ -106,27 +109,14 @@ const ProfilePage: React.FC = () => {
         <CardBody className="-mt-12">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="flex items-end gap-4">
-              <div className="h-24 w-24 overflow-hidden rounded-2xl border-4 border-white bg-slate-100 shadow-md">
-                <img
-                  src={profile.avatar}
-                  alt={profile.fullName}
-                  className="h-full w-full object-cover"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src =
-                      `https://ui-avatars.com/api/?background=059669&color=fff&name=${encodeURIComponent(profile.fullName)}`;
-                  }}
-                />
-              </div>
+              <Avatar src={profile.avatar ?? undefined} name={profile.fullName} size={96} className="border-4 border-white text-2xl shadow-md" />
               <div className="pb-1">
                 <h2 className="text-xl font-bold text-slate-900">{profile.fullName}</h2>
                 <p className="text-sm text-slate-500">
                   Member <span className="font-mono text-xs">{profile.memberNumber}</span> · Joined {formatDate(profile.membershipDate)}
                 </p>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <StatusBadge
-                    status={profile.kycStatus}
-                    tone={profile.kycStatus === 'VERIFIED' ? 'green' : profile.kycStatus === 'REJECTED' ? 'red' : 'amber'}
-                  />
+                  <KycStatusBadge status={profile.kycStatus} size="xs" />
                   <span className="inline-flex items-center gap-1 rounded-full bg-gold-500/10 px-2 py-0.5 text-xs font-medium text-gold-700">
                     <CreditCard className="h-3.5 w-3.5" /> Score {profile.creditScore}
                   </span>
@@ -167,11 +157,11 @@ const ProfilePage: React.FC = () => {
               <InfoRow label="Date of birth" value={formatDate(profile.dateOfBirth)} />
               <InfoRow label="Gender" value={profile.gender || '—'} />
               <InfoRow label="Civil status" value={profile.civilStatus} />
-              <InfoRow label="Nationality" value={profile.nationality || 'Filipino'} />
+              <InfoRow label="Employment" value={profile.employmentStatus || '—'} />
               <SectionDivider />
               <InfoRow label="Occupation" value={profile.occupation || '—'} />
               <InfoRow label="Employer / Business" value={profile.employer || '—'} />
-              <InfoRow label="Monthly income" value={formatCurrency(profile.monthlyIncome)} />
+              <InfoRow label="Monthly income" value={formatMoney(profile.monthlyIncome)} />
             </CardBody>
           </Card>
 
@@ -182,10 +172,10 @@ const ProfilePage: React.FC = () => {
             <CardBody>
               <InfoRow label="Email" value={profile.email} />
               <InfoRow label="Mobile number" value={profile.phone} />
-              <InfoRow label="Secondary phone" value={profile.secondaryPhone || '—'} />
+              <InfoRow label="Barangay" value={profile.barangay || '—'} />
               <SectionDivider />
               <InfoRow label="Address" value={profile.address || '—'} />
-              <InfoRow label="City / Province" value={profile.city ? `${profile.city}${profile.province ? ', ' + profile.province : ''}` : '—'} />
+              <InfoRow label="City / Province" value={[profile.cityMunicipality, profile.province].filter(Boolean).join(', ') || '—'} />
               <InfoRow label="Postal code" value={profile.postalCode || '—'} />
             </CardBody>
           </Card>
@@ -196,7 +186,7 @@ const ProfilePage: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>Know Your Customer (KYC) verification</CardTitle>
-            {kyc && <StatusBadge status={kyc.kycStatus} />}
+            {kyc && <KycStatusBadge status={kyc.kycStatus} size="sm" />}
           </CardHeader>
           <CardBody>
             {/* Workflow progress indicator */}
@@ -290,123 +280,108 @@ const ProfilePage: React.FC = () => {
             <CardTitle>Update profile details</CardTitle>
           </CardHeader>
           <CardBody>
-            <EditProfileForm profile={profile} onSaved={(p) => setProfile(p)} />
+            <EditProfileForm profile={profile} onSaved={load} />
           </CardBody>
         </Card>
       )}
 
-      <EditProfileModal
-        profile={profile}
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        onSaved={(p) => {
-          setProfile(p);
-          setEditOpen(false);
-          toast.success('Profile updated successfully.');
-        }}
-      />
+      {tab === 'security' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Change password</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <ChangePasswordForm />
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 };
 
-const EditProfileForm: React.FC<{ profile: ClientProfile; onSaved: (p: ClientProfile) => void }> = ({
-  profile,
-  onSaved,
-}) => {
+const EditProfileForm: React.FC<{ profile: ClientProfile; onSaved: () => void }> = ({ profile, onSaved }) => {
   const toast = useToast();
-  const [form, setForm] = useState({
-    fullName: profile.fullName,
-    email: profile.email,
-    phone: profile.phone,
-    secondaryPhone: profile.secondaryPhone || '',
-    civilStatus: profile.civilStatus || 'Single',
+  const original = {
+    phone: profile.phone || '',
+    civilStatus: profile.civilStatus || '',
     occupation: profile.occupation || '',
     employer: profile.employer || '',
-    monthlyIncome: String(profile.monthlyIncome || ''),
+    monthlyIncome: centsFromDb(profile.monthlyIncome) > 0 ? profile.monthlyIncome : '',
     address: profile.address || '',
-    dateOfBirth: profile.dateOfBirth || '',
-  });
+    barangay: profile.barangay || '',
+    cityMunicipality: profile.cityMunicipality,
+    province: profile.province || '',
+  };
+  const [form, setForm] = useState(original);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Only what the member changed, checked with the same rules as the server (shared/kyc-core/profile.ts).
+    const changes = Object.fromEntries(Object.entries(form).filter(([k, v]) => v !== original[k as keyof typeof original]));
+    if (!Object.keys(changes).length) return toast.success('Nothing to save.');
+    const v = validateProfileUpdate(changes);
+    setErrors(v.errors);
+    if (!v.ok) return;
     setSaving(true);
     try {
-      await profileService.update({
-        fullName: form.fullName,
-        email: form.email,
-        phone: form.phone,
-        civilStatus: form.civilStatus,
-        occupation: form.occupation,
-        employer: form.employer,
-        monthlyIncome: Number(form.monthlyIncome) || 0,
-        address: form.address,
-        dateOfBirth: form.dateOfBirth,
-      });
-      onSaved({ ...profile, ...form, monthlyIncome: Number(form.monthlyIncome) || 0 });
-      toast.success('Profile updated successfully.');
-    } catch (err: any) {
-      toast.error(err.message || 'Unable to save profile.');
+      await profileService.update(changes);
+      toast.success('Your details were saved.');
+      onSaved();
+    } catch (err) {
+      const fields = err instanceof ApiError && err.details && typeof err.details.fields === 'object' ? (err.details.fields as Record<string, string>) : {};
+      setErrors(fields);
+      toast.error(err instanceof Error ? err.message : 'Unable to save your details.');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <form onSubmit={save} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <Field label="Full name" required>
-        <Input value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} />
-      </Field>
-      <Field label="Civil status">
-        <Select value={form.civilStatus} onChange={(e) => setForm((f) => ({ ...f, civilStatus: e.target.value }))}>
-          <option>Single</option>
-          <option>Married</option>
-          <option>Widowed</option>
-          <option>Separated</option>
-        </Select>
-      </Field>
-      <Field label="Email address" required>
-        <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-      </Field>
-      <Field label="Mobile number" required>
-        <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
-      </Field>
-      <Field label="Secondary phone">
-        <Input value={form.secondaryPhone} onChange={(e) => setForm((f) => ({ ...f, secondaryPhone: e.target.value }))} />
-      </Field>
-      <Field label="Date of birth">
-        <Input type="date" value={form.dateOfBirth} onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))} />
-      </Field>
-      <Field label="Occupation">
-        <Input value={form.occupation} onChange={(e) => setForm((f) => ({ ...f, occupation: e.target.value }))} />
-      </Field>
-      <Field label="Employer / Business">
-        <Input value={form.employer} onChange={(e) => setForm((f) => ({ ...f, employer: e.target.value }))} />
-      </Field>
-      <Field label="Monthly income (₱)">
-        <Input type="number" min={0} value={form.monthlyIncome} onChange={(e) => setForm((f) => ({ ...f, monthlyIncome: e.target.value }))} />
-      </Field>
-      <Field label="Address">
-        <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
-      </Field>
-      <div className="sm:col-span-2">
-        <Button type="submit" loading={saving}>
-          <Save className="h-4 w-4" /> Save changes
-        </Button>
+    <form onSubmit={save} className="space-y-5">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <p className="font-medium text-slate-800">{profile.fullName} · {profile.email}</p>
+        <p className="mt-1 text-xs">{PROFILE_LOCKED_MESSAGE}</p>
       </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Mobile number" required error={errors.phone}>
+          <Input value={form.phone} onChange={set('phone')} inputMode="tel" aria-label="Mobile number" />
+        </Field>
+        <Field label="Civil status" error={errors.civilStatus}>
+          <Select value={form.civilStatus} onChange={set('civilStatus')} aria-label="Civil status">
+            <option value="">Choose…</option>
+            {CIVIL_STATUSES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
+        </Field>
+        <Field label="Occupation" error={errors.occupation}>
+          <Input value={form.occupation} onChange={set('occupation')} aria-label="Occupation" />
+        </Field>
+        <Field label="Employer / business" error={errors.employer}>
+          <Input value={form.employer} onChange={set('employer')} aria-label="Employer" />
+        </Field>
+        <Field label="Monthly income (₱)" error={errors.monthlyIncome}>
+          <Input inputMode="decimal" value={form.monthlyIncome} onChange={set('monthlyIncome')} aria-label="Monthly income" />
+        </Field>
+        <Field label="Street address" error={errors.address}>
+          <Input value={form.address} onChange={set('address')} aria-label="Street address" />
+        </Field>
+        <Field label="Barangay" error={errors.barangay}>
+          <Input value={form.barangay} onChange={set('barangay')} aria-label="Barangay" />
+        </Field>
+        <Field label="City / municipality" error={errors.cityMunicipality}>
+          <Input value={form.cityMunicipality} onChange={set('cityMunicipality')} aria-label="City" />
+        </Field>
+        <Field label="Province" error={errors.province}>
+          <Input value={form.province} onChange={set('province')} aria-label="Province" />
+        </Field>
+      </div>
+      <Button type="submit" loading={saving}>
+        <Save className="h-4 w-4" /> Save changes
+      </Button>
     </form>
   );
 };
-
-const EditProfileModal: React.FC<{
-  profile: ClientProfile;
-  open: boolean;
-  onClose: () => void;
-  onSaved: (p: ClientProfile) => void;
-}> = ({ profile, open, onClose, onSaved }) => (
-  <Modal open={open} onClose={onClose} title="Edit profile" size="lg">
-    <EditProfileForm profile={profile} onSaved={onSaved} />
-  </Modal>
-);
 
 export default ProfilePage;

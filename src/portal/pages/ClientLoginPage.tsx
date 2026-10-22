@@ -35,7 +35,7 @@ const ClientLoginPage: React.FC = () => {
     setLoading(true);
     try {
       const user = await login(identifier.trim(), password);
-      navigate(user.role === 'CLIENT' ? '/portal' : '/', { replace: true });
+      navigate(user.role === 'CLIENT' ? '/portal' : '/app', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Unable to sign in. Please try again.');
     } finally {

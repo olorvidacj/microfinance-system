@@ -1,3 +1,5 @@
+import type { LoanStatus } from '../../../shared/lending';
+import { formatDisplayDate, formatMoney } from '../../../shared/client/format';
 // HOSCOMCO Microfinance Cooperative - Admin Mock Data
 // Tacloban, Leyte, Philippines
 
@@ -22,6 +24,9 @@ export interface AdminUser {
   dateRegistered: string;
   avatar: string;
   branch: string;
+  /** Staff: the branch they work in ('all' for head office); null when none. */
+  branchId: string | null;
+  accountRole: 'STAFF' | 'CLIENT';
 }
 
 export interface AdminClient {
@@ -66,7 +71,7 @@ export interface AdminLoan {
   interestRate: number;
   paymentFrequency: string;
   applicationDate: string;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Active' | 'Completed' | 'Disbursed' | 'Under Review';
+  status: LoanStatus;
   outstandingBalance: number;
   monthlyPayment: number;
   branch: string;
@@ -84,7 +89,8 @@ export interface AdminSavingsAccount {
   clientId: string;
   accountType: string;
   balance: number;
-  status: 'Active' | 'Dormant' | 'Suspended' | 'Closed';
+  status: 'Active' | 'Dormant' | 'Frozen' | 'Closed';
+  statusReason?: string;
   openedDate: string;
   lastTransaction: string;
   branch: string;
@@ -113,14 +119,20 @@ export interface LendingGroup {
   groupName: string;
   leader: string;
   memberCount: number;
-  status: 'Active' | 'Pending' | 'Inactive' | 'Graduated';
+  status: 'Forming' | 'Active' | 'Suspended' | 'Dissolved';
+  /** Remaining balance of the members' running group loans. */
   totalGroupLoan: number;
+  fundBalance: number;
+  runningLoans: number;
+  membersInArrears: number;
+  blocked: boolean;
+  blockReasons: string[];
   branch: string;
   formedDate: string;
   meetingDay: string;
-  repaymentRate: number;
   meetingTime?: string;
   meetingLocation?: string;
+  loanOfficer?: string;
 }
 
 export interface AdminBranch {
@@ -187,11 +199,11 @@ export const KYC_STATUS_DATA = [];
 
 export const BRANCH_PERFORMANCE_DATA = [];
 
-export function formatPHP(amount: number): string {
-  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+/** Pesos with centavos, the same text the branch app and the member portal show. */
+export function formatPHP(amount: number | string): string {
+  return formatMoney(amount);
 }
 
 export function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatDisplayDate(dateStr);
 }

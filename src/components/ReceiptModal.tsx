@@ -1,80 +1,51 @@
-import React, { useState } from 'react';
-import { X, Printer, Building2, ShieldCheck, Download, Sparkles, CheckCircle2, FileText, QrCode } from 'lucide-react';
-import { formatCurrency, formatDate, numberToWords } from '../utils/loanMath';
+import React from 'react';
+import { X, Printer, Building2, ShieldCheck, Download, CheckCircle2 } from 'lucide-react';
+import { centsFromDb, centsToDecimal, formatPeso, type ReceiptDocument } from '../../shared/lending';
+import { formatDate, numberToWords } from '../utils/loanMath';
 import { PaymentRecord } from '../types';
-import { useLoan } from '../context/LoanContext';
 
 interface ReceiptModalProps {
-  payment: PaymentRecord | null;
-  isOpen: boolean;
+  receipt: ReceiptDocument | null;
   onClose: () => void;
 }
 
-export const ReceiptModal: React.FC<ReceiptModalProps> = ({
-  payment,
-  isOpen,
-  onClose,
-}) => {
-  const { branches, loans } = useLoan();
-  const [isCopied, setIsCopied] = useState(false);
+const amount = (v: string) => formatPeso(centsFromDb(v));
 
-  if (!isOpen || !payment) return null;
+function receiptText(r: ReceiptDocument): string {
+  const lines = [
+    'HOSCOMCO MICROFINANCE COOPERATIVE',
+    r.branchName ? `${r.branchName}${r.branchAddress ? ` - ${r.branchAddress}` : ''}` : null,
+    r.title.toUpperCase(),
+    '',
+    `Receipt no.:   ${r.receiptNumber}`,
+    `Issued:        ${new Date(r.issuedAt).toLocaleString('en-PH')}`,
+    `${r.partyLabel}: ${r.partyName}${r.partyNumber ? ` (${r.partyNumber})` : ''}`,
+    `${r.accountLabel}: ${r.accountNumber}`,
+    r.accountDetail,
+    '',
+    ...r.lines.map((l) => `${l.deduction ? 'Less: ' : ''}${l.label}`.padEnd(36) + `${l.deduction ? '-' : ''}${amount(l.amount)}`),
+    `${r.totalLabel}`.padEnd(36) + amount(r.totalAmount),
+    `In words: ${numberToWords(Number(r.totalAmount))}`,
+    '',
+    `Method:        ${r.method}`,
+    r.reference ? `Reference:     ${r.reference}` : null,
+    r.destination ? `Sent to:       ${r.destination}` : null,
+    `Processed by:  ${r.processedBy}`,
+    r.notes ? `Notes:         ${r.notes}` : null,
+    r.footer,
+  ];
+  return lines.filter((l) => l !== null).join('\n');
+}
 
-  const branch = branches.find((b) => b.id === payment.branchId);
-  const loan = loans.find((l) => l.id === payment.loanId || l.loanNumber === payment.loanNumber);
-
-  const handlePrint = () => {
-    window.print();
-  };
+export const ReceiptModal: React.FC<ReceiptModalProps> = ({ receipt, onClose }) => {
+  if (!receipt) return null;
 
   const handleDownload = () => {
-    const textContent = `
-============================================================
-           HOSCOMCO MICROFINANCE COOPERATIVE
-           OFFICIAL PAYMENT COLLECTION RECEIPT
-============================================================
-OR Number:          ${payment.receiptNumber}
-Transaction Ref:    ${payment.transactionReference}
-Date:               ${formatDate(payment.paymentDate)}
-Time:               ${new Date().toLocaleTimeString()}
-
-MEMBER / PAYOR:     ${payment.borrowerName}
-Loan Account No.:   ${payment.loanNumber}
-Branch / Office:    ${branch?.name || 'Main Office'}
-
-------------------------------------------------------------
-PAYMENT APPORTIONMENT:
-------------------------------------------------------------
-Principal Repayment:     ${formatCurrency(payment.principalPortion)}
-Cooperative Interest:    ${formatCurrency(payment.interestPortion)}
-${payment.penaltyPortion > 0 ? `Late Penalty Charge:     ${formatCurrency(payment.penaltyPortion)}\n` : ''}${payment.rebateDiscount && payment.rebateDiscount > 0 ? `Early Rebate Discount:  -${formatCurrency(payment.rebateDiscount)}\n` : ''}
-------------------------------------------------------------
-TOTAL AMOUNT PAID:       ${formatCurrency(payment.amount)}
-AMOUNT IN WORDS:         ${numberToWords(payment.amount)}
-------------------------------------------------------------
-
-LOAN BALANCE STATUS:
-Loan Remaining Balance:  ${loan ? formatCurrency(loan.remainingBalance) : 'Updated'}
-Next Due Date:           ${loan?.nextPaymentDate ? formatDate(loan.nextPaymentDate) : 'N/A'}
-Loan Status:             ${loan?.status || 'Active'}
-
-PAYMENT DETAILS:
-Payment Channel:         ${payment.paymentMethod}
-Transaction Reference:   ${payment.transactionReference}
-Collecting Officer:      ${payment.collectedBy}
-${payment.notes ? `Remarks:                 ${payment.notes}\n` : ''}
-------------------------------------------------------------
-CDA Registration No. 9520-10023812 • SEC Registered
-Receipt Security Hash: ${payment.id}
-Thank you for your prompt loan payment!
-============================================================
-`;
-
-    const blob = new Blob([textContent.trim()], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([receiptText(receipt)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Official_Receipt_${payment.receiptNumber}.txt`;
+    link.download = `${receipt.receiptNumber}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -82,216 +53,109 @@ Thank you for your prompt loan payment!
   };
 
   return (
-    <div id="receipt-modal-backdrop" className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div id="receipt-modal-card" className="bg-white rounded-3xl max-w-xl w-full my-6 shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-150">
-        {/* Header Action Bar */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+    <div id="receipt-modal-backdrop" role="dialog" aria-modal="true" aria-label={receipt.title} className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-xs">
+      <div className="my-6 w-full max-w-xl overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl">
+        <div className="flex items-center justify-between bg-slate-900 px-6 py-4 text-white print:hidden">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-navy-900/30 border border-gold-500/40 flex items-center justify-center text-gold-400">
-              <Building2 className="w-4 h-4" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-gold-500/40 bg-navy-900/30 text-gold-400">
+              <Building2 className="h-4 w-4" />
             </div>
             <div>
-              <div className="text-xs font-bold text-white tracking-wide">Official Collection Receipt</div>
-              <div className="text-[10px] text-slate-400 font-mono">{payment.receiptNumber}</div>
+              <div className="text-xs font-bold tracking-wide">{receipt.title}</div>
+              <div className="font-mono text-[10px] text-slate-400">{receipt.receiptNumber}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              id="download-receipt-btn"
-              onClick={handleDownload}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold transition border border-slate-700 shadow-xs"
-              title="Download text receipt"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download</span>
+            <button onClick={handleDownload} className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white">
+              <Download className="h-3.5 w-3.5" /> Download
             </button>
-            <button
-              id="print-receipt-btn"
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-navy-900 hover:bg-gold-500 text-white rounded-xl text-xs font-semibold transition shadow-xs"
-              title="Print official receipt"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print OR</span>
+            <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-xl bg-navy-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-gold-500">
+              <Printer className="h-3.5 w-3.5" /> Print
             </button>
-            <button
-              id="close-receipt-modal-btn"
-              onClick={onClose}
-              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition ml-1"
-            >
-              <X className="w-5 h-5" />
+            <button onClick={onClose} aria-label="Close receipt" className="ml-1 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white">
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* Printable Receipt Paper Body */}
-        <div className="p-6 md:p-8 bg-white space-y-5 text-xs text-slate-800" id="printable-receipt">
-          {/* Header & Logo */}
-          <div className="text-center border-b border-slate-200 pb-5">
-            <div className="inline-flex items-center justify-center gap-2 mb-1">
-              <div className="w-7 h-7 rounded-lg bg-navy-900 text-white flex items-center justify-center font-bold text-sm">
-                H
-              </div>
-              <h2 className="text-base md:text-lg font-black text-slate-900 tracking-tight uppercase">
-                HOSCOMCO Microfinance Cooperative
-              </h2>
-            </div>
-            <p className="text-[11px] font-medium text-slate-600">
-              {branch?.name || 'San Jose Cooperative Main Branch'} • {branch?.address || 'San Jose, Bulacan'}
-            </p>
-            <p className="text-[10px] text-slate-400 font-mono">
-              CDA Reg. No: 9520-10023812 • Tel: {branch?.phone || '+63 (044) 791-2384'}
-            </p>
-
-            <div className="inline-flex items-center gap-1.5 mt-3 px-3 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-full font-bold text-[11px]">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>OFFICIAL RECEIPT (OR)</span>
+        <div id="printable-receipt" className="space-y-5 bg-white p-6 text-xs text-slate-800 md:p-8">
+          <div className="border-b border-slate-200 pb-5 text-center">
+            <h2 className="text-base font-black uppercase tracking-tight text-slate-900 md:text-lg">HOSCOMCO Microfinance Cooperative</h2>
+            {receipt.branchName && (
+              <p className="text-[11px] font-medium text-slate-600">
+                {receipt.branchName}
+                {receipt.branchAddress ? ` · ${receipt.branchAddress}` : ''}
+              </p>
+            )}
+            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-0.5 text-[11px] font-bold text-emerald-800">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+              <span>{receipt.title.toUpperCase()}</span>
             </div>
           </div>
 
-          {/* Receipt Info Meta */}
-          <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-100">
-            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-              <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Official Receipt No.</span>
-              <span className="font-mono font-bold text-gold-700 text-sm">{payment.receiptNumber}</span>
+          <div className="grid grid-cols-2 gap-3 border-b border-slate-100 pb-4">
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5">
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Receipt no.</span>
+              <span className="font-mono text-sm font-bold text-gold-700">{receipt.receiptNumber}</span>
             </div>
-            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-right">
-              <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Payment Date</span>
-              <span className="font-mono font-bold text-slate-900 text-sm">{formatDate(payment.paymentDate)}</span>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-right">
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Issued</span>
+              <span className="font-mono text-sm font-bold text-slate-900">{formatDate(receipt.issuedAt)}</span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Member Payor</span>
-              <span className="font-bold text-slate-900 text-sm block truncate">{payment.borrowerName}</span>
-              <span className="text-[10px] text-slate-500 font-mono">ID: {payment.borrowerId}</span>
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">{receipt.partyLabel}</span>
+              <span className="block truncate text-sm font-bold text-slate-900">{receipt.partyName}</span>
+              {receipt.partyNumber && <span className="font-mono text-[10px] text-slate-500">{receipt.partyNumber}</span>}
             </div>
             <div className="text-right">
-              <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Loan Account Number</span>
-              <span className="font-mono font-bold text-slate-900 text-sm">{payment.loanNumber}</span>
-              <span className="text-[10px] text-slate-500 block">{loan?.productName || 'Microfinance Loan'}</span>
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">{receipt.accountLabel}</span>
+              <span className="font-mono text-sm font-bold text-slate-900">{receipt.accountNumber}</span>
+              {receipt.accountDetail && <span className="block text-[10px] text-slate-500">{receipt.accountDetail}</span>}
             </div>
           </div>
 
-          {/* Itemized Apportionment Table */}
-          <div className="border border-slate-200 rounded-2xl overflow-hidden">
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
             <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
-                  <th className="py-2.5 px-3">Payment Breakdown</th>
-                  <th className="py-2.5 px-3 text-right">Amount (₱)</th>
-                </tr>
-              </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
-                <tr>
-                  <td className="py-2 px-3 text-slate-700 font-sans">
-                    <span className="font-medium text-slate-900">Principal Loan Repayment</span>
-                    <span className="block text-[10px] text-slate-400">Direct credit amortization reduction</span>
-                  </td>
-                  <td className="py-2 px-3 text-right font-semibold text-slate-800">
-                    {formatCurrency(payment.principalPortion)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-2 px-3 text-slate-700 font-sans">
-                    <span className="font-medium text-slate-900">Cooperative Interest Service</span>
-                    <span className="block text-[10px] text-slate-400">Diminishing / flat interest earned</span>
-                  </td>
-                  <td className="py-2 px-3 text-right font-semibold text-slate-800">
-                    {formatCurrency(payment.interestPortion)}
-                  </td>
-                </tr>
-                {payment.penaltyPortion > 0 && (
-                  <tr className="bg-rose-50/60 text-rose-800">
-                    <td className="py-2 px-3 font-sans">
-                      <span className="font-bold text-rose-700">Late Penalty Surcharge</span>
-                      <span className="block text-[10px] text-rose-500">Arrears fee assessment</span>
+                {receipt.lines.map((l, i) => (
+                  <tr key={i} className={l.deduction ? 'bg-rose-50/50' : ''}>
+                    <td className="px-3 py-2 font-sans text-slate-700">
+                      <span className="font-medium text-slate-900">{l.deduction ? `Less: ${l.label}` : l.label}</span>
+                      {l.detail && <span className="block text-[10px] text-slate-400">{l.detail}</span>}
                     </td>
-                    <td className="py-2 px-3 text-right font-bold text-rose-700">
-                      {formatCurrency(payment.penaltyPortion)}
+                    <td className={`px-3 py-2 text-right font-semibold ${l.deduction ? 'text-rose-700' : 'text-slate-800'}`}>
+                      {l.deduction ? '- ' : ''}
+                      {amount(l.amount)}
                     </td>
                   </tr>
-                )}
-                {payment.rebateDiscount && payment.rebateDiscount > 0 && (
-                  <tr className="text-emerald-700 bg-emerald-50/60">
-                    <td className="py-2 px-3 font-sans">
-                      <span className="font-bold text-emerald-800 flex items-center gap-1">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        Less: Early Settlement Rebate Discount
-                      </span>
-                      <span className="block text-[10px] text-emerald-600">Unaccrued interest rebate incentive</span>
-                    </td>
-                    <td className="py-2 px-3 text-right font-bold text-emerald-700">
-                      - {formatCurrency(payment.rebateDiscount)}
-                    </td>
-                  </tr>
-                )}
-                <tr className="bg-slate-900 text-white font-bold text-sm">
-                  <td className="py-3 px-3 font-sans">TOTAL AMOUNT RECEIVED</td>
-                  <td className="py-3 px-3 text-right font-black text-emerald-400">
-                    {formatCurrency(payment.amount)}
-                  </td>
+                ))}
+                <tr className="bg-slate-900 text-sm font-bold text-white">
+                  <td className="px-3 py-3 font-sans">{receipt.totalLabel}</td>
+                  <td className="px-3 py-3 text-right font-black text-emerald-400">{amount(receipt.totalAmount)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          {/* Amount in words banner */}
-          <div className="px-3.5 py-2.5 bg-amber-50/80 border border-amber-200/80 rounded-xl text-[11px] text-amber-900">
-            <span className="font-bold uppercase text-[9px] tracking-wider text-amber-700 block">Amount in Words:</span>
-            <span className="font-semibold italic">{numberToWords(payment.amount)}</span>
+          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-3.5 py-2.5 text-[11px] text-amber-900">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-amber-700">Amount in words</span>
+            <span className="font-semibold italic">{numberToWords(Number(receipt.totalAmount))}</span>
           </div>
 
-          {/* Loan Balance & Installment Update */}
-          {loan && (
-            <div className="grid grid-cols-2 gap-3 p-3 bg-gold-500/10 border border-gold-400/30 rounded-2xl text-[11px]">
-              <div>
-                <span className="text-slate-500 block text-[9px] uppercase font-bold">Updated Loan Remaining Balance</span>
-                <span className="font-mono font-bold text-navy-900 text-sm">{formatCurrency(loan.remainingBalance)}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-slate-500 block text-[9px] uppercase font-bold">Next Installment Due Date</span>
-                <span className="font-mono font-bold text-slate-800 text-xs">
-                  {loan.remainingBalance <= 0 ? 'Fully Paid / Settled' : loan.nextPaymentDate ? formatDate(loan.nextPaymentDate) : 'N/A'}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Payment Method & Transaction Reference */}
-          <div className="p-3.5 bg-slate-50 rounded-2xl space-y-1.5 text-xs border border-slate-200">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Payment Method:</span>
-              <span className="font-semibold text-slate-900">{payment.paymentMethod}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Transaction / Ref Number:</span>
-              <span className="font-mono font-bold text-slate-900">{payment.transactionReference}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Collecting Officer:</span>
-              <span className="text-slate-800 font-medium">{payment.collectedBy}</span>
-            </div>
-            {payment.notes && (
-              <div className="flex justify-between pt-1 border-t border-slate-200">
-                <span className="text-slate-500">Notes / Remarks:</span>
-                <span className="text-slate-700 italic">{payment.notes}</span>
-              </div>
-            )}
+          <div className="space-y-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
+            <Row label="Method" value={receipt.method} />
+            {receipt.reference && <Row label="Reference" value={receipt.reference} mono />}
+            {receipt.destination && <Row label="Sent to" value={receipt.destination} mono />}
+            <Row label="Processed by" value={receipt.processedBy} />
+            {receipt.notes && <Row label="Notes" value={receipt.notes} />}
           </div>
 
-          {/* Security Signature & Verification stamp */}
-          <div className="pt-3 border-t border-dashed border-slate-300 flex items-center justify-between text-[10px] text-slate-500">
+          <div className="flex items-center justify-between border-t border-dashed border-slate-300 pt-3 text-[10px] text-slate-500">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-              <div>
-                <div className="text-slate-800 font-bold">Official System Electronic OR</div>
-                <div className="text-[9px] font-mono text-slate-400">Security Hash: {payment.id}</div>
-              </div>
+              <ShieldCheck className="h-5 w-5 flex-shrink-0 text-emerald-600" />
+              <div className="font-bold text-slate-800">System-issued receipt</div>
             </div>
-
-            <div className="text-right">
-              <div className="font-medium text-slate-700">Thank you for your prompt payment!</div>
-              <div className="text-slate-400 italic text-[9px]">HOSCOMCO Cooperative Management System</div>
-            </div>
+            {receipt.footer && <div className="max-w-[60%] text-right font-medium text-slate-700">{receipt.footer}</div>}
           </div>
         </div>
       </div>
@@ -299,3 +163,45 @@ Thank you for your prompt loan payment!
   );
 };
 
+const Row: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
+  <div className="flex justify-between gap-4">
+    <span className="text-slate-500">{label}</span>
+    <span className={`text-right font-semibold text-slate-900 ${mono ? 'font-mono' : ''}`}>{value}</span>
+  </div>
+);
+
+/** A loan payment as a receipt (for screens that still hold PaymentRecord objects). */
+export function receiptFromPayment(
+  p: PaymentRecord,
+  context: { branchName?: string | null; branchAddress?: string | null; productName?: string | null } = {},
+): ReceiptDocument {
+  const dec = (n: number) => centsToDecimal(Math.round((Number(n) || 0) * 100));
+  return {
+    kind: 'PAYMENT',
+    title: 'Official receipt',
+    receiptNumber: p.receiptNumber,
+    issuedAt: p.paymentDate,
+    branchName: context.branchName ?? null,
+    branchAddress: context.branchAddress ?? null,
+    partyLabel: 'Received from',
+    partyName: p.borrowerName,
+    partyNumber: p.borrowerId,
+    accountLabel: 'Loan number',
+    accountNumber: p.loanNumber,
+    accountDetail: context.productName ?? null,
+    lines: [
+      { label: 'Principal', amount: dec(p.principalPortion) },
+      { label: 'Interest', amount: dec(p.interestPortion) },
+      ...(p.penaltyPortion > 0 ? [{ label: 'Late penalty', amount: dec(p.penaltyPortion) }] : []),
+      ...(p.rebateDiscount > 0 ? [{ label: 'Early settlement rebate', amount: dec(p.rebateDiscount), deduction: true }] : []),
+    ],
+    totalLabel: 'Total received',
+    totalAmount: dec(p.amount),
+    method: p.paymentMethod,
+    reference: p.transactionReference || null,
+    destination: null,
+    processedBy: p.collectedBy,
+    notes: p.notes ?? null,
+    footer: null,
+  };
+}

@@ -1,182 +1,117 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Users2, CheckCircle2, Clock, UserPlus, UserMinus, Eye, PlusCircle, RefreshCw, ShieldCheck, Plus, Building2, Calendar } from 'lucide-react';
+import { Users2, CheckCircle2, ShieldAlert, Eye, Wallet, Calendar } from 'lucide-react';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { StatCard } from '../components/StatCard';
 import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
-import { Modal, ConfirmDialog } from '../components/Modal';
+import { Modal } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
-import { LendingGroup, formatPHP, formatDate } from '../data/mockData';
+import { LendingGroup, formatDate } from '../data/mockData';
 import { adminApi, GroupDetail } from '../services/adminApi';
+import { peso } from '../../components/lending';
+import { useAdminBranch } from '../branchScope';
 
-const STATUSES = ['Active', 'Pending', 'Inactive', 'Graduated'];
+const STATUSES = ['Forming', 'Active', 'Suspended', 'Dissolved'];
+// Money to the centavo (the API sends numbers with up to 2 decimals).
+const php = (n: number | string | null | undefined) => peso(n === null || n === undefined ? null : String(n));
 
-interface GroupMember {
-  id: string;
-  name: string;
-  phone: string;
-  role: 'Leader' | 'Treasurer' | 'Secretary' | 'Member';
-  loanAmount: number;
-  balance: number;
-  status: 'Good Standing' | 'Due' | 'In Arrears';
-}
-
+/**
+ * Head-office oversight of solidarity groups. Groups are formed and run by
+ * branch loan officers (Group lending in the staff app); this page is read-only.
+ */
 export const LendingGroupsPage: React.FC = () => {
+  const { branchId } = useAdminBranch();
   const [groups, setGroups] = useState<LendingGroup[]>([]);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState<LendingGroup | null>(null);
   const [detail, setDetail] = useState<GroupDetail | null>(null);
-  const [tab, setTab] = useState<'members' | 'loan' | 'payments'>('members');
-  const [removeTarget, setRemoveTarget] = useState<GroupMember | null>(null);
-  const [addMemberOpen, setAddMemberOpen] = useState(false);
-  const [toast, setToast] = useState('');
+  const [tab, setTab] = useState<'members' | 'loan' | 'payments' | 'fund' | 'meetings'>('members');
 
   useEffect(() => {
-    adminApi.groups().then(setGroups).catch(() => setGroups([]));
-  }, []);
+    adminApi.groups(branchId).then(setGroups, (err) => setLoadError(err instanceof Error ? err.message : 'Groups could not be loaded.'));
+  }, [branchId]);
 
   useEffect(() => {
-    if (!selected) { setDetail(null); return; }
-    adminApi.groupDetail(selected.id).then(setDetail).catch(() => setDetail(null));
+    if (!selected) {
+      setDetail(null);
+      return;
+    }
+    adminApi.groupDetail(selected.id).then(setDetail, (err) => setLoadError(err instanceof Error ? err.message : 'The group could not be loaded.'));
   }, [selected?.id]);
 
   const filtered = useMemo(() => {
-    return groups.filter((g) => {
-      const q = search.toLowerCase();
-      const matchesSearch = g.groupName.toLowerCase().includes(q) || g.groupId.toLowerCase().includes(q) || g.leader.toLowerCase().includes(q);
-      const matchesStatus = !statusFilter || g.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
+    const q = search.toLowerCase();
+    return groups.filter((g) => (g.groupName.toLowerCase().includes(q) || g.groupId.toLowerCase().includes(q) || g.leader.toLowerCase().includes(q)) && (!statusFilter || g.status === statusFilter));
   }, [groups, search, statusFilter]);
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500); };
-
-  const totalLoans = groups.reduce((s, g) => s + g.totalGroupLoan, 0);
-  const avgRepayment = groups.length ? Math.round(groups.reduce((s, g) => s + g.repaymentRate, 0) / groups.length) : 0;
+  const exposureCents = groups.reduce((s, g) => s + Math.round(g.totalGroupLoan * 100), 0);
+  const fundCents = groups.reduce((s, g) => s + Math.round(g.fundBalance * 100), 0);
 
   return (
     <div className="space-y-6">
       <Breadcrumbs items={[{ label: 'Group Lending & Solidarity' }]} />
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Group Lending & Solidarity Cells</h1>
-            <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-              Joint Liability
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Center meeting schedules, peer collateralization, and collective liability monitoring across barangays.
-          </p>
-        </div>
-        <button
-          onClick={() => showToast('Center lending cell creation form initiated.')}
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#091527] hover:bg-[#132c52] text-white text-xs font-bold rounded-xl transition shadow-sm border border-slate-800"
-        >
-          <Plus className="w-3.5 h-3.5 text-amber-400" />
-          Create Solidarity Group
-        </button>
+      <div>
+        <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Group Lending & Solidarity</h1>
+        <p className="text-xs sm:text-sm text-slate-500">
+          One loan per member under the group; members consent to each other's loans and the solidarity fund covers a member who falls behind. Groups are run from the branch.
+        </p>
       </div>
 
+      {loadError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-700">{loadError}</p>}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Solidarity Lending Groups" value={groups.length} icon={Users2} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
-        <StatCard title="Active Centers in Good Standing" value={groups.filter((g) => g.status === 'Active').length} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
-        <StatCard title="Pending Originations" value={groups.filter((g) => g.status === 'Pending').length} icon={Clock} iconColor="text-amber-600" iconBg="bg-amber-50" />
-        <StatCard title="Cumulative Group Portfolio" value={formatPHP(totalLoans)} icon={RefreshCw} iconColor="text-gold-600" iconBg="bg-gold-500/10" subtitle={`Average repayment ${avgRepayment}%`} accentBorder />
+        <StatCard title="Solidarity Groups" value={groups.length} icon={Users2} iconColor="text-gold-600" iconBg="bg-gold-500/10" />
+        <StatCard title="Active Groups" value={groups.filter((g) => g.status === 'Active').length} icon={CheckCircle2} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
+        <StatCard title="Blocked From New Loans" value={groups.filter((g) => g.blocked).length} icon={ShieldAlert} iconColor="text-rose-500" iconBg="bg-rose-50" />
+        <StatCard title="Group Loans Outstanding" value={php(exposureCents / 100)} icon={Wallet} iconColor="text-gold-600" iconBg="bg-gold-500/10" subtitle={`Solidarity funds ${php(fundCents / 100)}`} accentBorder />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5">
         <div className="flex flex-col md:flex-row gap-3 mb-5">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search by center group name, ID code, or leader..." className="flex-1" />
-          <FilterSelect value={statusFilter} onChange={setStatusFilter} options={STATUSES.map((s) => ({ value: s, label: s }))} placeholder="All Cell Statuses" className="w-full md:w-44" />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search by group name, code, or leader..." className="flex-1" />
+          <FilterSelect value={statusFilter} onChange={setStatusFilter} options={STATUSES.map((s) => ({ value: s, label: s }))} placeholder="All Statuses" className="w-full md:w-44" />
         </div>
 
         <DataTable
           data={filtered}
           keyField="id"
           columns={[
-            {
-              key: 'groupId',
-              header: 'Center ID',
-              render: (g) => <span className="font-mono text-xs font-bold text-[#091527]">{g.groupId}</span>,
-            },
+            { key: 'groupId', header: 'Code', render: (g) => <span className="font-mono text-xs font-bold text-[#091527]">{g.groupId}</span> },
             {
               key: 'groupName',
-              header: 'Lending Center / Cell',
+              header: 'Group',
               render: (g) => (
                 <div>
                   <p className="font-bold text-slate-900">{g.groupName}</p>
-                  <p className="text-[11px] text-slate-400">{g.branch}</p>
+                  <p className="text-[11px] text-slate-400">{g.branch} · {g.loanOfficer}</p>
                 </div>
               ),
             },
+            { key: 'leader', header: 'Leader', render: (g) => <span className="text-xs font-semibold text-slate-800">{g.leader || '—'}</span> },
+            { key: 'memberCount', header: 'Members', render: (g) => <span className="text-xs">{g.memberCount}</span> },
+            { key: 'totalGroupLoan', header: 'Outstanding', render: (g) => <span className="font-bold text-slate-900 text-xs">{php(g.totalGroupLoan)}</span> },
+            { key: 'fundBalance', header: 'Fund', render: (g) => <span className="text-xs">{php(g.fundBalance)}</span> },
             {
-              key: 'leader',
-              header: 'Center Chairperson',
-              render: (g) => <span className="text-xs font-semibold text-slate-800">{g.leader}</span>,
-            },
-            {
-              key: 'memberCount',
-              header: 'Membership',
+              key: 'membersInArrears',
+              header: 'Behind',
               render: (g) => (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-gold-500/10 text-gold-700 border border-gold-400/30">
-                  {g.memberCount} members
+                <span className={`text-xs font-semibold ${g.membersInArrears ? 'text-rose-600' : 'text-slate-500'}`} title={g.blockReasons.join(' ')}>
+                  {g.membersInArrears}{g.blocked ? ' · blocked' : ''}
                 </span>
               ),
             },
-            {
-              key: 'totalGroupLoan',
-              header: 'Cumulative Loan',
-              render: (g) => <span className="font-bold text-slate-900 text-xs">{formatPHP(g.totalGroupLoan)}</span>,
-            },
-            {
-              key: 'repaymentRate',
-              header: 'Repayment Performance',
-              render: (g) => (
-                <div className="w-28">
-                  <div className="flex justify-between text-[10px] font-bold text-slate-700 mb-1">
-                    <span>Rate:</span>
-                    <span className={g.repaymentRate >= 95 ? 'text-emerald-600' : 'text-amber-600'}>{g.repaymentRate}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden border border-slate-200/60">
-                    <div
-                      className={`h-full rounded-full ${g.repaymentRate >= 95 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                      style={{ width: `${g.repaymentRate}%` }}
-                    />
-                  </div>
-                </div>
-              ),
-            },
-            {
-              key: 'meetingDay',
-              header: 'Meeting Day',
-              render: (g) => (
-                <span className="inline-flex items-center gap-1 text-xs text-slate-600 font-medium">
-                  <Calendar className="w-3 h-3 text-slate-400" /> {g.meetingDay}
-                </span>
-              ),
-            },
-            {
-              key: 'formedDate',
-              header: 'Formation Date',
-              render: (g) => <span className="text-xs text-slate-500 whitespace-nowrap">{formatDate(g.formedDate)}</span>,
-            },
-            {
-              key: 'status',
-              header: 'Status',
-              render: (g) => <Badge dot>{g.status}</Badge>,
-            },
+            { key: 'meetingDay', header: 'Meets', render: (g) => <span className="inline-flex items-center gap-1 text-xs text-slate-600"><Calendar className="w-3 h-3 text-slate-400" /> {g.meetingDay} {g.meetingTime}</span> },
+            { key: 'formedDate', header: 'Formed', render: (g) => <span className="text-xs text-slate-500 whitespace-nowrap">{g.formedDate ? formatDate(g.formedDate) : '—'}</span> },
+            { key: 'status', header: 'Status', render: (g) => <Badge dot>{g.status}</Badge> },
             {
               key: 'actions',
-              header: 'Action',
+              header: '',
               render: (g) => (
-                <button
-                  onClick={() => { setSelected(g); setTab('members'); }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-[#091527] bg-slate-100 hover:bg-slate-200 rounded-lg transition"
-                >
-                  <Eye className="w-3.5 h-3.5 text-slate-600" /> Dossier
+                <button onClick={() => { setSelected(g); setTab('members'); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-[#091527] bg-slate-100 hover:bg-slate-200 rounded-lg transition">
+                  <Eye className="w-3.5 h-3.5 text-slate-600" /> View
                 </button>
               ),
             },
@@ -184,209 +119,122 @@ export const LendingGroupsPage: React.FC = () => {
         />
       </div>
 
-      {/* Group details dossier modal */}
-      <Modal isOpen={!!selected} onClose={() => setSelected(null)} title="Group Solidarity Dossier" subtitle={selected?.groupId} maxWidth="2xl">
+      <Modal isOpen={!!selected} onClose={() => setSelected(null)} title={selected?.groupName ?? 'Group'} subtitle={selected?.groupId} maxWidth="2xl">
         {selected && (
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-[#091527] text-white border border-amber-500/30">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h4 className="font-black text-base text-white tracking-tight">{selected.groupName}</h4>
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    Chairperson: <span className="text-amber-300 font-semibold">{selected.leader}</span> · {selected.branch} · Weekly Meeting: {selected.meetingDay}s
-                  </p>
-                </div>
-                <Badge dot>{selected.status}</Badge>
+            {detail?.block.blocked && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">
+                <p className="font-bold">No new loans until arrears are cleared:</p>
+                <ul className="mt-1 list-disc pl-5">{detail.block.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                <p className="text-[10px] text-slate-400 uppercase font-bold">Active Members</p>
-                <p className="font-bold text-slate-900 text-sm mt-1">{selected.memberCount}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                <p className="text-[10px] text-slate-400 uppercase font-bold">Total Group Exposure</p>
-                <p className="font-bold text-slate-900 text-sm mt-1">{formatPHP(selected.totalGroupLoan)}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                <p className="text-[10px] text-slate-400 uppercase font-bold">Collection Efficiency</p>
-                <p className="font-bold text-emerald-600 text-sm mt-1">{selected.repaymentRate}%</p>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                <p className="text-[10px] text-slate-400 uppercase font-bold">Charter Date</p>
-                <p className="font-bold text-slate-800 text-xs mt-1">{formatDate(selected.formedDate)}</p>
-              </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+              <Info label="Members" value={String(selected.memberCount)} />
+              <Info label="Outstanding" value={php(selected.totalGroupLoan)} />
+              <Info label="Solidarity fund" value={php(selected.fundBalance)} />
+              <Info label="Status" value={detail?.statusReason ? `${selected.status} — ${detail.statusReason}` : selected.status} />
             </div>
 
             <div className="flex gap-1 border-b border-slate-200">
-              {(['members', 'loan', 'payments'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`px-3.5 py-2 text-xs font-bold transition border-b-2 -mb-px ${
-                    tab === t ? 'border-[#091527] text-[#091527]' : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {t === 'members' ? 'Group Roster (Solidarity)' : t === 'loan' ? 'Group Loan Commitments' : 'Member Collections'}
+              {(['members', 'loan', 'payments', 'fund', 'meetings'] as const).map((t) => (
+                <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 text-xs font-bold transition border-b-2 -mb-px ${tab === t ? 'border-[#091527] text-[#091527]' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+                  {{ members: 'Members', loan: 'Group loans', payments: 'Collections', fund: 'Solidarity fund', meetings: 'Meetings' }[t]}
                 </button>
               ))}
             </div>
 
             {tab === 'members' && (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{(detail?.members || []).length} Registered Borrowers</h4>
-                  <button
-                    onClick={() => setAddMemberOpen(true)}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-2.5 py-1.5 transition"
-                  >
-                    <UserPlus className="w-3.5 h-3.5 text-amber-700" /> Add Borrower
-                  </button>
-                </div>
-                <DataTable
-                  data={detail?.members || []}
-                  keyField="id"
-                  columns={[
-                    {
-                      key: 'name',
-                      header: 'Member / Client',
-                      render: (m) => (
-                        <div className="flex items-center gap-2">
-                          <span className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-black text-slate-700">
-                            {m.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                          </span>
-                          <div>
-                            <p className="font-bold text-slate-900 text-xs">{m.name}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">{m.phone}</p>
-                          </div>
-                        </div>
-                      ),
-                    },
-                    {
-                      key: 'role',
-                      header: 'Role',
-                      render: (m) => <Badge variant={m.role === 'Leader' ? 'warning' : 'default'}>{m.role}</Badge>,
-                    },
-                    {
-                      key: 'loanAmount',
-                      header: 'Principal Loan',
-                      render: (m) => <span className="text-xs font-bold text-slate-800">{formatPHP(m.loanAmount)}</span>,
-                    },
-                    {
-                      key: 'balance',
-                      header: 'Remaining Balance',
-                      render: (m) => <span className="text-xs font-bold text-slate-800">{formatPHP(m.balance)}</span>,
-                    },
-                    {
-                      key: 'status',
-                      header: 'Standing',
-                      render: (m) => <Badge dot>{m.status}</Badge>,
-                    },
-                    {
-                      key: 'actions',
-                      header: '',
-                      render: (m) => (
-                        <button
-                          onClick={() => setRemoveTarget(m as GroupMember)}
-                          className="p-1 rounded-lg hover:bg-rose-50 text-rose-500 transition"
-                          title="Remove member"
-                        >
-                          <UserMinus className="w-3.5 h-3.5" />
-                        </button>
-                      ),
-                    },
-                  ]}
-                />
-              </div>
+              <DataTable
+                data={detail?.members || []}
+                keyField="id"
+                columns={[
+                  { key: 'name', header: 'Member', render: (m) => <div><p className="font-bold text-slate-900 text-xs">{m.name}</p><p className="text-[10px] text-slate-400 font-mono">{m.phone}</p></div> },
+                  { key: 'role', header: 'Role', render: (m) => <Badge variant={m.role === 'Leader' ? 'warning' : 'default'}>{m.role}</Badge> },
+                  { key: 'loanAmount', header: 'Loan balance', render: (m) => <span className="text-xs font-bold">{php(m.loanAmount)}</span> },
+                  { key: 'balance', header: 'Overdue', render: (m) => <span className={`text-xs font-bold ${m.balance ? 'text-rose-600' : ''}`}>{php(m.balance)}</span> },
+                  { key: 'coverOwed', header: 'Owes fund', render: (m) => <span className="text-xs">{php(m.coverOwed)}</span> },
+                  { key: 'status', header: 'Standing', render: (m) => <Badge dot>{m.status}</Badge> },
+                ]}
+              />
             )}
-
             {tab === 'loan' && (
               <DataTable
                 data={detail?.loans || []}
                 keyField="id"
                 columns={[
-                  { key: 'id', header: 'Facility ID', render: (l) => <span className="font-mono text-xs font-bold text-[#091527]">{l.loanId}</span> },
+                  { key: 'id', header: 'Loan', render: (l) => <span className="font-mono text-xs font-bold text-[#091527]">{l.loanId}</span> },
                   { key: 'clientName', header: 'Borrower' },
-                  { key: 'product', header: 'Credit Facility' },
-                  { key: 'amount', header: 'Total Released', render: (l) => <span className="font-bold text-slate-800 text-xs">{formatPHP(l.amount)}</span> },
-                  { key: 'issued', header: 'Disbursement Date', render: (l) => <span className="text-xs text-slate-500">{l.issued}</span> },
-                  { key: 'payment', header: 'Total Paid', render: (l) => <span className="font-bold text-emerald-700 text-xs">{formatPHP(l.paid)}</span> },
-                  { key: 'balance', header: 'Principal Outstanding', render: (l) => <span className="font-bold text-slate-900 text-xs">{formatPHP(l.balance)}</span> },
+                  { key: 'product', header: 'Product' },
+                  { key: 'amount', header: 'Released', render: (l) => <span className="font-bold text-xs">{php(l.amount)}</span> },
+                  { key: 'payment', header: 'Paid', render: (l) => <span className="font-bold text-emerald-700 text-xs">{php(l.paid)}</span> },
+                  { key: 'balance', header: 'Outstanding', render: (l) => <span className="font-bold text-xs">{php(l.balance)}</span> },
                   { key: 'status', header: 'Status', render: (l) => <Badge dot>{l.status}</Badge> },
                 ]}
               />
             )}
-
             {tab === 'payments' && (
               <DataTable
                 data={detail?.collections || []}
                 keyField="id"
                 columns={[
-                  { key: 'id', header: 'Receipt Serial', render: (m) => <span className="font-mono text-xs font-bold text-slate-700">{m.id}</span> },
-                  { key: 'date', header: 'Collection Date', render: (m) => <span className="text-xs text-slate-600 font-medium">{m.date}</span> },
-                  { key: 'principal', header: 'Principal Portion', render: (m) => <span className="font-bold text-xs text-slate-800">{formatPHP(m.principal)}</span> },
-                  { key: 'interest', header: 'Interest Portion', render: (m) => <span className="font-bold text-xs text-slate-800">{formatPHP(m.interest)}</span> },
-                  { key: 'collected', header: 'Amount Collected', render: (m) => <span className="font-bold text-xs text-emerald-700">{formatPHP(m.collected)}</span> },
+                  { key: 'id', header: 'Receipt', render: (m) => <span className="font-mono text-xs font-bold text-slate-700">{m.id}</span> },
+                  { key: 'date', header: 'Date', render: (m) => <span className="text-xs">{m.date}</span> },
+                  { key: 'principal', header: 'Principal', render: (m) => <span className="text-xs">{php(m.principal)}</span> },
+                  { key: 'interest', header: 'Interest', render: (m) => <span className="text-xs">{php(m.interest)}</span> },
+                  { key: 'collected', header: 'Amount', render: (m) => <span className="font-bold text-xs text-emerald-700">{php(m.collected)}</span> },
                   { key: 'method', header: 'Method', render: (m) => <span className="text-xs text-slate-500">{m.method}</span> },
-                  { key: 'by', header: 'Recorded By', render: (m) => <span className="text-xs text-slate-600">{m.by}</span> },
+                  { key: 'by', header: 'Recorded by', render: (m) => <span className="text-xs text-slate-600">{m.by}</span> },
+                ]}
+              />
+            )}
+            {tab === 'fund' && (
+              <div className="space-y-3">
+                <DataTable
+                  data={detail?.fund.covers || []}
+                  keyField="id"
+                  columns={[
+                    { key: 'coverNumber', header: 'Cover', render: (c) => <span className="font-mono text-xs">{c.coverNumber}</span> },
+                    { key: 'memberName', header: 'Member', render: (c) => <span className="text-xs">{c.memberName}</span> },
+                    { key: 'amount', header: 'Covered', render: (c) => <span className="text-xs">{php(c.amount)}</span> },
+                    { key: 'outstanding', header: 'Still owed', render: (c) => <span className="text-xs font-bold">{php(c.outstanding)}</span> },
+                    { key: 'status', header: 'Status', render: (c) => <Badge dot>{c.status === 'REPAID' ? 'Repaid' : 'Owed'}</Badge> },
+                  ]}
+                />
+                <DataTable
+                  data={detail?.fund.transactions || []}
+                  keyField="id"
+                  columns={[
+                    { key: 'date', header: 'Date', render: (t) => <span className="text-xs">{t.date}</span> },
+                    { key: 'number', header: 'Number', render: (t) => <span className="font-mono text-xs">{t.number}</span> },
+                    { key: 'label', header: 'What', render: (t) => <span className="text-xs">{t.label}</span> },
+                    { key: 'memberName', header: 'Member', render: (t) => <span className="text-xs">{t.memberName ?? '—'}</span> },
+                    { key: 'amount', header: 'Amount', render: (t) => <span className="text-xs">{php(t.amount)}</span> },
+                    { key: 'balance', header: 'Balance', render: (t) => <span className="text-xs font-bold">{php(t.balance)}</span> },
+                  ]}
+                />
+              </div>
+            )}
+            {tab === 'meetings' && (
+              <DataTable
+                data={(detail?.meetings || []).map((m) => ({ ...m, id: m.date }))}
+                keyField="id"
+                columns={[
+                  { key: 'date', header: 'Date', render: (m) => <span className="text-xs">{m.date}</span> },
+                  { key: 'present', header: 'Attendance', render: (m) => <span className="text-xs">{m.present} of {m.total}</span> },
+                  { key: 'recordedBy', header: 'Recorded by', render: (m) => <span className="text-xs">{m.recordedBy}</span> },
                 ]}
               />
             )}
           </div>
         )}
       </Modal>
-
-      {/* Add member modal */}
-      <Modal isOpen={addMemberOpen} onClose={() => setAddMemberOpen(false)} title="Enroll Group Member" subtitle={selected?.groupName} maxWidth="sm">
-        <div className="space-y-3.5">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Member Search</label>
-            <input className="w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition" placeholder="Search by name or client ID..." />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Solidarity Group Role</label>
-            <select className="w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition">
-              <option>Member</option>
-              <option>Treasurer</option>
-              <option>Secretary</option>
-              <option>Leader</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Weekly Dues / Amortization (PHP)</label>
-            <input type="number" className="w-full px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition" placeholder="0.00" />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => setAddMemberOpen(false)} className="px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
-              Cancel
-            </button>
-            <button
-              onClick={() => { setAddMemberOpen(false); showToast(`Member added to ${selected?.groupName}.`); }}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#091527] hover:bg-[#132c52] rounded-xl transition shadow-xs"
-            >
-              Enroll Member
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Remove member confirm dialog */}
-      <ConfirmDialog
-        isOpen={!!removeTarget}
-        onClose={() => setRemoveTarget(null)}
-        onConfirm={() => { setRemoveTarget(null); showToast(`Member "${removeTarget?.name}" removed from group.`); }}
-        title="Disassociate Group Member"
-        message={`Remove "${removeTarget?.name}" from ${selected?.groupName}? Joint liability co-guarantee provisions will be updated accordingly.`}
-        confirmLabel="Confirm Removal"
-      />
-
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#091527] border border-amber-500/40 text-white text-xs sm:text-sm font-semibold px-5 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-4 duration-200 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-amber-400" />
-          {toast}
-        </div>
-      )}
     </div>
   );
 };
+
+const Info: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+    <p className="text-[10px] text-slate-400 uppercase font-bold">{label}</p>
+    <p className="font-bold text-slate-800 mt-1">{value}</p>
+  </div>
+);

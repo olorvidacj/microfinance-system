@@ -17,22 +17,25 @@ import {
   UserCheck,
   Users,
   Users2,
+  Package,
 } from 'lucide-react';
-import { AppShell, AppNavSection } from '../../ui';
+import { AppShell, AppNavSection, railLabelClass } from '../../ui';
 import { TopNav } from '../components/TopNav';
 import { adminApi } from '../services/adminApi';
 import { useAuth } from '../../context/AuthContext';
+import { useAdminBranch } from '../branchScope';
 
 export const AdminLayout: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const { branchId, branchName } = useAdminBranch();
 
   useEffect(() => {
-    adminApi.notifications()
+    adminApi.notifications(branchId)
       .then((items) => setUnreadCount(items.filter((n) => !n.isRead).length))
       .catch(() => setUnreadCount(0));
-  }, []);
+  }, [branchId]);
 
   const handleLogout = () => {
     logout();
@@ -54,6 +57,7 @@ export const AdminLayout: React.FC = () => {
         { to: '/admin/clients', label: 'Client Management', icon: UserCheck },
         { to: '/admin/kyc', label: 'KYC Verification', icon: ShieldCheck },
         { to: '/admin/loans', label: 'Loan Management', icon: FileSpreadsheet },
+        { to: '/admin/loan-products', label: 'Loan Products', icon: Package },
         { to: '/admin/savings', label: 'Savings Management', icon: PiggyBank },
         { to: '/admin/transactions', label: 'Financial Transactions', icon: ArrowLeftRight },
         { to: '/admin/groups', label: 'Lending Groups', icon: Users2 },
@@ -77,7 +81,7 @@ export const AdminLayout: React.FC = () => {
   return (
     <AppShell
       sections={sections}
-      collapsible
+      sidebarMode="hover-rail"
       brandName="HOSCOMCO"
       brandSubtitle="Tacloban, Leyte · Microfinance"
       brandTag="COOP"
@@ -92,31 +96,34 @@ export const AdminLayout: React.FC = () => {
           <span className="font-semibold text-emerald-400">ONLINE</span>
         </div>
       }
-      sidebarFooter={({ collapsed }) => (
-        <div className="p-3">
-          {!collapsed && (
-            <div className="mb-2 flex items-center gap-3 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2">
+      sidebarFooter={({ collapsed }) => {
+        const isExpanded = !collapsed;
+        return (
+          <div className="p-3">
+            <div
+              title={isExpanded ? undefined : `Showing ${branchName}`}
+              className="mb-2 flex items-center overflow-hidden rounded-lg border border-navy-700 bg-navy-900 px-[7px] py-2"
+            >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-gold-500 to-gold-400 text-navy-950">
                 <Landmark className="h-4 w-4" />
               </div>
-              <div className="min-w-0">
-                <p className="truncate text-[11px] text-slate-400">Tacloban Main Branch</p>
-                <p className="truncate text-[11px] font-semibold text-gold-400">PHP Settlement Node</p>
+              <div className={`${railLabelClass(isExpanded)} ${isExpanded ? 'min-w-0' : ''}`}>
+                <p className="truncate text-[11px] text-slate-400">Showing</p>
+                <p className="truncate text-[11px] font-semibold text-gold-400">{branchName}</p>
               </div>
             </div>
-          )}
-          <button
-            onClick={handleLogout}
-            title="Sign out of Admin Console"
-            className={`flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-xs font-medium text-slate-400 transition hover:border-rose-900/50 hover:bg-rose-950/40 hover:text-rose-300 sm:text-[13px] ${
-              collapsed ? 'justify-center px-2' : ''
-            }`}
-          >
-            <LogOut className="h-[18px] w-[18px] shrink-0" />
-            {!collapsed && <span>Sign Out</span>}
-          </button>
-        </div>
-      )}
+            <button
+              onClick={handleLogout}
+              title="Sign out of Admin Console"
+              aria-label="Sign out"
+              className="flex w-full items-center overflow-hidden rounded-xl border border-transparent py-2 pl-[14px] pr-3 text-xs font-medium text-slate-400 transition hover:border-rose-900/50 hover:bg-rose-950/40 hover:text-rose-300 sm:text-[13px]"
+            >
+              <LogOut className="h-[18px] w-[18px] shrink-0" />
+              <span className={railLabelClass(isExpanded)}>Sign Out</span>
+            </button>
+          </div>
+        );
+      }}
       topbar={({ openSidebar }) => (
         <TopNav
           onToggleSidebar={openSidebar}

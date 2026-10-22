@@ -1,21 +1,15 @@
 import { clientRequest } from './clientApi';
-import { ClientGroup } from '../types';
+
+/** The member's group as the server sends it (src/groups/service.ts myGroup). */
+export type MyGroup = NonNullable<Awaited<ReturnType<typeof import('../../groups/service').myGroup>>>;
 
 export const groupService = {
-  async myGroup(): Promise<ClientGroup | null> {
-    const payload = await clientRequest('/api/client/groups/my');
-    if (!payload || typeof payload !== 'object') return null;
+  async myGroup(): Promise<MyGroup | null> {
+    return (await clientRequest('/api/client/groups/my'))?.group ?? null;
+  },
 
-    if ('group' in payload) {
-      if (!payload.group || typeof payload.group !== 'object') return null;
-      return payload.group as ClientGroup;
-    }
-
-    if (payload.id && (payload.name || payload.groupName)) {
-      return payload as ClientGroup;
-    }
-
-    return null;
+  /** Consent to (or decline) another member's group loan; the reply is the refreshed group. */
+  async consent(loanId: string, decision: 'CONSENT' | 'DECLINE', note?: string): Promise<MyGroup | null> {
+    return (await clientRequest(`/api/client/groups/loans/${encodeURIComponent(loanId)}/consent`, { method: 'POST', body: JSON.stringify({ decision, note }) }))?.group ?? null;
   },
 };
-

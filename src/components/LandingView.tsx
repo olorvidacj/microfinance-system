@@ -21,6 +21,8 @@ import {
 
 interface LandingViewProps {
   onSignIn: (initialMode?: 'signin' | 'register') => void;
+  /** Someone already signed in: the header offers their own app instead of sign-in and registration. */
+  account?: { label: string; onOpen: () => void };
 }
 
 const APP_DOWNLOAD_URL = '/HOSCOMCO-Mobile.apk';
@@ -120,7 +122,7 @@ const STATS = [
   { value: '97%', label: 'Repayment Rate' },
 ];
 
-export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
+export const LandingView: React.FC<LandingViewProps> = ({ onSignIn, account }) => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
       {/* Navbar */}
@@ -155,19 +157,31 @@ export const LandingView: React.FC<LandingViewProps> = ({ onSignIn }) => {
               <Download className="w-4 h-4" />
               Get App
             </a>
-            <button
-              onClick={() => onSignIn('signin')}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:border-gold-300 hover:text-navy-950 text-sm font-semibold transition"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => onSignIn('register')}
-              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gold-400 hover:bg-gold-300 text-white text-sm font-semibold shadow-md shadow-gold-500/20 transition"
-            >
-              Join Now
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {account ? (
+              <button
+                onClick={account.onOpen}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gold-400 hover:bg-gold-300 text-white text-sm font-semibold shadow-md shadow-gold-500/20 transition"
+              >
+                {account.label}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => onSignIn('signin')}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:border-gold-300 hover:text-navy-950 text-sm font-semibold transition"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => onSignIn('register')}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gold-400 hover:bg-gold-300 text-white text-sm font-semibold shadow-md shadow-gold-500/20 transition"
+                >
+                  Join Now
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>

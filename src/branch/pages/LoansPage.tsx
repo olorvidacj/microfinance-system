@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { LOAN_STATUSES } from '../../../shared/lending';
 import { Link } from 'react-router-dom';
 import { CircleDollarSign, HandCoins, Search, TrendingDown } from 'lucide-react';
 import { PageHeader } from '../../portal/components/ui/PageHeader';
@@ -11,21 +12,7 @@ import { Input, Select } from '../../portal/components/ui/Field';
 import { useBranchData } from '../hooks/useBranchData';
 import { loansService } from '../services';
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'All statuses' },
-  { value: 'Draft', label: 'Draft' },
-  { value: 'Submitted', label: 'Submitted' },
-  { value: 'Under Review', label: 'Under Review' },
-  { value: 'For Assessment', label: 'For Assessment' },
-  { value: 'Recommended', label: 'Recommended' },
-  { value: 'Approved', label: 'Approved' },
-  { value: 'Disbursed', label: 'Disbursed' },
-  { value: 'Active', label: 'Active' },
-  { value: 'In Arrears', label: 'In Arrears' },
-  { value: 'Paid', label: 'Paid' },
-  { value: 'Written Off', label: 'Written Off' },
-  { value: 'Rejected', label: 'Rejected' },
-];
+const STATUS_OPTIONS = [{ value: '', label: 'All statuses' }, ...LOAN_STATUSES.map((s) => ({ value: s, label: s }))];
 
 const LoansPage: React.FC = () => {
   const [search, setSearch] = useState('');
@@ -42,9 +29,9 @@ const LoansPage: React.FC = () => {
   const summary = useMemo(
     () => ({
       outstanding: rows.reduce((s, l) => s + (l.remainingBalance || 0), 0),
-      active: rows.filter((l) => ['Disbursed', 'Active', 'In Arrears'].includes(l.status)).length,
-      arrears: rows.filter((l) => l.status === 'In Arrears').length,
-      pipeline: rows.filter((l) => ['Draft', 'Submitted', 'Under Review', 'For Assessment'].includes(l.status)).length,
+      active: rows.filter((l) => l.status === 'Active').length,
+      arrears: rows.filter((l) => l.status === 'Active' && (l.daysInArrears ?? 0) > 0).length,
+      pipeline: rows.filter((l) => ['Draft', 'Submitted', 'Under Review', 'Approved'].includes(l.status)).length,
     }),
     [rows]
   );

@@ -58,6 +58,10 @@ import {
   StatusBadge,
 } from '../components/ui';
 import { InfoRow, SectionDivider } from '../components/common';
+import { KycStatusBadge } from '../../components/KycStatusBadge';
+import { CIVIL_STATUSES, EMPLOYMENT_STATUSES, GENDERS, ID_TYPES, SOURCES_OF_INCOME, isKycVerified, normaliseKycStatus, validateIdNumber } from '../../../shared/kyc-core';
+import { EMPTY_KYC_FORM, buildKycApplication, formatMoney, kycFormFrom, kycStepsValid, manilaToday, type KycFormState } from '../../../shared/client';
+import { ApiError } from '../services/clientApi';
 import { useToast } from '../components/ui/Toast';
 
 // Centralized Scanner & Quality Inspection Thresholds Configuration
@@ -93,210 +97,25 @@ const WIZARD_STEPS = [
   { id: 'review_submit', label: '7. Review & Consent', subtitle: 'Review & Submit' },
 ] as const;
 
-const GENDERS = ['Male', 'Female', 'Prefer not to say'];
-const CIVIL_STATUSES = ['Single', 'Married', 'Widowed', 'Separated', 'Divorced'];
 const SUFFIXES = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
-const EMPLOYMENT_STATUSES = [
-  'Employed',
-  'Private Employee',
-  'Government Employee',
-  'Self-Employed',
-  'Business Owner',
-  'Student',
-  'Retired',
-  'Unemployed',
-  'Other',
-];
-const SOURCES_OF_INCOME = [
-  'Salary / Wages',
-  'Business Income',
-  'Remittances',
-  'Pension',
-  'Livestock / Farming',
-  'Rental Income',
-  'Investments',
-  'Other',
-];
+// Option lists and ID formats come from shared/kyc-core so the form offers exactly what the server accepts.
+const GOV_ID_TYPES = ID_TYPES.map((t) => ({ code: t.code, label: t.label, hint: `e.g. ${t.example}` }));
 
-const GOV_ID_TYPES = [
-  { code: 'PHILSYS_ID', label: 'Philippine National ID (PhilSys / PhilID)', hint: '12-digit number (e.g. 1234-5678-9012)' },
-  { code: 'PASSPORT', label: 'Philippine Passport', hint: 'e.g. P1234567A' },
-  { code: 'DRIVERS_LICENSE', label: "Driver's License (LTO)", hint: 'e.g. N01-12-345678' },
-  { code: 'UMID', label: 'Unified Multi-Purpose ID (UMID / SSS)', hint: '14-digit number' },
-  { code: 'POSTAL_ID', label: 'Postal ID (Digitized)', hint: 'e.g. PRN 123456789' },
-  { code: 'VOTERS_ID', label: "Voter's ID / COMELEC Certificate", hint: 'Enter VIN number' },
-  { code: 'PRC_ID', label: 'PRC ID (Professional Regulation Commission)', hint: '7-digit license number' },
-  { code: 'OTHER_GOVT_ID', label: 'Other Government-Issued Photo ID', hint: 'Enter ID number exactly as printed' },
-];
+/** Server requiredStep -> wizard step index. */
+const STEP_INDEX: Record<string, number> = { ID_UPLOAD: 0, FACE_MATCH: 1, PERSONAL_INFO: 2, CONTACT: 2, ADDRESS: 3, FINANCIAL: 4, DOCUMENTS: 5, CONSENT: 6 };
 
-interface FormState {
-  // 1. Personal Info
-  firstName: string;
-  middleName: string;
-  hasNoMiddleName: boolean;
-  lastName: string;
-  suffix: string;
-  dateOfBirth: string;
-  placeOfBirth: string;
-  gender: string;
-  civilStatus: string;
-  nationality: string;
-  citizenship: string;
+/** Documents captured by the ID and selfie steps; every other required kind is uploaded in step 6. */
+const CAPTURED_KINDS = ['ID_FRONT', 'ID_BACK', 'SELFIE'];
 
-  // 2. Current Address
-  currentRegionCode: string;
-  currentRegionName: string;
-  currentProvinceCode: string;
-  currentProvinceName: string;
-  currentCityCode: string;
-  currentCityName: string;
-  currentBarangayCode: string;
-  currentBarangayName: string;
-  currentPostalCode: string;
-  currentHouseNumber: string;
-  currentStreet: string;
-  currentSubdivision: string;
-  currentLandmark: string;
-  currentAdditionalDetails: string;
-
-  // 2. Permanent Address
-  isPermanentSameAsCurrent: boolean;
-  permRegionCode: string;
-  permRegionName: string;
-  permProvinceCode: string;
-  permProvinceName: string;
-  permCityCode: string;
-  permCityName: string;
-  permBarangayCode: string;
-  permBarangayName: string;
-  permPostalCode: string;
-  permHouseNumber: string;
-  permStreet: string;
-  permSubdivision: string;
-  permLandmark: string;
-  permAdditionalDetails: string;
-
-  // 3. Contact Info
-  mobileNumber: string;
-  email: string;
-  alternativeMobile: string;
-  emergencyContactName: string;
-  emergencyContactRelationship: string;
-
-  // 4. Employment & Financials
-  employmentStatus: string;
-  otherStatusExplanation: string;
-  employerName: string;
-  jobPosition: string;
-  employmentType: string;
-  yearsOfEmployment: number;
-  employerAddress: string;
-  businessName: string;
-  natureOfBusiness: string;
-  yearsInBusiness: number;
-  businessAddress: string;
-  monthlyIncome: number;
-  monthlyExpenses: number;
-  sourceOfIncome: string;
-  sourceOfFunds: string;
-
-  // 5. Government ID
-  idType: string;
-  idTypeName: string;
-  idNumber: string;
-  nameOnId: string;
-  idDateOfBirth: string;
-  idIssueDate: string;
-  idExpiryDate: string;
-
-  // 6. Declarations
-  truthfulInformation: boolean;
-  documentOwnership: boolean;
-  authorizedReview: boolean;
-  privacyNotice: boolean;
-  penaltyAcknowledgment: boolean;
+interface SupportingDocState {
+  fileUrl?: string | null;
+  fileName?: string | null;
+  uploaded: boolean;
+  isUploading: boolean;
 }
 
-const initialFormState: FormState = {
-  firstName: '',
-  middleName: '',
-  hasNoMiddleName: false,
-  lastName: '',
-  suffix: '',
-  dateOfBirth: '',
-  placeOfBirth: '',
-  gender: '',
-  civilStatus: '',
-  nationality: 'Filipino',
-  citizenship: 'Filipino',
-
-  currentRegionCode: '',
-  currentRegionName: '',
-  currentProvinceCode: '',
-  currentProvinceName: '',
-  currentCityCode: '',
-  currentCityName: '',
-  currentBarangayCode: '',
-  currentBarangayName: '',
-  currentPostalCode: '',
-  currentHouseNumber: '',
-  currentStreet: '',
-  currentSubdivision: '',
-  currentLandmark: '',
-  currentAdditionalDetails: '',
-
-  isPermanentSameAsCurrent: true,
-  permRegionCode: '',
-  permRegionName: '',
-  permProvinceCode: '',
-  permProvinceName: '',
-  permCityCode: '',
-  permCityName: '',
-  permBarangayCode: '',
-  permBarangayName: '',
-  permPostalCode: '',
-  permHouseNumber: '',
-  permStreet: '',
-  permSubdivision: '',
-  permLandmark: '',
-  permAdditionalDetails: '',
-
-  mobileNumber: '',
-  email: '',
-  alternativeMobile: '',
-  emergencyContactName: '',
-  emergencyContactRelationship: '',
-
-  employmentStatus: '',
-  otherStatusExplanation: '',
-  employerName: '',
-  jobPosition: '',
-  employmentType: 'Regular / Permanent',
-  yearsOfEmployment: 1,
-  employerAddress: '',
-  businessName: '',
-  natureOfBusiness: '',
-  yearsInBusiness: 1,
-  businessAddress: '',
-  monthlyIncome: 0,
-  monthlyExpenses: 0,
-  sourceOfIncome: '',
-  sourceOfFunds: 'Employment',
-
-  idType: 'PHILSYS_ID',
-  idTypeName: 'Philippine National ID (PhilSys / PhilID)',
-  idNumber: '',
-  nameOnId: '',
-  idDateOfBirth: '',
-  idIssueDate: '',
-  idExpiryDate: '',
-
-  truthfulInformation: false,
-  documentOwnership: false,
-  authorizedReview: false,
-  privacyNotice: false,
-  penaltyAcknowledgment: false,
-};
+type FormState = KycFormState;
+const initialFormState: FormState = EMPTY_KYC_FORM;
 
 export const KycPage: React.FC = () => {
   const navigate = useNavigate();
@@ -346,20 +165,13 @@ export const KycPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Step 6 Supporting Documents State
-  const [proofOfAddress, setProofOfAddress] = useState<{
-    fileUrl?: string;
-    fileName?: string;
-    uploaded: boolean;
-    isUploading: boolean;
-  }>({ uploaded: false, isUploading: false });
-
-  const [proofOfIncome, setProofOfIncome] = useState<{
-    fileUrl?: string;
-    fileName?: string;
-    uploaded: boolean;
-    isUploading: boolean;
-  }>({ uploaded: false, isUploading: false });
+  // Step 6 supporting documents, one entry per required document kind (from the server).
+  const [supportingDocs, setSupportingDocs] = useState<Record<string, SupportingDocState>>({});
+  const requiredSupportingKinds = useMemo(
+    () => (kyc?.requiredDocuments || []).map((r: any) => String(r.type)).filter((k) => !CAPTURED_KINDS.includes(k)),
+    [kyc],
+  );
+  const anySupportingUploading = Object.values(supportingDocs).some((d) => d.isUploading);
 
   // PSGC Dropdowns
   const [regions, setRegions] = useState<Array<{ code: string; name: string }>>([]);
@@ -375,83 +187,32 @@ export const KycPage: React.FC = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleUploadSupportingDoc = async (
-    file: File,
-    type: 'PROOF_OF_ADDRESS' | 'PROOF_OF_INCOME',
-    docName: string
-  ) => {
+  const handleUploadSupportingDoc = async (file: File, kind: string, docName: string) => {
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      toast.error('File size exceeds 15MB limit. Please select a smaller photo or document.');
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('The file is larger than 10 MB. Please choose a smaller photo or PDF.');
       return;
     }
-
-    const isAddress = type === 'PROOF_OF_ADDRESS';
-    if (isAddress) {
-      setProofOfAddress((prev) => ({ ...prev, isUploading: true }));
-    } else {
-      setProofOfIncome((prev) => ({ ...prev, isUploading: true }));
-    }
-
+    setSupportingDocs((prev) => ({ ...prev, [kind]: { ...(prev[kind] || { uploaded: false }), isUploading: true } }));
     const reader = new FileReader();
     reader.onerror = () => {
-      toast.error('Could not read the selected image file. Please try another.');
-      if (isAddress) {
-        setProofOfAddress((prev) => ({ ...prev, isUploading: false }));
-      } else {
-        setProofOfIncome((prev) => ({ ...prev, isUploading: false }));
-      }
+      toast.error('Could not read the selected file. Please try another.');
+      setSupportingDocs((prev) => ({ ...prev, [kind]: { ...(prev[kind] || { uploaded: false }), isUploading: false } }));
     };
-
     reader.onload = async () => {
-      const base64 = reader.result as string;
       try {
         const uploadedDoc = await profileService.uploadKycDocument({
-          documentType: type,
+          documentType: kind,
           documentName: docName,
           fileName: file.name,
-          imageBase64: base64,
+          imageBase64: reader.result as string,
           mime: file.type,
         });
-
-        const safeUrl = uploadedDoc?.fileUrl || base64;
-        if (isAddress) {
-          setProofOfAddress({
-            fileUrl: safeUrl,
-            fileName: file.name,
-            uploaded: true,
-            isUploading: false,
-          });
-        } else {
-          setProofOfIncome({
-            fileUrl: safeUrl,
-            fileName: file.name,
-            uploaded: true,
-            isUploading: false,
-          });
-        }
-
-        setDocuments((prev) => [
-          ...prev.filter((d: any) => d.type !== type && d.documentType !== type),
-          {
-            id: uploadedDoc?.id || `DOC-${Date.now()}`,
-            type,
-            name: docName,
-            fileName: file.name,
-            fileUrl: safeUrl,
-            submitted: true,
-            status: 'PENDING',
-          },
-        ]);
-
-        toast.success(`${docName} uploaded successfully!`);
+        setSupportingDocs((prev) => ({ ...prev, [kind]: { fileUrl: uploadedDoc?.fileUrl ?? null, fileName: file.name, uploaded: true, isUploading: false } }));
+        toast.success(`${docName} uploaded.`);
       } catch (err: any) {
         toast.error(err.message || `Failed to upload ${docName}`);
-        if (isAddress) {
-          setProofOfAddress((prev) => ({ ...prev, isUploading: false }));
-        } else {
-          setProofOfIncome((prev) => ({ ...prev, isUploading: false }));
-        }
+        setSupportingDocs((prev) => ({ ...prev, [kind]: { ...(prev[kind] || { uploaded: false }), isUploading: false } }));
       }
     };
     reader.readAsDataURL(file);
@@ -463,15 +224,9 @@ export const KycPage: React.FC = () => {
 
   // Step 1: ID Upload, Validation & User Review Confirmation
   const isStep1Completed = useMemo(() => {
-    return Boolean(
-      idFrontImage &&
-      idValidationResult &&
-      idValidationResult.isReadable !== false &&
-      idValidationResult.confidenceScore >= 50 &&
-      extractedConfirmed &&
-      form.idType.trim()
-    );
-  }, [idFrontImage, idValidationResult, extractedConfirmed, form.idType]);
+    const unreadable = (idValidationResult as any)?.status === 'COMPLETED' && idValidationResult?.isReadable === false;
+    return Boolean(idFrontImage && idValidationResult && !unreadable && extractedConfirmed && form.idType.trim() && !validateIdNumber(form.idType, form.idNumber));
+  }, [idFrontImage, idValidationResult, extractedConfirmed, form.idType, form.idNumber]);
 
   // Step 2: Face Biometric Matching
   const isStep2Completed = useMemo(() => {
@@ -479,74 +234,21 @@ export const KycPage: React.FC = () => {
       isStep1Completed &&
       selfieImage &&
       faceMatchResult &&
-      faceMatchResult.isMatch === true
+      faceMatchResult.matchStatus !== 'NO_MATCH'
     );
   }, [isStep1Completed, selfieImage, faceMatchResult]);
 
-  // Step 3: Legal Personal Information
-  const isStep3Completed = useMemo(() => {
-    if (!isStep2Completed) return false;
-    const cleanPhone = form.mobileNumber.replace(/\D/g, '');
-    const isPhMobile = /^(09\d{9}|639\d{9}|9\d{9})$/.test(cleanPhone);
-    const emailValid = !form.email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+  // Steps 3-5: the server's own field checks (shared/kyc-core validateKycApplication).
+  const today = manilaToday();
+  const isStep3Completed = useMemo(() => isStep2Completed && kycStepsValid(form, ['PERSONAL_INFO', 'CONTACT'], today), [isStep2Completed, form, today]);
+  const isStep4Completed = useMemo(() => isStep3Completed && kycStepsValid(form, ['ADDRESS'], today), [isStep3Completed, form, today]);
+  const isStep5Completed = useMemo(() => isStep4Completed && kycStepsValid(form, ['FINANCIAL'], today), [isStep4Completed, form, today]);
 
-    return Boolean(
-      form.firstName.trim() &&
-      form.lastName.trim() &&
-      form.dateOfBirth.trim() &&
-      form.placeOfBirth.trim() &&
-      form.gender.trim() &&
-      form.civilStatus.trim() &&
-      form.nationality.trim() &&
-      form.citizenship.trim() &&
-      isPhMobile &&
-      emailValid
-    );
-  }, [isStep2Completed, form]);
-
-  // Step 4: Address Details
-  const isStep4Completed = useMemo(() => {
-    if (!isStep3Completed) return false;
-    const curValid = Boolean(
-      (form.currentRegionName || form.currentRegionCode) &&
-      (form.currentCityName || form.currentCityCode) &&
-      (form.currentBarangayName || form.currentBarangayCode) &&
-      form.currentStreet.trim() &&
-      form.currentPostalCode.trim()
-    );
-    if (!form.isPermanentSameAsCurrent) {
-      const permValid = Boolean(
-        (form.permRegionName || form.permRegionCode) &&
-        (form.permCityName || form.permCityCode) &&
-        (form.permBarangayName || form.permBarangayCode) &&
-        form.permStreet.trim() &&
-        form.permPostalCode.trim()
-      );
-      return curValid && permValid;
-    }
-    return curValid;
-  }, [isStep3Completed, form]);
-
-  // Step 5: Livelihood & Income
-  const isStep5Completed = useMemo(() => {
-    if (!isStep4Completed) return false;
-    const hasStatus = Boolean(form.employmentStatus.trim());
-    const isEmployed = ['Employed', 'Government Employee', 'Private Employee'].includes(form.employmentStatus);
-    const employerValid = !isEmployed || Boolean(form.employerName.trim());
-    const isBusiness = ['Self-Employed', 'Business Owner'].includes(form.employmentStatus);
-    const businessValid = !isBusiness || Boolean(form.businessName.trim());
-    const hasIncome = typeof form.monthlyIncome === 'number' && form.monthlyIncome >= 0;
-    const hasSource = Boolean(form.sourceOfIncome.trim());
-    const hasEmergency = Boolean(form.emergencyContactName.trim() && form.alternativeMobile.trim());
-    return hasStatus && employerValid && businessValid && hasIncome && hasSource && hasEmergency;
-  }, [isStep4Completed, form]);
-
-  // Step 6: Supporting Documents (Must upload at least one valid supporting proof and not be actively uploading)
+  // Step 6: every required supporting document uploaded, none still uploading
   const isStep6Completed = useMemo(() => {
-    if (!isStep5Completed) return false;
-    if (proofOfAddress.isUploading || proofOfIncome.isUploading) return false;
-    return Boolean(proofOfAddress.uploaded || proofOfIncome.uploaded);
-  }, [isStep5Completed, proofOfAddress, proofOfIncome]);
+    if (!isStep5Completed || anySupportingUploading) return false;
+    return requiredSupportingKinds.every((k) => supportingDocs[k]?.uploaded);
+  }, [isStep5Completed, anySupportingUploading, requiredSupportingKinds, supportingDocs]);
 
   // Step 7: Final Declarations & Consent
   const isStep7Completed = useMemo(() => {
@@ -595,9 +297,9 @@ export const KycPage: React.FC = () => {
       } else if (!isStep4Completed) {
         toast.error('Please complete your full residential address details first.');
       } else if (!isStep5Completed) {
-        toast.error('Please complete your employment, income, and emergency contact details first.');
+        toast.error('Please complete your employment and income details first.');
       } else if (!isStep6Completed) {
-        toast.error('Please upload at least one supporting document (Proof of Address or Proof of Income) first.');
+        toast.error('Please upload every required supporting document first.');
       } else {
         toast.error('Please complete all required previous steps before proceeding.');
       }
@@ -616,121 +318,30 @@ export const KycPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [p, k] = await Promise.all([profileService.get(), profileService.kycStatus()]);
+      const k = await profileService.kycStatus();
       setKyc(k);
       setDocuments(k.uploadedDocuments || []);
 
-      if (['SUBMITTED', 'PENDING', 'UNDER_REVIEW', 'VERIFIED', 'APPROVED'].includes(k.kycStatus)) {
-        setSubmitted(true);
-      }
+      // Anything past the member's own editing (submitted, decided, suspended) shows the status screen.
+      setSubmitted(!['NOT_STARTED', 'IN_PROGRESS'].includes(normaliseKycStatus(k.kycStatus)));
 
       if (k.extractedIdData) {
         setExtractedData(k.extractedIdData);
-        if (k.extractedIdData.confidenceScore) {
-          setIdValidationResult({
-            isReadable: k.extractedIdData.isReadable ?? true,
-            confidenceScore: k.extractedIdData.confidenceScore,
-            detectedType: k.extractedIdData.detectedType || k.extractedIdData.idType || 'Government ID',
-            validationWarnings: k.extractedIdData.validationWarnings || [],
-          });
-        }
+        setIdValidationResult({
+          status: (k.extractedIdData as any).status,
+          isReadable: k.extractedIdData.isReadable,
+          confidenceScore: k.extractedIdData.confidenceScore,
+          detectedType: k.extractedIdData.detectedType || k.extractedIdData.idType || null,
+          validationWarnings: k.extractedIdData.validationWarnings || [],
+        } as any);
+        setExtractedConfirmed(true);
       }
 
       if (k.faceMatchResult) {
         setFaceMatchResult(k.faceMatchResult);
       }
 
-      // Populate form state from saved submission or profile
-      const sub = (k as any).submission || {};
-      const pi = sub.personalInfo || {};
-      const addr = sub.address || {};
-      const cur = addr.current || {};
-      const perm = addr.permanent || {};
-      const ci = sub.contactInfo || {};
-      const emp = sub.employment || {};
-      const gid = sub.governmentId || {};
-      const dec = sub.declarations || {};
-
-      setForm({
-        firstName: pi.firstName || p.firstName || (p.fullName ? p.fullName.split(' ')[0] : ''),
-        middleName: pi.middleName || p.middleName || '',
-        hasNoMiddleName: Boolean(pi.hasNoMiddleName),
-        lastName: pi.lastName || p.lastName || (p.fullName ? p.fullName.split(' ').slice(1).join(' ') : ''),
-        suffix: pi.suffix || '',
-        dateOfBirth: pi.dateOfBirth || p.dateOfBirth || '',
-        placeOfBirth: pi.placeOfBirth || '',
-        gender: pi.gender || p.gender || '',
-        civilStatus: pi.civilStatus || p.civilStatus || '',
-        nationality: pi.nationality || 'Filipino',
-        citizenship: pi.citizenship || 'Filipino',
-
-        currentRegionCode: cur.regionCode || '',
-        currentRegionName: cur.region || '',
-        currentProvinceCode: cur.provinceCode || '',
-        currentProvinceName: cur.province || p.province || '',
-        currentCityCode: cur.cityCode || '',
-        currentCityName: cur.city || p.city || '',
-        currentBarangayCode: cur.barangayCode || '',
-        currentBarangayName: cur.barangay || p.barangay || '',
-        currentPostalCode: cur.postalCode || p.postalCode || '',
-        currentHouseNumber: cur.houseNumber || p.houseUnit || '',
-        currentStreet: cur.street || p.street || p.address || '',
-        currentSubdivision: cur.subdivision || '',
-        currentLandmark: cur.landmark || '',
-        currentAdditionalDetails: cur.additionalDetails || '',
-
-        isPermanentSameAsCurrent: addr.isPermanentSameAsCurrent !== false,
-        permRegionCode: perm.regionCode || '',
-        permRegionName: perm.region || '',
-        permProvinceCode: perm.provinceCode || '',
-        permProvinceName: perm.province || '',
-        permCityCode: perm.cityCode || '',
-        permCityName: perm.city || '',
-        permBarangayCode: perm.barangayCode || '',
-        permBarangayName: perm.barangay || '',
-        permPostalCode: perm.postalCode || '',
-        permHouseNumber: perm.houseNumber || '',
-        permStreet: perm.street || '',
-        permSubdivision: perm.subdivision || '',
-        permLandmark: perm.landmark || '',
-        permAdditionalDetails: perm.additionalDetails || '',
-
-        mobileNumber: ci.mobileNumber || p.phone || '',
-        email: ci.email || p.email || '',
-        alternativeMobile: ci.alternativeMobile || p.secondaryPhone || '',
-        emergencyContactName: ci.emergencyContactName || '',
-        emergencyContactRelationship: ci.emergencyContactRelationship || '',
-
-        employmentStatus: emp.employmentStatus || p.employmentStatus || '',
-        otherStatusExplanation: emp.otherStatusExplanation || '',
-        employerName: emp.employerName || p.employer || '',
-        jobPosition: emp.jobPosition || p.occupation || '',
-        employmentType: emp.employmentType || 'Regular / Permanent',
-        yearsOfEmployment: emp.yearsOfEmployment || 1,
-        employerAddress: emp.employerAddress || '',
-        businessName: emp.businessName || p.employer || '',
-        natureOfBusiness: emp.natureOfBusiness || p.occupation || '',
-        yearsInBusiness: emp.yearsInBusiness || 1,
-        businessAddress: emp.businessAddress || '',
-        monthlyIncome: emp.monthlyIncome || p.monthlyIncome || 0,
-        monthlyExpenses: emp.monthlyExpenses || 0,
-        sourceOfIncome: emp.sourceOfIncome || '',
-        sourceOfFunds: emp.sourceOfFunds || 'Employment',
-
-        idType: gid.idType || 'PHILSYS_ID',
-        idTypeName: gid.idTypeName || 'Philippine National ID (PhilSys / PhilID)',
-        idNumber: gid.idNumber || '',
-        nameOnId: gid.nameOnId || (p.fullName || ''),
-        idDateOfBirth: gid.dateOfBirth || pi.dateOfBirth || p.dateOfBirth || '',
-        idIssueDate: gid.issueDate || '',
-        idExpiryDate: gid.expiryDate || '',
-
-        truthfulInformation: Boolean(dec.truthfulInformation),
-        documentOwnership: Boolean(dec.documentOwnership),
-        authorizedReview: Boolean(dec.authorizedReview),
-        privacyNotice: Boolean(dec.privacyNotice),
-        penaltyAcknowledgment: Boolean(dec.penaltyAcknowledgment),
-      });
+      setForm(kycFormFrom(k));
 
       // Find existing ID images in documents
       const idFrontDoc = (k.uploadedDocuments || []).find((d: any) =>
@@ -743,30 +354,14 @@ export const KycPage: React.FC = () => {
       );
       if (selfieDoc?.fileUrl) setSelfieImage(selfieDoc.fileUrl);
 
-      // Find existing supporting documents
-      const addressDoc = (k.uploadedDocuments || []).find((d: any) =>
-        ['PROOF_OF_ADDRESS', 'BARANGAY_CLEARANCE', 'UTILITY_BILL'].includes(d.type || d.documentType)
-      );
-      if (addressDoc?.fileUrl || addressDoc?.fileName) {
-        setProofOfAddress({
-          fileUrl: addressDoc.fileUrl,
-          fileName: addressDoc.fileName || 'Proof of Address / Billing',
-          uploaded: true,
-          isUploading: false,
-        });
+      // Supporting documents already on file, by kind
+      const onFile: Record<string, SupportingDocState> = {};
+      for (const r of k.requiredDocuments || []) {
+        const kind = String((r as any).type);
+        if (CAPTURED_KINDS.includes(kind)) continue;
+        onFile[kind] = { fileUrl: (r as any).fileUrl ?? null, fileName: (r as any).fileName ?? null, uploaded: Boolean((r as any).submitted), isUploading: false };
       }
-
-      const incomeDoc = (k.uploadedDocuments || []).find((d: any) =>
-        ['PROOF_OF_INCOME', 'PAYSLIP', 'COE', 'ITR', 'BUSINESS_PERMIT'].includes(d.type || d.documentType)
-      );
-      if (incomeDoc?.fileUrl || incomeDoc?.fileName) {
-        setProofOfIncome({
-          fileUrl: incomeDoc.fileUrl,
-          fileName: incomeDoc.fileName || 'Proof of Income / Livelihood',
-          uploaded: true,
-          isUploading: false,
-        });
-      }
+      setSupportingDocs(onFile);
 
     } catch (err: any) {
       setError(err.message || 'Unable to load KYC data.');
@@ -1204,25 +799,20 @@ export const KycPage: React.FC = () => {
       clearTimeout(t1);
       clearTimeout(t2);
 
-      const extracted: ExtractedIdData = result.extractedData || {};
-      const validation: IdValidationResult = result.validation || {
-        isReadable: true,
-        confidenceScore: 92,
-        detectedType: 'Government ID',
-        validationWarnings: [],
-      };
+      const extracted: ExtractedIdData = (result.extractedData || {}) as ExtractedIdData;
+      const validation: any = result.validation;
 
       setExtractedData(extracted);
       setIdValidationResult(validation);
       setFaceMatchResult(null);
 
-      if (!validation.isReadable || validation.confidenceScore < 50) {
+      if (validation?.status === 'COMPLETED' && validation.isReadable === false) {
         setScanStage('failed');
-        toast.error(
-          validation.qualityMessage ||
-            "We can't clearly read your ID. Please retake the photo in good lighting and make sure the entire ID is visible."
-        );
+        toast.error(validation.qualityMessage || "We couldn't read your ID clearly. Please retake the photo.");
         return;
+      }
+      if (validation?.status !== 'COMPLETED') {
+        toast.success(validation?.qualityMessage || 'Your ID photo passed the quality check. Please type your details exactly as printed.');
       }
 
       setScanStage('complete');
@@ -1307,7 +897,7 @@ export const KycPage: React.FC = () => {
       });
 
       setAutoFilledKeys(autoKeys);
-      toast.success('ID validated & information extracted successfully!');
+      if (validation?.status === 'COMPLETED') toast.success('Your ID was read. Please check every field against the card.');
     } catch (err: any) {
       setScanStage('failed');
       setIdValidationResult(null);
@@ -1331,18 +921,14 @@ export const KycPage: React.FC = () => {
 
     setIsMatchingFace(true);
     try {
-      const result = await profileService.matchFace({
-        selfieImageBase64: selfieImage,
-        idImageBase64: idFrontImage,
-      });
-
+      const result = await profileService.matchFace({ selfieImageBase64: selfieImage });
       setFaceMatchResult(result.matchResult);
-
-      if (result.matchResult.isMatch) {
-        toast.success(`Face matched with ID (${result.matchResult.matchConfidence}% confidence)!`);
-        setStep(2); // Proceed to Auto-filled Personal Info
+      const status = result.matchResult.matchStatus;
+      if (status === 'NO_MATCH') {
+        toast.error('Your selfie does not appear to match your ID photo. Please retake it in good light, facing the camera.');
       } else {
-        toast.error(`Biometric match low (${result.matchResult.matchConfidence}%). ${result.matchResult.details}`);
+        toast.success(status === 'MATCH' ? `Selfie matches your ID (${result.matchResult.matchConfidence}%).` : result.matchResult.details || 'A branch officer will compare your selfie with your ID.');
+        setStep(2);
       }
     } catch (err: any) {
       setFaceMatchResult(null);
@@ -1352,103 +938,7 @@ export const KycPage: React.FC = () => {
     }
   };
 
-  // Build Payload
-  const buildPayload = () => ({
-    personalInfo: {
-      firstName: form.firstName.trim(),
-      middleName: !form.hasNoMiddleName && form.middleName.trim() ? form.middleName.trim() : '',
-      hasNoMiddleName: form.hasNoMiddleName,
-      lastName: form.lastName.trim(),
-      suffix: form.suffix.trim(),
-      dateOfBirth: form.dateOfBirth,
-      placeOfBirth: form.placeOfBirth.trim(),
-      gender: form.gender,
-      civilStatus: form.civilStatus,
-      nationality: form.nationality.trim() || 'Filipino',
-      citizenship: form.citizenship.trim() || 'Filipino',
-    },
-    address: {
-      current: {
-        region: form.currentRegionName,
-        regionCode: form.currentRegionCode,
-        province: form.currentProvinceName,
-        provinceCode: form.currentProvinceCode,
-        city: form.currentCityName,
-        cityCode: form.currentCityCode,
-        barangay: form.currentBarangayName,
-        barangayCode: form.currentBarangayCode,
-        postalCode: form.currentPostalCode,
-        houseNumber: form.currentHouseNumber.trim(),
-        street: form.currentStreet.trim(),
-        subdivision: form.currentSubdivision.trim(),
-        landmark: form.currentLandmark.trim(),
-        additionalDetails: form.currentAdditionalDetails.trim(),
-      },
-      isPermanentSameAsCurrent: form.isPermanentSameAsCurrent,
-      permanent: form.isPermanentSameAsCurrent
-        ? null
-        : {
-            region: form.permRegionName,
-            regionCode: form.permRegionCode,
-            province: form.permProvinceName,
-            provinceCode: form.permProvinceCode,
-            city: form.permCityName,
-            cityCode: form.permCityCode,
-            barangay: form.permBarangayName,
-            barangayCode: form.permBarangayCode,
-            postalCode: form.permPostalCode,
-            houseNumber: form.permHouseNumber.trim(),
-            street: form.permStreet.trim(),
-            subdivision: form.permSubdivision.trim(),
-            landmark: form.permLandmark.trim(),
-            additionalDetails: form.permAdditionalDetails.trim(),
-          },
-    },
-    contactInfo: {
-      mobileNumber: form.mobileNumber.trim(),
-      mobileVerified: true,
-      email: form.email.trim(),
-      emailVerified: Boolean(kyc?.isVerified),
-      alternativeMobile: form.alternativeMobile.trim(),
-      emergencyContactName: form.emergencyContactName.trim(),
-      emergencyContactRelationship: form.emergencyContactRelationship.trim(),
-    },
-    employment: {
-      employmentStatus: form.employmentStatus,
-      otherStatusExplanation: form.otherStatusExplanation.trim(),
-      employerName: form.employerName.trim(),
-      jobPosition: form.jobPosition.trim(),
-      employmentType: form.employmentType,
-      yearsOfEmployment: form.yearsOfEmployment,
-      employerAddress: form.employerAddress.trim(),
-      businessName: form.businessName.trim(),
-      natureOfBusiness: form.natureOfBusiness.trim(),
-      yearsInBusiness: form.yearsInBusiness,
-      businessAddress: form.businessAddress.trim(),
-      monthlyIncome: Number(form.monthlyIncome) || 0,
-      monthlyExpenses: Number(form.monthlyExpenses) || 0,
-      sourceOfIncome: form.sourceOfIncome,
-      sourceOfFunds: form.sourceOfFunds,
-    },
-    governmentId: {
-      idType: form.idType,
-      idTypeName: GOV_ID_TYPES.find((g) => g.code === form.idType)?.label || form.idType,
-      idNumber: form.idNumber.trim(),
-      nameOnId: form.nameOnId.trim(),
-      dateOfBirth: form.idDateOfBirth,
-      issueDate: form.idIssueDate,
-      expiryDate: form.idExpiryDate,
-      ocrData: extractedData,
-      faceMatchResult: faceMatchResult,
-    },
-    declarations: {
-      truthfulInformation: form.truthfulInformation,
-      documentOwnership: form.documentOwnership,
-      authorizedReview: form.authorizedReview,
-      privacyNotice: form.privacyNotice,
-      penaltyAcknowledgment: form.penaltyAcknowledgment,
-    },
-  });
+  const buildPayload = () => buildKycApplication(form);
 
   const handleSaveDraft = async () => {
     setSaving(true);
@@ -1497,11 +987,13 @@ export const KycPage: React.FC = () => {
     setSaving(true);
     try {
       await profileService.submitKyc(buildPayload());
-      toast.success('KYC Application submitted successfully for staff verification!');
+      toast.success('Your KYC application was submitted for branch review.');
       setSubmitted(true);
       load();
     } catch (err: any) {
       toast.error(err.message || 'Failed to submit KYC application.');
+      const target = err instanceof ApiError ? STEP_INDEX[String((err.details as any)?.requiredStep ?? '')] : undefined;
+      if (target !== undefined) setStep(target);
     } finally {
       setSaving(false);
     }
@@ -1518,10 +1010,18 @@ export const KycPage: React.FC = () => {
   // ---------------------------------------------------------------------------
   // Status Banner / Verification Queue (Step 10)
   // ---------------------------------------------------------------------------
+  const faceSummary = (r: FaceMatchResult | null): string => {
+    if (!r) return 'Not run';
+    if (r.matchStatus === 'MATCH') return `Matches ID (${r.matchConfidence}%)`;
+    if (r.matchStatus === 'LOW_CONFIDENCE') return `Low confidence (${r.matchConfidence}%), officer will check`;
+    if (r.matchStatus === 'NO_MATCH') return 'Does not match';
+    return 'Not available, officer will compare';
+  };
+
   if (submitted) {
-    const isApproved = kyc?.kycStatus === 'VERIFIED' || kyc?.kycStatus === 'APPROVED';
-    const isCorrection = kyc?.kycStatus === 'CORRECTION_REQUIRED';
-    const isRejected = kyc?.kycStatus === 'REJECTED';
+    const isApproved = isKycVerified(kyc?.kycStatus);
+    const isCorrection = normaliseKycStatus(kyc?.kycStatus) === 'CORRECTION_REQUIRED';
+    const isRejected = normaliseKycStatus(kyc?.kycStatus) === 'REJECTED';
 
     return (
       <div className="space-y-6 max-w-4xl mx-auto py-4">
@@ -1532,7 +1032,7 @@ export const KycPage: React.FC = () => {
               <span>Back to Profile</span>
             </Button>
           </div>
-          <StatusBadge status={kyc?.kycStatus || 'UNDER_REVIEW'} />
+          <KycStatusBadge status={kyc?.kycStatus} size="sm" />
         </div>
 
         <Card className="overflow-hidden border-2 shadow-md">
@@ -1563,29 +1063,31 @@ export const KycPage: React.FC = () => {
                 <div>
                   <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
                     {isApproved
-                      ? 'Identity Verified & Account Upgraded'
+                      ? 'Verified'
                       : isCorrection
-                        ? 'Action Required: KYC Correction Requested'
+                        ? 'Resubmission required'
                         : isRejected
-                          ? 'KYC Verification Rejected'
-                          : 'KYC Application Under Staff Review'}
+                          ? 'KYC application rejected'
+                          : normaliseKycStatus(kyc?.kycStatus) === 'UNDER_REVIEW'
+                            ? 'A branch officer is reviewing your application'
+                            : 'Waiting for branch review'}
                   </h1>
                   <p className="mt-1 text-xs sm:text-sm text-slate-200">
                     Application Ref:{' '}
-                    <span className="font-mono font-bold text-amber-300">{kyc?.submissionId || 'KYC-ONLINE'}</span> ·
-                    Submitted: {kyc?.submittedAt ? new Date(kyc.submittedAt).toLocaleString() : 'Recently'}
+                    <span className="font-mono font-bold text-amber-300">{kyc?.submissionId || '—'}</span>
+                    {kyc?.submittedAt ? ` · Submitted ${new Date(kyc.submittedAt).toLocaleString()}` : ''}
                   </p>
                 </div>
               </div>
 
-              {isCorrection && (
+              {(isCorrection || isRejected) && (
                 <Button
-                  variant="brand"
+                  variant="outline"
                   onClick={() => setSubmitted(false)}
-                  className="bg-white text-amber-900 hover:bg-amber-50 shadow-md font-bold"
+                  className="border-white bg-white font-bold text-slate-900 shadow-md hover:bg-slate-50"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  <span>Update & Resubmit</span>
+                  <span>{isRejected ? 'Start a new application' : 'Update & resubmit'}</span>
                 </Button>
               )}
             </div>
@@ -1593,13 +1095,13 @@ export const KycPage: React.FC = () => {
 
           <CardBody className="space-y-6 p-6">
             {/* Correction or Rejection Details */}
-            {(kyc?.correctionReason || kyc?.rejectionReason) && (
+            {(isCorrection || isRejected) && (kyc?.correctionReason || kyc?.rejectionReason) && (
               <div className="rounded-2xl border border-amber-300 bg-amber-50/90 p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-amber-900">
-                      Notes from Compliance Officer:
+                      {isRejected ? 'Reason for rejection:' : 'What needs to change:'}
                     </p>
                     <p className="mt-1 text-sm text-amber-800 font-medium">
                       {kyc.correctionReason || kyc.rejectionReason}
@@ -1624,7 +1126,7 @@ export const KycPage: React.FC = () => {
                     <span>1. ID & Biometrics</span>
                   </div>
                   <p className="mt-1 text-[11px] text-slate-600">
-                    {faceMatchResult ? `AI Match: ${faceMatchResult.matchConfidence}%` : 'OCR & Face Validated'}
+                    Face check: {faceSummary(faceMatchResult)}
                   </p>
                 </div>
 
@@ -1654,7 +1156,7 @@ export const KycPage: React.FC = () => {
                     <span>3. Staff Due Diligence</span>
                   </div>
                   <p className="mt-1 text-[11px] text-slate-600">
-                    {isApproved ? 'Approved by Compliance Officer' : 'Assigned to Branch Officer'}
+                    {isApproved ? `Verified by ${kyc?.reviewedByName || 'branch officer'}` : isRejected ? 'Rejected' : isCorrection ? 'Returned to you' : 'Waiting for an officer'}
                   </p>
                 </div>
 
@@ -1668,7 +1170,7 @@ export const KycPage: React.FC = () => {
                     <span>4. Verified Status</span>
                   </div>
                   <p className="mt-1 text-[11px] text-slate-500">
-                    {isApproved ? 'Full microloan limits unlocked' : 'Pending final approval'}
+                    {isApproved ? 'You can now apply for loans and use savings' : 'Not verified yet'}
                   </p>
                 </div>
               </div>
@@ -1678,7 +1180,7 @@ export const KycPage: React.FC = () => {
             <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
               <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Submitted ID Credentials</span>
-                <span className="text-xs font-mono font-bold text-slate-800">{form.idTypeName || form.idType}</span>
+                <span className="text-xs font-mono font-bold text-slate-800">{GOV_ID_TYPES.find((t) => t.code === form.idType)?.label || form.idType}</span>
               </div>
 
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
@@ -1695,9 +1197,9 @@ export const KycPage: React.FC = () => {
                   <p className="font-semibold text-slate-800 mt-0.5">{form.dateOfBirth || '—'}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400">Biometric Match</span>
+                  <span className="text-slate-400">Face check</span>
                   <p className="font-bold text-emerald-700 mt-0.5">
-                    {faceMatchResult ? `${faceMatchResult.matchConfidence}% Biometric Match` : 'Verified'}
+                    {faceSummary(faceMatchResult)}
                   </p>
                 </div>
               </div>
@@ -1834,7 +1336,6 @@ export const KycPage: React.FC = () => {
                   onChange={(e) => {
                     const found = GOV_ID_TYPES.find((g) => g.code === e.target.value);
                     update('idType', e.target.value);
-                    if (found) update('idTypeName', found.label);
                   }}
                 >
                   {GOV_ID_TYPES.map((t) => (
@@ -2032,7 +1533,7 @@ export const KycPage: React.FC = () => {
             </div>
 
             {/* Quality Failure Warning Card */}
-            {idValidationResult && (!idValidationResult.isReadable || idValidationResult.confidenceScore < 50) && (
+            {idValidationResult && idValidationResult.status === 'COMPLETED' && idValidationResult.isReadable === false && (
               <div className="rounded-2xl border border-rose-300 bg-rose-50/80 p-5 space-y-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-6 w-6 text-rose-600 shrink-0 mt-0.5" />
@@ -2085,17 +1586,19 @@ export const KycPage: React.FC = () => {
             )}
 
             {/* Quality Pass & Extracted Information Review Card */}
-            {idValidationResult && idValidationResult.isReadable && idValidationResult.confidenceScore >= 50 && (
+            {idValidationResult && !(idValidationResult.status === 'COMPLETED' && idValidationResult.isReadable === false) && (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-5 w-5 text-emerald-600" />
                     <span className="text-xs font-bold text-emerald-950">
-                      ID Validated ({idValidationResult.confidenceScore}% Quality Score)
+                      {idValidationResult.status === 'COMPLETED'
+                        ? `ID photo accepted and read${idValidationResult.confidenceScore != null ? ` (${idValidationResult.confidenceScore}% confidence)` : ''}`
+                        : 'ID photo accepted. Automatic reading is not available, so type your details exactly as printed.'}
                     </span>
                   </div>
                   <span className="rounded-full bg-emerald-200/80 px-2.5 py-0.5 text-[10px] font-mono font-bold text-emerald-900">
-                    {idValidationResult.detectedType || form.idTypeName}
+                    {idValidationResult.detectedType || GOV_ID_TYPES.find((t) => t.code === form.idType)?.label || form.idType}
                   </span>
                 </div>
 
@@ -2349,34 +1852,36 @@ export const KycPage: React.FC = () => {
             {faceMatchResult && (
               <div
                 className={`rounded-2xl border p-4 space-y-3 ${
-                  faceMatchResult.isMatch
-                    ? 'border-emerald-300 bg-emerald-50/70'
-                    : 'border-rose-300 bg-rose-50/70'
+                  faceMatchResult.matchStatus === 'NO_MATCH'
+                    ? 'border-rose-300 bg-rose-50/70'
+                    : faceMatchResult.matchStatus === 'MATCH'
+                      ? 'border-emerald-300 bg-emerald-50/70'
+                      : 'border-amber-300 bg-amber-50/70'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {faceMatchResult.isMatch ? (
-                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                    ) : (
+                    {faceMatchResult.matchStatus === 'NO_MATCH' ? (
                       <AlertCircle className="h-5 w-5 text-rose-600" />
+                    ) : (
+                      <CheckCircle2 className={`h-5 w-5 ${faceMatchResult.matchStatus === 'MATCH' ? 'text-emerald-600' : 'text-amber-600'}`} />
                     )}
                     <span className="text-xs font-bold text-slate-900">
-                      {faceMatchResult.isMatch ? '🟢 Identity Match Successful' : '🔴 Face Verification Failed – Please Try Again'}
+                      {faceMatchResult.matchStatus === 'NO_MATCH'
+                        ? 'Your selfie does not match your ID photo. Please retake it.'
+                        : faceMatchResult.matchStatus === 'MATCH'
+                          ? 'Selfie matches your ID photo'
+                          : 'Selfie saved. A branch officer will compare it with your ID.'}
                     </span>
                   </div>
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                      faceMatchResult.isMatch
-                        ? 'bg-emerald-200 text-emerald-900'
-                        : 'bg-rose-200 text-rose-900'
-                    }`}
+                    className="rounded-full bg-white/70 px-2.5 py-0.5 text-xs font-bold text-slate-700"
                   >
-                    {faceMatchResult.matchConfidence}% Match Score
+                    {faceSummary(faceMatchResult)}
                   </span>
                 </div>
                 <p className="text-xs text-slate-600">{faceMatchResult.details}</p>
-                {!faceMatchResult.isMatch && (
+                {faceMatchResult.matchStatus === 'NO_MATCH' && (
                   <div className="pt-2">
                     <Button
                       size="sm"
@@ -2944,8 +2449,8 @@ export const KycPage: React.FC = () => {
                 <Field label="Monthly Gross Income (₱)" required>
                   <Input
                     type="number"
-                    value={form.monthlyIncome || ''}
-                    onChange={(e) => update('monthlyIncome', Number(e.target.value))}
+                    value={form.monthlyIncome}
+                    onChange={(e) => update('monthlyIncome', e.target.value)}
                     placeholder="25000"
                   />
                 </Field>
@@ -2955,8 +2460,8 @@ export const KycPage: React.FC = () => {
                 <Field label="Monthly Living Expenses (₱)" required>
                   <Input
                     type="number"
-                    value={form.monthlyExpenses || ''}
-                    onChange={(e) => update('monthlyExpenses', Number(e.target.value))}
+                    value={form.monthlyExpenses}
+                    onChange={(e) => update('monthlyExpenses', e.target.value)}
                     placeholder="15000"
                   />
                 </Field>
@@ -3018,7 +2523,7 @@ export const KycPage: React.FC = () => {
                 variant="brand"
                 onClick={() => {
                   if (!isStep5Completed) {
-                    toast.error('Please complete your employment, income, and emergency contact details first.');
+                    toast.error('Please complete your employment and income details first.');
                     return;
                   }
                   setStep(5);
@@ -3046,200 +2551,73 @@ export const KycPage: React.FC = () => {
               </div>
               <div>
                 <CardTitle className="text-base font-bold text-slate-900">Step 6: Supporting Documents</CardTitle>
-                <p className="text-xs text-slate-500">Upload proof of residential address or proof of income for credit evaluation.</p>
+                <p className="text-xs text-slate-500">Upload each document your branch requires. A branch officer checks them during review.</p>
               </div>
             </div>
           </CardHeader>
 
           <CardBody className="space-y-5 pt-5">
-            {/* Status notice */}
-            {!proofOfAddress.uploaded && !proofOfIncome.uploaded && (
-              <div className="flex items-start gap-2.5 p-3.5 rounded-xl border border-amber-200 bg-amber-50/80 text-xs text-amber-900">
-                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold">Required Supporting Document:</span>
-                  <p className="mt-0.5 text-amber-800">
-                    Please upload at least one valid supporting document (e.g. recent utility bill, Barangay Certificate of Residency, payslip, or COE) to proceed.
-                  </p>
-                </div>
+            {requiredSupportingKinds.length === 0 ? (
+              <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">No supporting documents are required. Continue to review.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {(kyc?.requiredDocuments || [])
+                  .filter((r: any) => !CAPTURED_KINDS.includes(String(r.type)))
+                  .map((r: any) => {
+                    const kind = String(r.type);
+                    const doc = supportingDocs[kind] || { uploaded: false, isUploading: false };
+                    const isPdf = (doc.fileName || '').toLowerCase().endsWith('.pdf');
+                    return (
+                      <div key={kind} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-800">{r.name}</span>
+                          <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Required</span>
+                        </div>
+                        {doc.isUploading ? (
+                          <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-emerald-400 rounded-xl bg-emerald-50/40 text-center animate-pulse">
+                            <RefreshCw className="h-7 w-7 text-emerald-600 animate-spin mb-2" />
+                            <span className="text-xs font-bold text-emerald-900">Uploading…</span>
+                          </div>
+                        ) : (
+                          <label className={`flex items-center gap-3 rounded-xl border-2 border-dashed p-4 cursor-pointer transition ${doc.uploaded ? 'border-emerald-300 bg-white' : 'border-slate-300 bg-white hover:border-emerald-500'}`}>
+                            {doc.uploaded && doc.fileUrl && !isPdf ? (
+                              <img src={doc.fileUrl} alt={r.name} className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                            ) : (
+                              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400">
+                                {doc.uploaded ? <FileText className="h-7 w-7 text-emerald-600" /> : <Upload className="h-6 w-6" />}
+                              </span>
+                            )}
+                            <span className="min-w-0 text-xs">
+                              {doc.uploaded ? (
+                                <>
+                                  <span className="flex items-center gap-1 font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Uploaded</span>
+                                  <span className="block truncate text-slate-600">{doc.fileName || 'On file'}</span>
+                                  <span className="block text-slate-400">Choose a file to replace it</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="block font-bold text-emerald-700">Upload {String(r.name).toLowerCase()}</span>
+                                  <span className="block text-slate-400">JPG, PNG, WEBP or PDF, up to 10 MB</span>
+                                </>
+                              )}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,application/pdf"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleUploadSupportingDoc(file, kind, r.name);
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Proof of Billing / Address */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-800">Proof of Address / Billing</span>
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                      Primary Proof
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Meralco, Maynilad, Water/Electricity bill, or Barangay Certificate of Residency.
-                  </p>
-                </div>
-
-                {proofOfAddress.isUploading ? (
-                  <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-emerald-400 rounded-xl bg-emerald-50/40 text-center animate-pulse">
-                    <RefreshCw className="h-7 w-7 text-emerald-600 animate-spin mb-2" />
-                    <span className="text-xs font-bold text-emerald-900">Uploading Document...</span>
-                    <span className="text-[11px] text-emerald-700 mt-0.5">Please wait while the image is securely processed.</span>
-                  </div>
-                ) : proofOfAddress.uploaded ? (
-                  <div className="p-3.5 rounded-xl border border-emerald-200 bg-white space-y-3 shadow-xs">
-                    <div className="flex items-center gap-3">
-                      {proofOfAddress.fileUrl && !proofOfAddress.fileName?.toLowerCase().endsWith('.pdf') ? (
-                        <img
-                          src={proofOfAddress.fileUrl}
-                          alt="Proof of Address Preview"
-                          className="h-16 w-16 object-cover rounded-lg border border-slate-200 shadow-2xs shrink-0"
-                        />
-                      ) : (
-                        <div className="h-16 w-16 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
-                          <FileText className="h-8 w-8" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-                          <CheckCircle2 className="h-4 w-4 shrink-0" />
-                          <span>Uploaded & Attached</span>
-                        </div>
-                        <p className="text-xs text-slate-700 font-medium truncate mt-0.5" title={proofOfAddress.fileName}>
-                          {proofOfAddress.fileName || 'Proof_of_Address.jpg'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                      <label className="flex-1 text-center py-1.5 px-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer transition">
-                        <span>Replace Photo</span>
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleUploadSupportingDoc(file, 'PROOF_OF_ADDRESS', 'Proof of Billing / Address');
-                          }}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setProofOfAddress({ uploaded: false, isUploading: false })}
-                        className="py-1.5 px-2.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-[11px] font-bold text-rose-700 transition"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl bg-white hover:border-emerald-500 cursor-pointer transition text-center group">
-                    <div className="w-10 h-10 rounded-full bg-slate-50 group-hover:bg-emerald-50 flex items-center justify-center mb-2 transition">
-                      <Upload className="h-5 w-5 text-slate-400 group-hover:text-emerald-600" />
-                    </div>
-                    <span className="text-xs font-bold text-emerald-700">Upload Proof of Address</span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">Supports JPG, PNG, WEBP, or PDF up to 15MB</span>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleUploadSupportingDoc(file, 'PROOF_OF_ADDRESS', 'Proof of Billing / Address');
-                      }}
-                    />
-                  </label>
-                )}
-              </div>
-
-              {/* Proof of Income */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-800">Proof of Income / Livelihood</span>
-                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                      Optional / Recommended
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Payslip, Certificate of Employment (COE), ITR, or Business / DTI Permit.
-                  </p>
-                </div>
-
-                {proofOfIncome.isUploading ? (
-                  <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-emerald-400 rounded-xl bg-emerald-50/40 text-center animate-pulse">
-                    <RefreshCw className="h-7 w-7 text-emerald-600 animate-spin mb-2" />
-                    <span className="text-xs font-bold text-emerald-900">Uploading Document...</span>
-                    <span className="text-[11px] text-emerald-700 mt-0.5">Please wait while the image is securely processed.</span>
-                  </div>
-                ) : proofOfIncome.uploaded ? (
-                  <div className="p-3.5 rounded-xl border border-emerald-200 bg-white space-y-3 shadow-xs">
-                    <div className="flex items-center gap-3">
-                      {proofOfIncome.fileUrl && !proofOfIncome.fileName?.toLowerCase().endsWith('.pdf') ? (
-                        <img
-                          src={proofOfIncome.fileUrl}
-                          alt="Proof of Income Preview"
-                          className="h-16 w-16 object-cover rounded-lg border border-slate-200 shadow-2xs shrink-0"
-                        />
-                      ) : (
-                        <div className="h-16 w-16 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
-                          <FileText className="h-8 w-8" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-                          <CheckCircle2 className="h-4 w-4 shrink-0" />
-                          <span>Uploaded & Attached</span>
-                        </div>
-                        <p className="text-xs text-slate-700 font-medium truncate mt-0.5" title={proofOfIncome.fileName}>
-                          {proofOfIncome.fileName || 'Proof_of_Income.jpg'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                      <label className="flex-1 text-center py-1.5 px-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer transition">
-                        <span>Replace Photo</span>
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleUploadSupportingDoc(file, 'PROOF_OF_INCOME', 'Proof of Income');
-                          }}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setProofOfIncome({ uploaded: false, isUploading: false })}
-                        className="py-1.5 px-2.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-[11px] font-bold text-rose-700 transition"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl bg-white hover:border-emerald-500 cursor-pointer transition text-center group">
-                    <div className="w-10 h-10 rounded-full bg-slate-50 group-hover:bg-emerald-50 flex items-center justify-center mb-2 transition">
-                      <Upload className="h-5 w-5 text-slate-400 group-hover:text-emerald-600" />
-                    </div>
-                    <span className="text-xs font-bold text-emerald-700">Upload Proof of Income</span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">Supports JPG, PNG, WEBP, or PDF up to 15MB</span>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleUploadSupportingDoc(file, 'PROOF_OF_INCOME', 'Proof of Income');
-                      }}
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-100">
               <Button variant="outline" onClick={() => setStep(4)}>
@@ -3249,20 +2627,20 @@ export const KycPage: React.FC = () => {
               <Button
                 variant="brand"
                 onClick={() => {
-                  if (proofOfAddress.isUploading || proofOfIncome.isUploading) {
+                  if (anySupportingUploading) {
                     toast.error('Please wait for document upload to finish before continuing.');
                     return;
                   }
                   if (!isStep6Completed) {
-                    toast.error('Please upload at least one supporting document (Proof of Address or Proof of Income) to proceed.');
+                    toast.error('Please upload every required supporting document to continue.');
                     return;
                   }
                   setStep(6);
                 }}
-                disabled={!isStep6Completed || proofOfAddress.isUploading || proofOfIncome.isUploading}
+                disabled={!isStep6Completed || anySupportingUploading}
                 className="font-bold"
               >
-                {proofOfAddress.isUploading || proofOfIncome.isUploading ? (
+                {anySupportingUploading ? (
                   <>
                     <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" />
                     <span>Uploading Document...</span>
@@ -3307,16 +2685,12 @@ export const KycPage: React.FC = () => {
                   <div>
                     <span className="text-xs font-bold text-emerald-950">Biometric & Identity Check Summary</span>
                     <p className="text-xs text-emerald-800">
-                      ID Document ({form.idTypeName || form.idType}) + Live Selfie Biometrics Verified
+                      {GOV_ID_TYPES.find((t) => t.code === form.idType)?.label || form.idType} · Face check: {faceSummary(faceMatchResult)}
                     </p>
                   </div>
                 </div>
 
-                {faceMatchResult && (
-                  <span className="rounded-full bg-emerald-200 px-3 py-1 text-xs font-bold text-emerald-900">
-                    {faceMatchResult.matchConfidence}% Match Score
-                  </span>
-                )}
+
               </div>
             </div>
 
@@ -3336,7 +2710,7 @@ export const KycPage: React.FC = () => {
                 <span className="font-bold text-slate-800 uppercase tracking-wider">Address & Financials</span>
                 <div className="space-y-1 text-slate-600">
                   <p><span className="text-slate-400">Address:</span> {form.currentStreet}, {form.currentBarangayName}, {form.currentCityName}</p>
-                  <p><span className="text-slate-400">Income:</span> ₱{(form.monthlyIncome || 0).toLocaleString()} / month</p>
+                  <p><span className="text-slate-400">Income:</span> {formatMoney(form.monthlyIncome)} / month</p>
                   <p><span className="text-slate-400">Employer:</span> {form.employerName || form.businessName || '—'}</p>
                   <p><span className="text-slate-400">Emergency:</span> {form.emergencyContactName} ({form.emergencyContactRelationship})</p>
                 </div>

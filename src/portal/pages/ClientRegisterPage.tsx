@@ -1,212 +1,187 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  AlertCircle,
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  Lock,
-  Mail,
-  Phone,
-  Shield,
-  ShieldCheck,
-  Smartphone,
-  User,
-  FileCheck2,
-} from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, FileCheck2, Mail, Shield, ShieldCheck } from 'lucide-react';
+import { RegistrationError, useAuth } from '../../context/AuthContext';
 import { Button } from '../components/ui';
 import { PasswordStrengthIndicator } from '../../components/common/PasswordStrengthIndicator';
 import { isPasswordStrong, STRONG_PASSWORD_ERROR_MESSAGE } from '../../utils/passwordValidator';
+import { MemberDetailsForm } from '../../components/onboarding/MemberDetailsForm';
+import { normalizeEmail, validateRegistration, type RegistrationInput } from '../../../shared/kyc-core';
 
-interface RegistrationFormState {
-  firstName: string;
-  middleName: string;
-  hasNoMiddleName: boolean;
-  lastName: string;
-  suffix: string;
-  phone: string;
-  email: string;
-  password: string;
-  confirmPassword: string;
-  agreeTerms: boolean;
+type Step = 'email' | 'details' | 'password' | 'done';
+
+const inputCls =
+  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-gold-500 focus:bg-white focus:ring-2 focus:ring-gold-500/20';
+
+function today(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
-const initialForm: RegistrationFormState = {
-  firstName: '',
-  middleName: '',
-  hasNoMiddleName: false,
-  lastName: '',
-  suffix: '',
-  phone: '',
-  email: '',
-  password: '',
-  confirmPassword: '',
-  agreeTerms: false,
+async function postJson(url: string, body: unknown): Promise<any> {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) throw new RegistrationError(data.error || 'Request failed', data.errors || {}, data.code);
+  return data;
+}
+
+const StepDots: React.FC<{ step: Step }> = ({ step }) => {
+  const steps: Step[] = ['email', 'details', 'password'];
+  const labels = ['Verify email', 'Your details', 'Password'];
+  const current = steps.indexOf(step);
+  return (
+    <ol className="flex items-center gap-2 text-[11px] font-medium" aria-label="Registration progress">
+      {steps.map((s, i) => (
+        <li key={s} className={`flex items-center gap-1.5 ${i <= current ? 'text-gold-800' : 'text-slate-400'}`}>
+          <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${i < current ? 'bg-emerald-600 text-white' : i === current ? 'bg-gold-500 text-navy-950' : 'bg-slate-200'}`}>
+            {i < current ? '✓' : i + 1}
+          </span>
+          {labels[i]}
+          {i < steps.length - 1 && <span className="mx-1 text-slate-300">›</span>}
+        </li>
+      ))}
+    </ol>
+  );
 };
 
-const SUFFIX_OPTIONS = ['', 'Jr.', 'Sr.', 'II', 'III', 'IV', 'V'];
-
 export const ClientRegisterPage: React.FC = () => {
-  const { register } = useAuth();
+  const { register, user } = useAuth();
   const navigate = useNavigate();
+  // Who was signed in on this device when the page opened (not the account registered here).
+  const [signedInAs] = useState(() => user?.fullName ?? null);
 
-  const [form, setForm] = useState<RegistrationFormState>(initialForm);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [step, setStep] = useState<Step>('email');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [registeredUser, setRegisteredUser] = useState<{
-    fullName: string;
-    email?: string;
-  } | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const update = <K extends keyof RegistrationFormState>(
-    key: K,
-    value: RegistrationFormState[K]
-  ) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const [email, setEmail] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [token, setToken] = useState('');
+
+  const [details, setDetails] = useState<RegistrationInput>({ address: {} });
+  const [branchId, setBranchId] = useState('');
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; city: string }>>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [agree, setAgree] = useState(false);
+  const [done, setDone] = useState<{ fullName: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/public/branches')
+      .then((r) => r.json())
+      .then((d) => setBranches(d?.branches || []))
+      .catch(() => setError('Could not load the list of branches. Please refresh the page.'));
+  }, []);
+
+  const fail = (err: unknown) => {
+    if (err instanceof RegistrationError) {
+      setError(err.message);
+      setFieldErrors(err.fieldErrors);
+      if (Object.keys(err.fieldErrors).some((k) => k !== 'password' && k !== 'confirmPassword')) setStep('details');
+      if (err.code === 'EMAIL_NOT_VERIFIED') {
+        setToken('');
+        setCodeSent(false);
+        setStep('email');
+      }
+    } else {
+      setError((err as Error)?.message || 'Something went wrong. Please try again.');
+    }
+  };
+
+  const sendCode = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setError('');
+    const normalized = normalizeEmail(email);
+    if (!normalized) return setError('Enter a valid email address.');
+    setBusy(true);
+    try {
+      await postJson('/api/auth/email-code', { email: normalized });
+      setEmail(normalized);
+      setCodeSent(true);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const validate = (): string | null => {
-    const fName = form.firstName.trim();
-    if (!fName || fName.length < 2) {
-      return 'Please enter your legal First Name as shown on your government ID.';
-    }
-
-    const lName = form.lastName.trim();
-    if (!lName || lName.length < 2) {
-      return 'Please enter your legal Last Name.';
-    }
-
-    if (!form.hasNoMiddleName && form.middleName.trim()) {
-      const invalidMiddlePlaceholders = ['n/a', 'na', 'none', '-', '.'];
-      if (invalidMiddlePlaceholders.includes(form.middleName.trim().toLowerCase())) {
-        return 'Please check "I don\'t have a middle name" instead of typing N/A or None.';
-      }
-    }
-
-    // Philippine mobile number validation
-    const cleanPhone = form.phone.replace(/\D/g, '');
-    const isPhMobile = /^(09\d{9}|639\d{9}|9\d{9})$/.test(cleanPhone);
-    if (!isPhMobile) {
-      return 'Please enter a valid Philippine mobile number (e.g. 0917 123 4567 or +63 917 123 4567).';
-    }
-
-    if (form.email.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(form.email.trim())) {
-        return 'Please enter a valid email address, or leave it blank.';
-      }
-    }
-
-    if (!form.password || !isPasswordStrong(form.password)) {
-      return STRONG_PASSWORD_ERROR_MESSAGE;
-    }
-
-    if (form.password !== form.confirmPassword) {
-      return 'Passwords do not match. Please verify.';
-    }
-
-    if (!form.agreeTerms) {
-      return 'You must agree to the Terms of Service and Data Privacy Policy (RA 10173) to create an account.';
-    }
-
-    return null;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const verifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    setLoading(true);
+    setBusy(true);
     try {
-      let cleanPhone = form.phone.replace(/\D/g, '');
-      if (cleanPhone.startsWith('63')) cleanPhone = '0' + cleanPhone.slice(2);
-      if (cleanPhone.startsWith('9') && cleanPhone.length === 10) cleanPhone = '0' + cleanPhone;
-
-      const composedFullName = [
-        form.firstName.trim(),
-        (!form.hasNoMiddleName && form.middleName.trim()) ? form.middleName.trim() : null,
-        form.lastName.trim(),
-        form.suffix.trim() ? form.suffix.trim() : null,
-      ].filter(Boolean).join(' ');
-
-      const user = await register({
-        fullName: composedFullName,
-        firstName: form.firstName.trim(),
-        middleName: (!form.hasNoMiddleName && form.middleName.trim()) ? form.middleName.trim() : undefined,
-        lastName: form.lastName.trim(),
-        suffix: form.suffix.trim() || undefined,
-        hasNoMiddleName: form.hasNoMiddleName,
-        phone: cleanPhone,
-        email: form.email.trim().toLowerCase() || undefined,
-        password: form.password,
-        confirmPassword: form.confirmPassword,
-        agreeTerms: form.agreeTerms,
-      });
-
-      setRegisteredUser({
-        fullName: user.fullName || composedFullName,
-        email: user.email || form.email.trim(),
-      });
-    } catch (err: any) {
-      setError(err.message || 'Registration failed. Please check your information and try again.');
+      const data = await postJson('/api/auth/email-code/verify', { email, code });
+      setToken(data.verificationToken);
+      setStep('details');
+    } catch (err) {
+      fail(err);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  if (registeredUser) {
+  const continueToPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const result = validateRegistration({ ...details, email }, 'SELF', today());
+    const errors = { ...result.errors };
+    if (!branchId) errors.branchId = 'Choose your branch.';
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Please correct the highlighted fields.');
+      return;
+    }
+    setStep('password');
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!isPasswordStrong(password)) return setError(STRONG_PASSWORD_ERROR_MESSAGE);
+    if (password !== confirmPassword) return setError('Passwords do not match.');
+    if (!agree) return setError('Please accept the Terms of Service and the Data Privacy Notice (RA 10173).');
+    setBusy(true);
+    try {
+      const user = await register({ ...details, email, branchId, password, confirmPassword, emailVerificationToken: token });
+      setDone({ fullName: user.fullName });
+      setStep('done');
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (step === 'done' && done) {
     return (
-      <div id="register-success-view" className="py-6 text-center animate-fade-in space-y-6">
+      <div id="register-success-view" className="space-y-6 py-6 text-center">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 ring-8 ring-emerald-50/50">
           <CheckCircle2 className="h-8 w-8" />
         </div>
-
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            Account created successfully.
-          </h2>
-          <p className="mt-1.5 text-sm text-slate-600 max-w-md mx-auto">
-            Your client account for <strong className="text-slate-800">{registeredUser.fullName}</strong> has been created.
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Your account is ready</h2>
+          <p className="mx-auto mt-1.5 max-w-md text-sm text-slate-600">
+            Welcome, <strong className="text-slate-800">{done.fullName}</strong>. Your email is verified.
           </p>
         </div>
-
-        <div className="mx-auto max-w-md rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-left text-xs text-amber-900 shadow-xs">
+        <div className="mx-auto max-w-md rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-left text-xs text-amber-900">
           <div className="flex items-center gap-2 font-bold text-amber-950">
-            <Shield className="h-4 w-4 text-amber-700 shrink-0" />
-            <span>Complete Your KYC</span>
+            <Shield className="h-4 w-4 shrink-0 text-amber-700" />
+            Next: verify your identity (KYC)
           </div>
           <p className="mt-1.5 leading-relaxed text-amber-800">
-            Your account has been created. Please complete your KYC verification to access HOSCOMO services such as loan applications and savings withdrawals.
+            Upload your government ID and a selfie. You can apply for loans and use savings once a branch officer verifies them.
           </p>
         </div>
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 max-w-md mx-auto">
-          <Button
-            id="btn-complete-kyc"
-            onClick={() => navigate('/portal/kyc', { replace: true })}
-            className="w-full sm:flex-1 py-3 text-sm font-semibold shadow-md shadow-emerald-600/10"
-          >
-            <FileCheck2 className="h-4 w-4 mr-2" /> Complete KYC
+        <div className="mx-auto flex max-w-md flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
+          <Button id="btn-complete-kyc" onClick={() => navigate('/portal/kyc', { replace: true })} className="w-full py-3 text-sm font-semibold sm:flex-1">
+            <FileCheck2 className="mr-2 h-4 w-4" /> Start KYC
           </Button>
-
-          <Button
-            id="btn-continue-dashboard"
-            variant="outline"
-            onClick={() => navigate('/portal', { replace: true })}
-            className="w-full sm:flex-1 py-3 text-sm font-semibold border-slate-300 hover:bg-slate-50"
-          >
-            Continue to Dashboard <ArrowRight className="h-4 w-4 ml-1.5" />
+          <Button id="btn-continue-dashboard" variant="outline" onClick={() => navigate('/portal', { replace: true })} className="w-full py-3 text-sm font-semibold sm:flex-1">
+            Go to dashboard <ArrowRight className="ml-1.5 h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -215,276 +190,146 @@ export const ClientRegisterPage: React.FC = () => {
 
   return (
     <div id="client-register-card" className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-gold-500/10 px-3 py-1 text-xs font-semibold text-gold-800 ring-1 ring-inset ring-gold-500/20 mb-2">
-          <Smartphone className="h-3.5 w-3.5 text-gold-700" />
-          <span>Quick Registration</span>
-        </div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-          Register
-        </h2>
-        <p className="mt-1 text-xs sm:text-sm text-slate-500">
-          Sign up with your basic details. Full KYC verification will follow before applying for loans.
-        </p>
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Become a member</h2>
+        <StepDots step={step} />
       </div>
 
-      {/* Error message */}
+      {signedInAs && (
+        <div id="register-signed-in-notice" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 sm:text-sm">
+          <strong>{signedInAs}</strong> is signed in on this device. Registering a new member signs them out of the portal here.{' '}
+          <Link to="/portal" className="font-semibold text-amber-950 underline">
+            Go to {signedInAs}’s account instead
+          </Link>
+        </div>
+      )}
+
       {error && (
-        <div
-          id="register-error-banner"
-          className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs sm:text-sm text-rose-700"
-          role="alert"
-        >
+        <div id="register-error-banner" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 sm:text-sm" role="alert">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
           <span>{error}</span>
         </div>
       )}
 
-      {/* Simplified Registration Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Legal First & Middle Name */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {step === 'email' && (
+        <form onSubmit={codeSent ? verifyCode : sendCode} className="space-y-4">
+          <p className="text-sm text-slate-600">We will send a 6-digit code to confirm your email address.</p>
           <div>
-            <label htmlFor="reg-firstname" className="block text-xs font-semibold text-slate-700 mb-1">
-              Legal First Name <span className="text-rose-500">*</span>
+            <label htmlFor="reg-email" className="mb-1 block text-xs font-semibold text-slate-700">
+              Email address <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                id="reg-firstname"
-                type="text"
+                id="reg-email"
+                type="email"
+                autoComplete="email"
                 required
-                autoComplete="given-name"
-                placeholder="e.g. Maria Teresa"
-                value={form.firstName}
-                onChange={(e) => update('firstName', e.target.value)}
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
+                disabled={codeSent}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={`${inputCls} pl-9`}
               />
             </div>
           </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label htmlFor="reg-middlename" className="block text-xs font-semibold text-slate-700">
-                Middle Name
+          {codeSent && (
+            <div>
+              <label htmlFor="reg-code" className="mb-1 block text-xs font-semibold text-slate-700">
+                6-digit code
               </label>
-              <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={form.hasNoMiddleName}
-                  onChange={(e) => {
-                    update('hasNoMiddleName', e.target.checked);
-                    if (e.target.checked) update('middleName', '');
-                  }}
-                  className="h-3 w-3 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
-                />
-                <span>I don't have a middle name</span>
-              </label>
+              <input
+                id="reg-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                className={`${inputCls} tracking-[0.4em] text-center font-mono text-lg`}
+              />
+              <div className="mt-2 flex justify-between text-xs">
+                <button type="button" className="text-slate-500 hover:underline" onClick={() => { setCodeSent(false); setCode(''); }}>
+                  Change email
+                </button>
+                <button type="button" className="font-semibold text-gold-700 hover:underline" disabled={busy} onClick={() => sendCode()}>
+                  Send a new code
+                </button>
+              </div>
             </div>
-            <input
-              id="reg-middlename"
-              type="text"
-              disabled={form.hasNoMiddleName}
-              autoComplete="additional-name"
-              placeholder={form.hasNoMiddleName ? 'No middle name' : 'e.g. Reyes'}
-              value={form.middleName}
-              onChange={(e) => update('middleName', e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition disabled:opacity-50 disabled:bg-slate-100 disabled:cursor-not-allowed"
-            />
-          </div>
-        </div>
+          )}
+          <Button id={codeSent ? 'btn-verify-code' : 'btn-send-code'} type="submit" fullWidth loading={busy} className="py-3 text-sm font-semibold">
+            {codeSent ? 'Verify code' : 'Send code'}
+          </Button>
+        </form>
+      )}
 
-        {/* Legal Last Name & Suffix */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="sm:col-span-2">
-            <label htmlFor="reg-lastname" className="block text-xs font-semibold text-slate-700 mb-1">
-              Legal Last Name <span className="text-rose-500">*</span>
-            </label>
-            <input
-              id="reg-lastname"
-              type="text"
-              required
-              autoComplete="family-name"
-              placeholder="e.g. Santos"
-              value={form.lastName}
-              onChange={(e) => update('lastName', e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
-            />
-          </div>
-
+      {step === 'details' && (
+        <form onSubmit={continueToPassword} className="space-y-5" noValidate>
+          <p className="text-xs text-slate-500">
+            Verified email: <strong className="text-slate-700">{email}</strong>. Enter your details exactly as they appear on your government ID.
+          </p>
           <div>
-            <label htmlFor="reg-suffix" className="block text-xs font-semibold text-slate-700 mb-1">
-              Suffix <span className="text-[10px] text-slate-400 font-normal">(Optional)</span>
+            <label htmlFor="reg-branch" className="mb-1 block text-xs font-medium text-slate-600">
+              Your branch <span className="text-rose-500">*</span>
             </label>
-            <select
-              id="reg-suffix"
-              value={form.suffix}
-              onChange={(e) => update('suffix', e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
-            >
-              <option value="">None</option>
-              {SUFFIX_OPTIONS.filter(Boolean).map((sfx) => (
-                <option key={sfx} value={sfx}>
-                  {sfx}
+            <select id="reg-branch" className={inputCls} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">Choose the branch you will visit…</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} — {b.city}
                 </option>
               ))}
             </select>
+            {fieldErrors.branchId && <p className="mt-1 text-xs text-rose-600">{fieldErrors.branchId}</p>}
           </div>
-        </div>
+          <MemberDetailsForm value={details} onChange={setDetails} errors={fieldErrors} channel="SELF" hideEmail idPrefix="reg" />
+          <Button id="btn-details-next" type="submit" fullWidth className="py-3 text-sm font-semibold">
+            Continue <ArrowRight className="ml-1 h-4 w-4" />
+          </Button>
+        </form>
+      )}
 
-        {/* Mobile Number */}
-        <div>
-          <label htmlFor="reg-phone" className="block text-xs font-semibold text-slate-700 mb-1">
-            Philippine Mobile Number <span className="text-rose-500">*</span>
-          </label>
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              id="reg-phone"
-              type="tel"
-              required
-              autoComplete="tel"
-              inputMode="tel"
-              placeholder="0917 123 4567"
-              value={form.phone}
-              onChange={(e) => update('phone', e.target.value)}
-              className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
-            />
-          </div>
-          <p className="mt-1 text-[11px] text-slate-400">
-            Accepts format: 09XXXXXXXXX or +639XXXXXXXXX.
-          </p>
-        </div>
-
-        {/* Email Address (Optional) */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label htmlFor="reg-email" className="block text-xs font-semibold text-slate-700">
-              Email Address
-            </label>
-            <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider bg-slate-100 px-1.5 py-0.5 rounded">
-              Optional
-            </span>
-          </div>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              id="reg-email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@email.com (optional)"
-              value={form.email}
-              onChange={(e) => update('email', e.target.value)}
-              className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
-            />
-          </div>
-        </div>
-
-        {/* Password and Confirm Password */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+      {step === 'password' && (
+        <form onSubmit={submit} className="space-y-4">
           <div>
-            <label htmlFor="reg-password" className="block text-xs font-semibold text-slate-700 mb-1">
+            <label htmlFor="reg-password" className="mb-1 block text-xs font-semibold text-slate-700">
               Password <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                id="reg-password"
-                type={showPassword ? 'text' : 'password'}
-                required
-                autoComplete="new-password"
-                placeholder="Min. 8 characters"
-                value={form.password}
-                onChange={(e) => update('password', e.target.value)}
-                className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
-              />
-              <button
-                type="button"
-                id="toggle-password-visibility"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
+              <input id="reg-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputCls} pr-9`} />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400" aria-label={showPassword ? 'Hide password' : 'Show password'}>
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
-
           <div>
-            <label htmlFor="reg-confirm-password" className="block text-xs font-semibold text-slate-700 mb-1">
-              Confirm Password <span className="text-rose-500">*</span>
+            <label htmlFor="reg-confirm-password" className="mb-1 block text-xs font-semibold text-slate-700">
+              Confirm password <span className="text-rose-500">*</span>
             </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                id="reg-confirm-password"
-                type={showConfirmPassword ? 'text' : 'password'}
-                required
-                autoComplete="new-password"
-                placeholder="Repeat password"
-                value={form.confirmPassword}
-                onChange={(e) => update('confirmPassword', e.target.value)}
-                className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 outline-none transition"
-              />
-              <button
-                type="button"
-                id="toggle-confirm-password-visibility"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-              >
-                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
+            <input id="reg-confirm-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputCls} />
           </div>
-        </div>
-
-        {/* Real-time Password Strength Indicator & Checklist */}
-        <PasswordStrengthIndicator
-          password={form.password}
-          confirmPassword={form.confirmPassword}
-        />
-
-        {/* Terms & Privacy Consent */}
-        <div className="pt-2">
-          <label className="flex items-start gap-2.5 cursor-pointer rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:bg-slate-50 transition">
-            <input
-              id="reg-agree-terms"
-              type="checkbox"
-              required
-              checked={form.agreeTerms}
-              onChange={(e) => update('agreeTerms', e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
-            />
-            <span className="text-xs text-slate-600 leading-relaxed">
-              I agree to the HOSCOMO <span className="font-semibold text-slate-800">Terms of Service</span> and consent to data processing under the <span className="font-semibold text-slate-800">Data Privacy Act (RA 10173)</span>.
+          <PasswordStrengthIndicator password={password} confirmPassword={confirmPassword} />
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+            <input id="reg-agree-terms" type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4" />
+            <span className="text-xs leading-relaxed text-slate-600">
+              I agree to the HOSCOMCO <span className="font-semibold text-slate-800">Terms of Service</span> and consent to the processing of my personal data under the{' '}
+              <span className="font-semibold text-slate-800">Data Privacy Act (RA 10173)</span>.
             </span>
           </label>
-        </div>
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={() => setStep('details')} className="py-3">
+              <ArrowLeft className="h-4 w-4" /> Back
+            </Button>
+            <Button id="btn-submit-registration" type="submit" fullWidth loading={busy} className="py-3 text-sm font-semibold">
+              <ShieldCheck className="mr-1 h-4 w-4" /> Create account
+            </Button>
+          </div>
+        </form>
+      )}
 
-        {/* Submit */}
-        <div className="pt-2">
-          <Button
-            id="btn-submit-registration"
-            type="submit"
-            fullWidth
-            loading={loading}
-            className="py-3 text-sm font-semibold"
-          >
-            <ShieldCheck className="h-4 w-4 mr-1" /> Register
-          </Button>
-        </div>
-      </form>
-
-      {/* Footer link to sign in */}
       <div className="pt-2 text-center text-xs text-slate-500">
-        <span>Already have an account? </span>
-        <Link
-          id="link-signin"
-          to="/portal/login"
-          className="font-semibold text-gold-700 hover:text-gold-800 hover:underline"
-        >
+        Already have an account?{' '}
+        <Link id="link-signin" to="/portal/login" className="font-semibold text-gold-700 hover:underline">
           Sign in here
         </Link>
       </div>

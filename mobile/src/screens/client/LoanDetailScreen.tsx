@@ -3,106 +3,82 @@ import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppButton, AppCard, Badge, InfoRow, LoadingView, ScreenHeader } from '../../components';
+import { AppButton, AppCard, Badge, ErrorView, InfoRow, LoadingView, ScreenHeader } from '../../components';
 import { colors, radius } from '../../theme';
-import { api } from '../../services/api';
-import { LoanItem, InstallmentScheduleItem } from '../../types';
-import { formatCurrency, formatDate, statusColor } from '../../utils/format';
+import { api, messageOf } from '../../services/api';
+import type { LoanDetailView, PaymentView } from '../../shared/client';
+import { FREQUENCY_LABELS, INTEREST_METHOD_LABELS, centsFromDb, displayPercent, paymentMethodLabel } from '../../shared/lending';
+import { formatCurrency, formatDate } from '../../utils/format';
 import { LoansStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<LoansStackParamList, 'LoanDetail'>;
 
 export const LoanDetailScreen: React.FC<Props> = ({ navigation, route }) => {
-  // The screen is reachable two ways: with a full loan object (LoansScreen) or
-  // with only an id (PaymentReceipt's "View Loan Details"). In the id-only case
-  // the loan must be resolved from the API, otherwise every figure below the
-  // header renders from a hardcoded placeholder (0.00 balance, PENDING status).
-  const passedLoan = 'loan' in route.params ? route.params.loan : undefined;
-  const loanId = passedLoan?.id ?? ('loanId' in route.params ? route.params.loanId : undefined);
-  const [loan, setLoan] = useState<LoanItem | null>(passedLoan ?? null);
-
-  const [schedule, setSchedule] = useState<InstallmentScheduleItem[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const { loanId } = route.params;
+  const [loan, setLoan] = useState<LoanDetailView | null>(null);
+  const [payments, setPayments] = useState<PaymentView[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const paidCount = schedule.filter((s) => s.status === 'PAID').length;
-  const progress = schedule.length ? Math.round((paidCount / schedule.length) * 100) : 0;
-  const overdue = schedule.filter((s) => s.status === 'OVERDUE').length;
+  const [error, setError] = useState('');
 
   const load = useCallback(async (silent = false) => {
-    if (!silent) setLoaded(false);
-    setError(null);
+    if (!silent) setLoading(true);
     try {
-      let target = passedLoan;
-      if (!target && loanId) {
-        const { allLoans } = await api.getLoans();
-        target = allLoans.find((l) => l.id === loanId);
-        if (target) setLoan(target);
-      }
-      if (target) {
-        setSchedule(await api.getLoanSchedule(target.id));
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Unable to load the loan schedule.');
+      const [{ loan: detail }, paid] = await Promise.all([api.getLoan(loanId), api.getLoanPayments(loanId)]);
+      setLoan(detail);
+      setPayments(paid);
+      setError('');
+    } catch (err) {
+      setError(messageOf(err, 'This loan could not be loaded.'));
     } finally {
-      setLoaded(true);
+      setLoading(false);
       setRefreshing(false);
     }
-  }, [loanId, passedLoan]);
+  }, [loanId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  if (!loaded) return <SafeAreaView style={styles.safe}><ScreenHeader title="Loan Details" /><LoadingView /></SafeAreaView>;
+  if (loading) return <SafeAreaView style={styles.safe}><ScreenHeader title="Loan Details" /><LoadingView text="Loading the loan…" /></SafeAreaView>;
+  if (error || !loan) return <SafeAreaView style={styles.safe}><ScreenHeader title="Loan Details" /><ErrorView message={error || 'This loan is not available.'} onRetry={() => load()} /></SafeAreaView>;
 
-  if (!loan) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScreenHeader title="Loan Details" />
-        <View style={styles.errorWrap}>
-          <Text style={styles.error}>{error || 'This loan is no longer available.'}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const isActive = ['ACTIVE', 'APPROVED', 'DISBURSED', 'OVERDUE', 'IN_ARREARS'].includes(String(loan.status).toUpperCase());
+  const schedule = loan.schedule;
+  const paidCount = schedule.filter((s) => s.status === 'PAID').length;
+  const overdue = schedule.filter((s) => s.status === 'OVERDUE').length;
+  const payable = centsFromDb(loan.totalPayable);
+  const progress = payable > 0 ? Math.min(100, Math.round((centsFromDb(loan.totalPaid) / payable) * 100)) : 0;
+  const running = loan.status === 'Active' || loan.status === 'Disbursed';
+  const reason = loan.status === 'Rejected' ? loan.decisionReason : loan.status === 'Draft' ? loan.returnedReason : loan.status === 'Cancelled' ? loan.cancellationReason : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title={loan.productName} subtitle={loan.loanNumber || undefined} />
+      <ScreenHeader title={loan.productName} subtitle={loan.loanNumber} />
       <FlatList
         data={schedule}
-        keyExtractor={(item) => String(item.installmentNumber)}
+        keyExtractor={(item) => String(item.number)}
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
         ListHeaderComponent={
           <>
-            {error ? <Text style={styles.error}>{error}</Text> : null}
             <View style={styles.heroCard}>
               <View style={styles.heroTop}>
                 <View style={styles.flex1}>
-                  <Text style={styles.heroLabel}>REMAINING BALANCE</Text>
-                  <Text style={styles.heroValue}>{formatCurrency(loan.remainingBalance)}</Text>
-                  <Text style={styles.heroSub}>
-                    {formatCurrency(loan.principalAmount)} principal · {loan.termMonths} months
-                  </Text>
+                  <Text style={styles.heroLabel}>{running ? 'REMAINING BALANCE' : 'AMOUNT'}</Text>
+                  <Text style={styles.heroValue}>{formatCurrency(running ? loan.remainingBalance : loan.principal)}</Text>
+                  <Text style={styles.heroSub}>{formatCurrency(loan.principal)} principal · {loan.termMonths} months</Text>
                 </View>
-                <Badge status={loan.status} size="md" />
+                <Badge status={loan.overdue ? 'OVERDUE' : loan.status} size="md" />
               </View>
               {overdue > 0 ? (
                 <View style={styles.overdueNote}>
                   <Ionicons name="alert-circle" size={14} color={colors.danger} />
-                  <Text style={styles.overdueNoteText}>{overdue} installment{overdue > 1 ? 's' : ''} overdue. Please settle soon to avoid penalties.</Text>
+                  <Text style={styles.overdueNoteText}>{overdue} installment{overdue > 1 ? 's' : ''} overdue. Penalties apply each month until paid.</Text>
                 </View>
               ) : null}
-              {isActive ? (
+              {running ? (
                 <AppButton
-                  title="Make a Payment"
+                  title="Send payment proof"
                   variant="secondary"
                   style={{ marginTop: 14, width: undefined, alignSelf: 'flex-start', paddingHorizontal: 20 }}
                   icon={<Ionicons name="card-outline" size={17} color={colors.white} />}
@@ -111,28 +87,57 @@ export const LoanDetailScreen: React.FC<Props> = ({ navigation, route }) => {
               ) : null}
             </View>
 
+            {reason ? (
+              <AppCard style={styles.detailCard}>
+                <Text style={styles.reasonTitle}>{loan.status === 'Draft' ? 'Changes requested' : 'Reason'}</Text>
+                <Text style={styles.reasonText}>{reason}</Text>
+              </AppCard>
+            ) : null}
+
             <AppCard style={styles.detailCard}>
-              <InfoRow label="Monthly installment" value={formatCurrency(loan.monthlyInstallment)} strong />
-              <InfoRow label="Interest rate" value={`${loan.interestRate}%/month`} />
-              <InfoRow label="Term" value={`${loan.termMonths} months`} />
-              <InfoRow label="Started" value={loan.startDate ? formatDate(loan.startDate) : '—'} />
-              <InfoRow label="Maturity" value={loan.maturityDate ? formatDate(loan.maturityDate) : '—'} />
-              <InfoRow label="Next due date" value={loan.nextPaymentDate ? formatDate(loan.nextPaymentDate) : '—'} last={!loan.purpose} />
-              {loan.purpose ? <InfoRow label="Purpose" value={loan.purpose} last /> : null}
+              <InfoRow label="Installment" value={loan.installmentAmount ? formatCurrency(loan.installmentAmount) : '—'} strong />
+              <InfoRow label="Interest" value={`${displayPercent(loan.annualRate)} a year, ${INTEREST_METHOD_LABELS[loan.interestMethod as keyof typeof INTEREST_METHOD_LABELS]?.toLowerCase() ?? loan.interestMethod}`} />
+              <InfoRow label="Repayment" value={FREQUENCY_LABELS[loan.frequency as keyof typeof FREQUENCY_LABELS] ?? loan.frequency} />
+              <InfoRow label="Total payable" value={formatCurrency(loan.totalPayable)} />
+              <InfoRow label="Paid so far" value={formatCurrency(loan.totalPaid)} />
+              <InfoRow label="Released" value={formatDate(loan.disbursedDate)} />
+              <InfoRow label="Maturity" value={formatDate(loan.maturityDate)} />
+              <InfoRow label="Next due" value={loan.nextDue ? `${formatCurrency(loan.nextDue.amount)} on ${formatDate(loan.nextDue.dueDate)}` : '—'} last />
             </AppCard>
 
-            <View style={styles.progressCard}>
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressTitle}>Repayment Progress</Text>
-                <Text style={styles.progressPct}>{progress}%</Text>
+            {schedule.length ? (
+              <View style={styles.progressCard}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressTitle}>Repayment progress</Text>
+                  <Text style={styles.progressPct}>{progress}%</Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: colors.primary }]} />
+                </View>
+                <Text style={styles.progressSub}>{paidCount} of {schedule.length} installments paid</Text>
               </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: statusColor(loan.status) }]} />
-              </View>
-              <Text style={styles.progressSub}>{paidCount} of {schedule.length} installments paid</Text>
-            </View>
+            ) : null}
 
-            <Text style={styles.sectionTitle}>Payment Schedule</Text>
+            {payments.length ? (
+              <>
+                <Text style={styles.sectionTitle}>Payments</Text>
+                {payments.map((p) => (
+                  <TouchableOpacity key={p.id} onPress={() => navigation.navigate('PaymentReceipt', { paymentId: p.id })} accessibilityLabel={`Receipt ${p.receiptNumber}`}>
+                    <AppCard style={styles.schedCard} padded={false}>
+                      <View style={styles.schedRow}>
+                        <View style={styles.flex1}>
+                          <Text style={styles.schedAmt}>{formatCurrency(p.amount)}{p.status === 'REVERSED' ? ' (reversed)' : ''}</Text>
+                          <Text style={styles.schedDate}>{formatDate(p.paymentDate)} · {p.receiptNumber} · {paymentMethodLabel(p.method)}</Text>
+                        </View>
+                        <Ionicons name="receipt-outline" size={16} color={colors.textFaint} />
+                      </View>
+                    </AppCard>
+                  </TouchableOpacity>
+                ))}
+              </>
+            ) : null}
+
+            <Text style={styles.sectionTitle}>{loan.scheduleKind === 'PROJECTED' ? 'Schedule (estimate until release)' : 'Schedule'}</Text>
           </>
         }
         renderItem={({ item }) => {
@@ -142,19 +147,12 @@ export const LoanDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <AppCard style={styles.schedCard} padded={false}>
               <View style={styles.schedRow}>
                 <View style={[styles.schedNum, isPaid && styles.schedNumPaid, isOverdue && styles.schedNumOverdue]}>
-                  {isPaid ? (
-                    <Ionicons name="checkmark" size={15} color={colors.white} />
-                  ) : (
-                    <Text style={[styles.schedNumText, isOverdue && styles.schedNumTextOverdue]}>{item.installmentNumber}</Text>
-                  )}
+                  {isPaid ? <Ionicons name="checkmark" size={15} color={colors.white} /> : <Text style={[styles.schedNumText, isOverdue && styles.schedNumTextOverdue]}>{item.number}</Text>}
                 </View>
                 <View style={styles.flex1}>
-                  <Text style={styles.schedAmt}>{formatCurrency(item.amountDue)}</Text>
-                  <Text style={styles.schedDate}>
-                    {formatDate(item.dueDate)}
-                    {isPaid && item.paidDate ? ` · paid ${formatDate(item.paidDate)}` : ''}
-                  </Text>
-                  <Text style={styles.schedBalance}>Balance after: {formatCurrency(item.remainingBalance)}</Text>
+                  <Text style={styles.schedAmt}>{formatCurrency(item.total)}{centsFromDb(item.penalty) > 0 ? ` + ${formatCurrency(item.penalty)} penalty` : ''}</Text>
+                  <Text style={styles.schedDate}>Due {formatDate(item.dueDate)}{centsFromDb(item.outstanding) > 0 && !isPaid ? ` · ${formatCurrency(item.outstanding)} left` : ''}</Text>
+                  <Text style={styles.schedBalance}>Balance after: {formatCurrency(item.balanceAfter)}</Text>
                 </View>
                 <Badge status={item.status} />
               </View>
@@ -164,7 +162,7 @@ export const LoanDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <Ionicons name="calendar-outline" size={30} color={colors.textFaint} />
-            <Text style={styles.emptyText}>No schedule available yet.</Text>
+            <Text style={styles.emptyText}>No schedule yet.</Text>
           </View>
         }
       />
@@ -239,5 +237,7 @@ const styles = StyleSheet.create({
   schedDate: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
   schedBalance: { fontSize: 10, color: colors.textFaint, marginTop: 2 },
   emptyWrap: { alignItems: 'center', paddingVertical: 30 },
+  reasonTitle: { fontSize: 13, fontWeight: '800', color: colors.text, marginBottom: 4 },
+  reasonText: { fontSize: 13, color: colors.textSecondary, lineHeight: 18 },
   emptyText: { fontSize: 12, color: colors.textFaint, marginTop: 8 },
 });

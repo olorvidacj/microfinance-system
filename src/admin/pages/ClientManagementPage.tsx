@@ -7,13 +7,16 @@ import { DataTable } from '../components/DataTable';
 import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AdminClient, formatPHP, formatDate } from '../data/mockData';
+import { Avatar } from '../../ui';
 import { adminApi, ClientDetail } from '../services/adminApi';
+import { useAdminBranch } from '../branchScope';
 
 const STATUSES = ['Pending', 'Active', 'Inactive', 'Suspended', 'Rejected', 'Closed'];
 
 type ProfileTab = 'overview' | 'loans' | 'savings' | 'transactions';
 
 export const ClientManagementPage: React.FC = () => {
+  const { branchId } = useAdminBranch();
   const [clients, setClients] = useState<AdminClient[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -25,8 +28,8 @@ export const ClientManagementPage: React.FC = () => {
   const [toast, setToast] = useState('');
 
   useEffect(() => {
-    adminApi.clients().then(setClients).catch(() => setClients([]));
-  }, []);
+    adminApi.clients(branchId).then(setClients).catch(() => setClients([]));
+  }, [branchId]);
 
   const filtered = useMemo(() => {
     return clients.filter((c) => {
@@ -111,7 +114,7 @@ export const ClientManagementPage: React.FC = () => {
               header: 'Cooperative Member',
               render: (c) => (
                 <div className="flex items-center gap-3">
-                  <img src={c.avatar} alt={c.fullName} className="w-9 h-9 rounded-xl object-cover border border-slate-200 shadow-sm shrink-0" />
+                  <Avatar src={c.avatar} name={c.fullName} size={36} className="rounded-xl border border-slate-200" />
                   <div className="min-w-0">
                     <p className="font-bold text-slate-900 truncate">{c.fullName}</p>
                     <p className="text-[11px] font-mono text-slate-400">{c.clientId}</p>
@@ -199,7 +202,7 @@ export const ClientManagementPage: React.FC = () => {
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 to-amber-400" />
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <img src={selectedClient.avatar} alt={selectedClient.fullName} className="w-16 h-16 rounded-xl object-cover ring-2 ring-amber-400/50 shadow-md shrink-0" />
+                  <Avatar src={selectedClient.avatar} name={selectedClient.fullName} size={64} className="rounded-xl ring-2 ring-amber-400/50 shadow-md" />
                   <div>
                     <h4 className="font-black text-lg text-white tracking-tight">{selectedClient.fullName}</h4>
                     <p className="text-xs text-slate-300 flex items-center gap-1.5 mt-0.5">

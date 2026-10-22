@@ -1,42 +1,47 @@
-import {
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import type {
   UserSession,
-  ClientDashboardData,
-  ClientProfile,
-  LoanProduct,
-  LoanApplication,
-  LoanItem,
-  InstallmentScheduleItem,
-  PaymentItem,
-  MobileNotification,
   KycRequiredDocumentItem,
-  KycSubmission,
   KycSubmissionPayload,
-  KycStatusData,
-  KycDocumentItem,
-  TransactionType,
-  FinancialTransaction,
-  SavingsAccount,
-  SavingsTransaction,
-  PortalDocument,
-  ClientGroup,
-  FaqItem,
-  SupportTicket,
-  NotificationPreferences,
-  PrivacyPreferences,
-  LoginActivityItem,
-  PaymentReceipt,
-  PaymentMethod,
-  InstallmentScheduleItem as InstallmentScheduleItemAlias,
   KycReviewDecision,
   BranchContextData,
   BranchKycQueueItem,
-  KycSubmission as KycSubmissionAlias,
-  BranchContextDataStaffContext,
-  MobilePaymentProof,
 } from '../types';
+import type {
+  ClientDashboardView,
+  ClientDocumentView,
+  ClientLoansView,
+  ClientNotificationView,
+  ClientProfileView,
+  ClientTransactionView,
+  FaceMatchView,
+  FaqView,
+  IdScanView,
+  KycStatusView,
+  KycUploadView,
+  PsgcPlaceView,
+  LoanDetailView,
+  MyGroupView,
+  PaymentView,
+  PayoffQuoteView,
+  ProofView,
+  SavingsAccountView,
+  SavingsStatementView,
+  SignInView,
+  SupportContactView,
+  SupportRequestInput,
+  SupportRequestView,
+  TransactionKind,
+  WithdrawalRequestView,
+} from '../shared/client';
+import type { ProductDto, ReceiptDocument, quoteToDto } from '../shared/lending';
+import type { KycApplicationPayload } from '../shared/kyc';
 
-import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+/**
+ * The mobile app talks to the same /api/client endpoints as the web portal
+ * (src/portal/services) and gets the same response shapes (shared/client).
+ */
 
 const BACKEND_PORT = 3000;
 
@@ -67,12 +72,9 @@ function resolveApiBaseUrl(): string {
     constantsAny.experienceUrl,
     constantsAny.linkingUri,
   ];
-
   for (const candidate of rawHostCandidates) {
     if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      // Clean scheme if present (e.g. "exp://", "http://")
       const stripped = candidate.replace(/^[a-zA-Z]+:\/\//, '');
-      // Extract hostname before colon or slash
       const host = stripped.split('/')[0].split(':')[0].trim();
       if (host && host !== 'localhost' && host !== '127.0.0.1') {
         return `http://${host}:${BACKEND_PORT}/api`;
@@ -85,6 +87,39 @@ function resolveApiBaseUrl(): string {
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
+
+/** A list the server must send; a missing one is a broken response, not an empty list. */
+function listOf<T>(value: T[] | undefined, what: string): T[] {
+  if (!Array.isArray(value)) throw new ApiError(`The server's response had no ${what}. Please try again.`, 0, 'BAD_RESPONSE');
+  return value;
+}
+
+/** A refused request: the server's message, code and per-field messages. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly fields: Record<string, string> = {},
+    /** Everything else the server sent with the refusal, e.g. { requiredStep, issues } for KYC. */
+    readonly details: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** Field messages from a refused request, for showing next to the inputs. */
+export const fieldErrorsOf = (err: unknown): Record<string, string> => (err instanceof ApiError ? err.fields : {});
+export const messageOf = (err: unknown, fallback: string): string => (err instanceof Error && err.message ? err.message : fallback);
+
+/** One key per attempt of a money action, so a retry after a timeout cannot post twice. */
+export const newIdempotencyKey = (): string => {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return c?.randomUUID ? c.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+};
+
+export type LoanQuoteDto = ReturnType<typeof quoteToDto>;
 
 class ApiService {
   private token: string | null = null;
@@ -102,536 +137,312 @@ class ApiService {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-
-    const url = `${API_BASE_URL}${endpoint}`;
+    let response: Response;
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
-
-      const text = await response.text();
-      let data: any = {};
-      if (text && text.trim().length > 0) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { error: text };
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP Error ${response.status}`);
-      }
-      return data as T;
-    } catch (err: any) {
-      console.warn(`[API] Error fetching ${endpoint}:`, err?.message || err);
-      const errMsg = String(err?.message || '');
-      if (
-        err instanceof TypeError ||
-        errMsg.includes('fetch failed') ||
-        errMsg.includes('ConnectException') ||
-        errMsg.includes('Network request failed') ||
-        errMsg.includes('failed to connect')
-      ) {
-        throw new Error(
-          `Cannot connect to backend server at ${API_BASE_URL}.\n\nPlease ensure:\n1. Backend server is running ('npm run dev').\n2. Your mobile device and PC are on the same Wi-Fi.\n3. Windows Firewall allows inbound connections to port ${BACKEND_PORT}.`
-        );
-      }
-      throw err;
+      response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+    } catch {
+      throw new ApiError(
+        `Cannot reach the server at ${API_BASE_URL}. Check that it is running and that this device is on the same network.`,
+        0,
+        'NETWORK',
+      );
     }
+    const text = await response.text();
+    let data: any = {};
+    if (text.trim()) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+    }
+    if (!response.ok) {
+      throw new ApiError(data.error || data.message || `Request failed (${response.status})`, response.status, data.code, data.fields && typeof data.fields === 'object' ? data.fields : {}, data);
+    }
+    return data as T;
   }
 
-  // 1. Authentication
+  private post<T>(endpoint: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
+    return this.request<T>(endpoint, { method: 'POST', headers, body: JSON.stringify(body ?? {}) });
+  }
+
+  // -------------------------------------------------------------------------
+  // Sign-in and password
+  // -------------------------------------------------------------------------
+
   async login(identifier: string, password: string): Promise<UserSession> {
-    const data = await this.request<{ success: boolean; token: string; user: any }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ identifier, password }),
-    });
+    const data = await this.post<{ token: string; user: any }>('/auth/login', { identifier, password });
     this.setToken(data.token);
     return { token: data.token, user: data.user };
   }
 
-  async register(payload: {
-    phone: string;
-    password?: string;
-    confirmPassword?: string;
-    fullName?: string;
-    firstName?: string;
-    middleName?: string;
-    lastName?: string;
-    suffix?: string;
-    hasNoMiddleName?: boolean;
-    email?: string;
-    agreeTerms?: boolean;
-    borrowerNumber?: string;
-    dateOfBirth?: string;
-    gender?: string;
-    address?: string;
-    barangay?: string;
-    city?: string;
-    cityMunicipality?: string;
-    province?: string;
-    civilStatus?: string;
-    occupation?: string;
-    employerOrBusiness?: string;
-    monthlyIncome?: number;
-    monthlyExpenses?: number;
-    sourceOfIncome?: string;
-    idNumber?: string;
-    facebookAccount?: string;
-    employmentStatus?: string;
-  }): Promise<UserSession & { message?: string }> {
-    const data = await this.request<{ success: boolean; token: string; user: any; message?: string }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  async register(payload: Record<string, unknown>): Promise<UserSession & { message?: string }> {
+    const data = await this.post<{ token: string; user: any; message?: string }>('/auth/register', payload);
     this.setToken(data.token);
     return { token: data.token, user: data.user, message: data.message };
   }
 
-  async sendRegistrationOtp(phone: string, email?: string): Promise<{
-    success: boolean;
-    message: string;
-    email?: string;
-    formattedPhone?: string;
-    expiresInSeconds?: number;
-  }> {
-    return this.request('/auth/send-registration-otp', {
-      method: 'POST',
-      body: JSON.stringify({ phone, email }),
-    });
+  async sendRegistrationOtp(phone: string, email?: string): Promise<{ success: boolean; message: string; email?: string; formattedPhone?: string; expiresInSeconds?: number }> {
+    return this.post('/client/auth/send-registration-otp', { phone, email });
   }
 
-  async verifyRegistrationOtp(phone: string, otp: string, email?: string): Promise<{
-    success: boolean;
-    verified: boolean;
-    message: string;
-  }> {
-    return this.request('/auth/verify-registration-otp', {
-      method: 'POST',
-      body: JSON.stringify({ phone, otp, email }),
-    });
+  async verifyRegistrationOtp(phone: string, otp: string, email?: string): Promise<{ success: boolean; verified: boolean; message: string }> {
+    return this.post('/client/auth/verify-registration-otp', { phone, otp, email });
   }
 
   async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
-    return this.request('/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
+    return this.post('/client/auth/forgot-password', { email });
   }
 
   async verifyOtp(email: string, otp: string): Promise<{ success: boolean; message: string }> {
-    return this.request('/auth/verify-otp', {
-      method: 'POST',
-      body: JSON.stringify({ email, otp }),
-    });
+    return this.post('/client/auth/verify-otp', { email, otp });
   }
 
   async resetPassword(email: string, otp: string, newPassword: string): Promise<{ success: boolean; message: string }> {
-    return this.request('/auth/reset-password', {
-      method: 'POST',
-      body: JSON.stringify({ email, otp, newPassword }),
-    });
+    return this.post('/client/auth/reset-password', { email, otp, newPassword });
+  }
+
+  /** Changes the signed-in member's password; the current one is required. */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await this.post('/client/auth/change-password', { currentPassword, newPassword });
   }
 
   async logout(): Promise<void> {
     try {
-      await this.request('/auth/logout', { method: 'POST' });
-    } catch {}
+      await this.post('/client/auth/logout', {});
+    } catch {
+      // Signing out locally does not depend on the server answering.
+    }
     this.setToken(null);
   }
 
-  // 2. Dashboard
-  async getDashboard(): Promise<ClientDashboardData> {
-    const res = await this.request<{ success: boolean; data: ClientDashboardData }>('/client/dashboard');
-    return res.data;
+  // -------------------------------------------------------------------------
+  // Home and profile
+  // -------------------------------------------------------------------------
+
+  async getDashboard(): Promise<ClientDashboardView> {
+    return (await this.request<{ data: ClientDashboardView }>('/client/dashboard')).data;
   }
 
-  // 3. Profile
-  async getProfile(): Promise<ClientProfile> {
-    const res = await this.request<{ success: boolean; profile: ClientProfile }>('/client/profile');
-    return res.profile;
+  async getProfile(): Promise<ClientProfileView> {
+    return (await this.request<{ profile: ClientProfileView }>('/client/profile')).profile;
   }
 
-  async updateProfile(updates: Partial<ClientProfile>): Promise<{ success: boolean; message: string }> {
-    return this.request('/client/profile', {
-      method: 'PATCH',
-      body: JSON.stringify(updates),
-    });
+  /** Contact and work details only (shared/kyc-core/profile.ts). */
+  async updateProfile(updates: Record<string, string>): Promise<void> {
+    await this.request('/client/profile', { method: 'PATCH', body: JSON.stringify(updates) });
   }
 
-  async uploadAvatar(avatarUrl: string): Promise<{ success: boolean; message: string }> {
-    return this.request('/client/upload-avatar', {
-      method: 'POST',
-      body: JSON.stringify({ avatarUrl }),
-    });
+  async getSignIns(): Promise<SignInView[]> {
+    return listOf((await this.request<{ sessions?: SignInView[] }>('/client/settings/sessions')).sessions, 'sessions');
   }
 
-  async getKycStatus(): Promise<KycStatusData> {
-    // The route returns the status fields alongside `success`; callers assign
-    // the result straight into KycStatusData state, so declare it as such
-    // rather than the old 4-field envelope that hid the rest of the payload.
-    return this.request<{ success: boolean } & KycStatusData>('/client/kyc-status');
+  // -------------------------------------------------------------------------
+  // KYC
+  // -------------------------------------------------------------------------
+
+  async getKycStatus(): Promise<KycStatusView> {
+    return this.request<KycStatusView>('/client/kyc-status');
   }
 
-  // 8. KYC — required documents, uploads (real file bytes → Supabase Storage), submit, resubmit
-  async getKycRequiredDocuments(): Promise<KycRequiredDocumentItem[]> {
-    const res = await this.request<{ success: boolean; documents: KycRequiredDocumentItem[] }>(
-      '/client/kyc/required-documents'
-    );
-    return res.documents;
+  /** A KYC document photo (ID back, proof of income, ...). */
+  async uploadKycDocument(payload: { documentType: string; documentName: string; fileName: string; side?: 'FRONT' | 'BACK'; imageBase64: string }): Promise<KycUploadView> {
+    return this.post<KycUploadView>('/client/kyc/documents/upload', payload);
   }
 
-  async uploadKycDocument(payload: {
-    documentType: string;
-    documentName: string;
-    fileName: string;
-    side?: 'front' | 'back';
-    imageBase64: string;   // base64-encoded image (e.g. data:image/jpeg;base64,...)
-    mime?: string;
-  }): Promise<any> {
-    return this.request('/client/kyc/documents/upload', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  /** Stores the ID photo(s) and runs the automated reader on them. */
+  async processKycId(payload: { frontImageBase64: string; backImageBase64?: string; fileName?: string }): Promise<IdScanView> {
+    return this.post<IdScanView>('/client/kyc/process-id', payload);
   }
 
-  async uploadKycSelfie(payload: { imageBase64: string; mime?: string }): Promise<any> {
-    return this.request('/client/kyc/selfie', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  /** Stores the selfie and compares it with the stored ID photo. */
+  async matchKycFace(selfieImageBase64: string): Promise<FaceMatchView> {
+    return this.post<FaceMatchView>('/client/kyc/match-face', { selfieImageBase64 });
   }
 
-  async processKycId(payload: {
-    frontImageBase64: string;
-    backImageBase64?: string;
-    documentType?: string;
-    fileName?: string;
-  }): Promise<{
-    success: boolean;
-    validation: {
-      isReadable: boolean;
-      confidenceScore: number;
-      detectedType?: string;
-      qualityChecks?: {
-        isBlurry: boolean;
-        isTooDark: boolean;
-        isTooBrightOrGlare: boolean;
-        isCutOff: boolean;
-        isTooFar: boolean;
-        isUpsideDown: boolean;
-        isRecognizedDoc: boolean;
-      };
-      qualityMessage?: string;
-      validationWarnings?: string[];
-      authenticityNotice?: string;
-    };
-    extractedData: {
-      idType?: string;
-      idTypeName?: string;
-      idNumber?: string;
-      fullName?: string;
-      firstName?: string;
-      middleName?: string;
-      lastName?: string;
-      suffix?: string;
-      dateOfBirth?: string;
-      gender?: string;
-      civilStatus?: string;
-      nationality?: string;
-      address?: string;
-      houseNumber?: string;
-      street?: string;
-      barangay?: string;
-      city?: string;
-      province?: string;
-      postalCode?: string;
-      issueDate?: string | null;
-      expirationDate?: string | null;
-      isExpired?: boolean;
-      autoFilledFields?: string[];
-      confidenceScore?: number;
-    };
-    document?: {
-      id: string;
-      frontFileUrl?: string;
-      backFileUrl?: string;
-    };
-  }> {
-    return this.request('/client/kyc/process-id', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  async saveKycDraft(payload: KycApplicationPayload & { currentStep: number }): Promise<void> {
+    await this.post('/client/kyc/save-draft', payload);
   }
 
-  async matchKycFace(payload: {
-    selfieImageBase64: string;
-    idImageBase64?: string;
-  }): Promise<{
-    success: boolean;
-    matchResult: {
-      isMatch: boolean;
-      matchConfidence: number;
-      matchStatus: 'MATCH' | 'MISMATCH' | 'UNCERTAIN';
-      details: string;
-    };
-    selfieUrl?: string;
-  }> {
-    return this.request('/client/kyc/match-face', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  async submitKyc(payload: KycApplicationPayload): Promise<{ message: string; referenceNumber: string; statusLabel: string }> {
+    return this.post('/client/kyc/submit', payload);
   }
 
-  async submitKyc(payload: KycSubmissionPayload): Promise<{ success: boolean; message: string; referenceNumber: string }> {
-    return this.request('/client/kyc/submit', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  // Philippine Standard Geographic Code lists (same endpoints as the web portal).
+  async getRegions(): Promise<PsgcPlaceView[]> {
+    return listOf((await this.request<{ data?: PsgcPlaceView[] }>('/geography/regions')).data, 'regions');
   }
 
-  async resubmitKyc(payload: KycSubmissionPayload): Promise<{ success: boolean; message: string; referenceNumber: string }> {
-    return this.request('/client/kyc/submit', {
-      method: 'POST',
-      body: JSON.stringify({ ...payload, resubmission: true }),
-    });
+  async getProvinces(regionCode: string): Promise<PsgcPlaceView[]> {
+    return listOf((await this.request<{ data?: PsgcPlaceView[] }>(`/geography/provinces?regionCode=${encodeURIComponent(regionCode)}`)).data, 'provinces');
   }
 
-  // 4. Loan Application
-  async getLoanProducts(): Promise<LoanProduct[]> {
-    const res = await this.request<{ success: boolean; products: LoanProduct[] }>('/client/loan-products');
-    return res.products;
+  async getCities(regionCode: string, provinceCode?: string): Promise<PsgcPlaceView[]> {
+    const q = `regionCode=${encodeURIComponent(regionCode)}${provinceCode ? `&provinceCode=${encodeURIComponent(provinceCode)}` : ''}`;
+    return listOf((await this.request<{ data?: PsgcPlaceView[] }>(`/geography/cities?${q}`)).data, 'cities');
   }
 
-  async calculateLoan(payload: {
-    amount: number;
-    termMonths: number;
-    interestRatePerMonth: number;
-    interestType?: string;
-  }): Promise<any> {
-    const res = await this.request<{ success: boolean; calculation: any }>('/client/calculate-loan', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    return res.calculation;
+  async getBarangays(cityCode: string): Promise<PsgcPlaceView[]> {
+    return listOf((await this.request<{ data?: PsgcPlaceView[] }>(`/geography/barangays?cityCode=${encodeURIComponent(cityCode)}`)).data, 'barangays');
   }
 
-  async submitLoanApplication(payload: {
-    productId: string;
-    productName: string;
-    amount: number;
-    termMonths: number;
-    repaymentFrequency?: string;
-    purpose: string;
-    guarantorName?: string;
-    guarantorPhone?: string;
-    collateralDescription?: string;
-    documents?: string[];
-  }): Promise<{ success: boolean; message: string; application: any }> {
-    return this.request('/client/apply-loan', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  async getPostalCode(cityCode: string, barangayCode?: string): Promise<string> {
+    const q = `cityCode=${encodeURIComponent(cityCode)}${barangayCode ? `&barangayCode=${encodeURIComponent(barangayCode)}` : ''}`;
+    return (await this.request<{ postalCode?: string }>(`/geography/postal-code?${q}`)).postalCode ?? '';
   }
 
-  async getLoanApplications(): Promise<LoanApplication[]> {
-    const res = await this.request<{ success: boolean; applications: LoanApplication[] }>('/client/loan-applications');
-    return res.applications;
+  // -------------------------------------------------------------------------
+  // Loans
+  // -------------------------------------------------------------------------
+
+  async getLoanProducts(): Promise<ProductDto[]> {
+    return listOf((await this.request<{ products?: ProductDto[] }>('/client/loan-products')).products, 'products');
   }
 
-  // 5. Loans
-  async getLoans(): Promise<{ activeLoans: LoanItem[]; completedLoans: LoanItem[]; allLoans: LoanItem[] }> {
-    return this.request('/client/loans');
+  /** The same quote the server will apply (shared/lending calculator). */
+  async quoteLoan(productId: string, amount: string, termMonths: string): Promise<LoanQuoteDto> {
+    return (await this.post<{ quote: LoanQuoteDto }>('/client/calculate-loan', { productId, amount, termMonths })).quote;
   }
 
-  async getLoanSchedule(loanId: string): Promise<InstallmentScheduleItem[]> {
-    const res = await this.request<{ success: boolean; schedule: InstallmentScheduleItem[] }>(`/client/loans/${loanId}/schedule`);
-    return res.schedule;
+  async applyForLoan(
+    input: { productId: string; amount: string; termMonths: string; purpose: string; purposeDetails?: Record<string, string> },
+    idempotencyKey: string,
+  ): Promise<{ application: LoanDetailView; replayed: boolean }> {
+    const data = await this.post<{ application: LoanDetailView; replayed?: boolean }>('/client/apply-loan', input, { 'Idempotency-Key': idempotencyKey });
+    return { application: data.application, replayed: !!data.replayed };
   }
 
-  // 6. Payments
-  async getPayments(): Promise<PaymentItem[]> {
-    const res = await this.request<{ success: boolean; payments: PaymentItem[] }>('/client/payments');
-    return res.payments;
+  async getLoans(): Promise<ClientLoansView> {
+    return this.request<ClientLoansView>('/client/loans');
   }
 
-  async submitPaymentProof(payload: {
+  async getLoan(loanId: string): Promise<{ loan: LoanDetailView }> {
+    return this.request(`/client/loans/${encodeURIComponent(loanId)}`);
+  }
+
+  async getLoanPayments(loanId: string): Promise<PaymentView[]> {
+    return listOf((await this.request<{ payments?: PaymentView[] }>(`/client/loans/${encodeURIComponent(loanId)}/payments`)).payments, 'payments');
+  }
+
+  async getPayoff(loanId: string): Promise<PayoffQuoteView> {
+    return (await this.request<{ payoff: PayoffQuoteView }>(`/client/loans/${encodeURIComponent(loanId)}/payoff`)).payoff;
+  }
+
+  async cancelApplication(loanId: string, reason: string): Promise<LoanDetailView> {
+    return (await this.post<{ loan: LoanDetailView }>(`/client/loans/${encodeURIComponent(loanId)}/cancel`, { reason })).loan;
+  }
+
+  // -------------------------------------------------------------------------
+  // Payments
+  // -------------------------------------------------------------------------
+
+  async getPayments(): Promise<PaymentView[]> {
+    return listOf((await this.request<{ payments?: PaymentView[] }>('/client/payments')).payments, 'payments');
+  }
+
+  async getReceipt(paymentId: string): Promise<ReceiptDocument> {
+    return (await this.request<{ receipt: ReceiptDocument }>(`/client/payments/${encodeURIComponent(paymentId)}/receipt`)).receipt;
+  }
+
+  async getPaymentProofs(): Promise<Omit<ProofView, 'storageRef'>[]> {
+    return listOf((await this.request<{ proofs?: Omit<ProofView, 'storageRef'>[] }>('/client/payment-proofs')).proofs, 'proofs');
+  }
+
+  /** Proof of a bank or e-wallet transfer; staff verify it before anything is posted. */
+  async submitPaymentProof(input: {
     loanId: string;
-    amount: number;
-    paymentMethod: string;
+    amount: string;
+    method: string;
     referenceNumber: string;
-    /** base64-encoded receipt, e.g. data:image/jpeg;base64,... */
-    receiptProofBase64?: string;
-    receiptProofName?: string;
-    receiptProofMime?: string;
-    /**
-     * Alternative to base64 for a receipt already hosted somewhere. Must be an
-     * http(s) URL - a device-local file:// uri is meaningless to the server and
-     * is rejected.
-     */
-    receiptProofUrl?: string;
-    paymentDate?: string;
+    paymentDate: string;
     notes?: string;
-  }): Promise<{ success: boolean; message: string; proof?: any }> {
-    return this.request('/client/submit-payment-proof', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    fileBase64: string;
+    fileName: string;
+  }): Promise<Omit<ProofView, 'storageRef'>> {
+    return (await this.post<{ proof: Omit<ProofView, 'storageRef'> }>('/client/submit-payment-proof', input)).proof;
   }
 
-  /**
-   * The member's own payment proofs and what became of them.
-   *
-   * `verificationStatus` reuses the vocabulary the app already renders
-   * (PENDING_TELLER_VERIFICATION / UNDER_REVIEW / VERIFIED / REJECTED)
-   * rather than the stored PENDING_REVIEW, so no status arrives unstyled.
-   * `rejectionReason` is populated only once a proof is REJECTED.
-   */
-  async getPaymentProofs(): Promise<{
-    proofs: MobilePaymentProof[];
-    counts: { total: number; pending: number; verified: number; rejected: number };
-  }> {
-    return this.request('/client/payment-proofs');
+  // -------------------------------------------------------------------------
+  // Savings
+  // -------------------------------------------------------------------------
+
+  async getSavingsAccounts(): Promise<SavingsAccountView[]> {
+    return listOf((await this.request<{ accounts?: SavingsAccountView[] }>('/client/savings')).accounts, 'accounts');
   }
 
-  async getPaymentProof(id: string): Promise<{ success: boolean; proof: MobilePaymentProof }> {
-    return this.request(`/client/payment-proofs/${encodeURIComponent(id)}`);
+  async getSavingsStatement(accountId: string, range: { from?: string; to?: string } = {}): Promise<SavingsStatementView> {
+    const qs = [range.from ? `from=${range.from}` : '', range.to ? `to=${range.to}` : ''].filter(Boolean).join('&');
+    return (await this.request<{ statement: SavingsStatementView }>(`/client/savings/${encodeURIComponent(accountId)}/statement${qs ? `?${qs}` : ''}`)).statement;
   }
 
-  // 7. Notifications
-  async getNotifications(): Promise<{ notifications: MobileNotification[]; unreadCount: number }> {
+  async getWithdrawalRequests(): Promise<WithdrawalRequestView[]> {
+    return listOf((await this.request<{ requests?: WithdrawalRequestView[] }>('/client/savings/withdrawal-requests')).requests, 'requests');
+  }
+
+  async requestWithdrawal(input: { accountId: string; amount: string; destination: string; destinationAccount?: string; reason: string }): Promise<WithdrawalRequestView> {
+    return (await this.post<{ request: WithdrawalRequestView }>('/client/savings/withdraw', input)).request;
+  }
+
+  async cancelWithdrawalRequest(id: string): Promise<WithdrawalRequestView> {
+    return (await this.post<{ request: WithdrawalRequestView }>(`/client/savings/withdrawal-requests/${encodeURIComponent(id)}/cancel`, {})).request;
+  }
+
+  // -------------------------------------------------------------------------
+  // Group, notifications, transactions, documents, support
+  // -------------------------------------------------------------------------
+
+  async getMyGroup(): Promise<MyGroupView | null> {
+    return (await this.request<{ group: MyGroupView | null }>('/client/groups/my')).group;
+  }
+
+  async consentToGroupLoan(loanId: string, decision: 'CONSENT' | 'DECLINE', note?: string): Promise<MyGroupView | null> {
+    return (await this.post<{ group: MyGroupView | null }>(`/client/groups/loans/${encodeURIComponent(loanId)}/consent`, { decision, note })).group;
+  }
+
+  async getNotifications(): Promise<{ notifications: ClientNotificationView[]; unreadCount: number }> {
     return this.request('/client/notifications');
   }
 
   async markNotificationAsRead(id: string): Promise<void> {
-    await this.request(`/client/notifications/${id}/read`, { method: 'PATCH' });
+    await this.request(`/client/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
   }
 
   async markAllNotificationsAsRead(): Promise<void> {
-    await this.request('/client/notifications/mark-all-read', { method: 'POST' });
+    await this.post('/client/notifications/mark-all-read', {});
   }
 
-  // 8. Transactions (financial activity)
-  async getTransactions(payload: { search?: string; type?: TransactionType | 'ALL' } = {}): Promise<FinancialTransaction[]> {
-    const params = new URLSearchParams();
-    if (payload.search) params.append('search', payload.search);
-    if (payload.type && payload.type !== 'ALL') params.append('type', payload.type);
-    const qs = params.toString();
-    const endpoint = `/client/transactions${qs ? `?${qs}` : ''}`;
-    const res = await this.request<{ success: boolean; transactions: FinancialTransaction[] }>(endpoint);
-    return res.transactions || [];
+  async getTransactions(filter: { kind?: TransactionKind | 'ALL'; search?: string; from?: string | null } = {}): Promise<ClientTransactionView[]> {
+    const params: string[] = [];
+    if (filter.kind && filter.kind !== 'ALL') params.push(`kind=${encodeURIComponent(filter.kind)}`);
+    if (filter.search) params.push(`search=${encodeURIComponent(filter.search)}`);
+    if (filter.from) params.push(`from=${encodeURIComponent(filter.from)}`);
+    return listOf((await this.request<{ transactions?: ClientTransactionView[] }>(`/client/transactions${params.length ? `?${params.join('&')}` : ''}`)).transactions, 'transactions');
   }
 
-  // 9. Savings
-  async getSavings(): Promise<SavingsAccount> {
-    const res = await this.request<{ success: boolean; account: SavingsAccount }>('/client/savings');
-    return res.account;
+  async getDocuments(): Promise<ClientDocumentView[]> {
+    return listOf((await this.request<{ documents?: ClientDocumentView[] }>('/client/documents')).documents, 'documents');
   }
 
-  async getSavingsTransactions(): Promise<SavingsTransaction[]> {
-    const res = await this.request<{ success: boolean; transactions: SavingsTransaction[] }>('/client/savings/transactions');
-    return res.transactions;
+  async getDocumentUrl(id: string): Promise<string> {
+    return (await this.request<{ url: string }>(`/client/documents/${encodeURIComponent(id)}/file`)).url;
   }
 
-  async requestSavingsWithdrawal(payload: { amount: number; reason: string; accountId?: string }): Promise<{ success: boolean; request?: { requestId?: string; id?: string; amount?: number; status?: string; reason?: string } }> {
-    // The route is /savings/withdraw; '/savings/request-withdrawal' does not
-    // exist and 404'd.
-    return this.request('/client/savings/withdraw', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+  async getFaqs(): Promise<FaqView[]> {
+    return listOf((await this.request<{ faqs?: FaqView[] }>('/client/support/faqs')).faqs, 'faqs');
   }
 
-  // 10. Documents
-  async getDocuments(): Promise<PortalDocument[]> {
-    const res = await this.request<{ success: boolean; documents: PortalDocument[] }>('/client/documents');
-    return res.documents;
+  async getSupportContact(): Promise<SupportContactView> {
+    return (await this.request<{ contact: SupportContactView }>('/client/support/contact')).contact;
   }
 
-  // 11. Group Lending
-  async getMyGroup(): Promise<ClientGroup> {
-    const res = await this.request<{ success: boolean; group: ClientGroup }>('/client/groups/my');
-    return res.group;
+  async getSupportRequests(): Promise<SupportRequestView[]> {
+    return listOf((await this.request<{ tickets?: SupportRequestView[] }>('/client/support/tickets')).tickets, 'tickets');
   }
 
-  // 12. Help & Support
-  async getFaqs(): Promise<FaqItem[]> {
-    // The route is /support/faqs; '/faqs' 404'd.
-    const res = await this.request<{ success: boolean; faqs: FaqItem[] }>('/client/support/faqs');
-    return res.faqs || [];
-  }
-
-  async getSupportTickets(): Promise<SupportTicket[]> {
-    // The route is /support/tickets; '/support-tickets' 404'd.
-    const res = await this.request<{ success: boolean; tickets: SupportTicket[] }>('/client/support/tickets');
-    return res.tickets || [];
-  }
-
-  async submitSupportTicket(payload: {
-    subject: string;
-    category: string;
-    message: string;
-    priority?: string;
-    attachments?: string[];
-  }): Promise<{ success: boolean; message: string; ticket: SupportTicket }> {
-    return this.request('/client/support/tickets', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }
-
-  // 13. Settings
-  async getNotificationPreferences(): Promise<NotificationPreferences> {
-    // The route is /settings/notifications; '/settings/notification-preferences' 404'd.
-    const res = await this.request<{ success: boolean; preferences: NotificationPreferences }>('/client/settings/notifications');
-    return res.preferences;
-  }
-
-  async updateNotificationPreferences(preferences: Partial<NotificationPreferences>): Promise<{ success: boolean; message?: string }> {
-    return this.request('/client/settings/notifications', {
-      method: 'PATCH',
-      body: JSON.stringify(preferences),
-    });
-  }
-
-  async getPrivacyPreferences(): Promise<PrivacyPreferences> {
-    // The route is /settings/privacy; '/settings/privacy-preferences' 404'd.
-    const res = await this.request<{ success: boolean; preferences: PrivacyPreferences }>('/client/settings/privacy');
-    return res.preferences;
-  }
-
-  async updatePrivacyPreferences(preferences: Partial<PrivacyPreferences>): Promise<{ success: boolean; message?: string }> {
-    return this.request('/client/settings/privacy', {
-      method: 'PATCH',
-      body: JSON.stringify(preferences),
-    });
-  }
-
-  async getLoginActivity(): Promise<LoginActivityItem[]> {
-    // The route is /settings/sessions and returns `sessions`, not `activity`.
-    // Normalise it here rather than having the screen read a field that is
-    // always undefined.
-    const res = await this.request<{
-      success: boolean;
-      sessions: Array<{ id: string; device?: string; location?: string; time?: string; ip?: string; status?: string }>;
-    }>('/client/settings/sessions');
-    return (res.sessions || []).map((s) => ({
-      id: s.id,
-      device: s.device,
-      deviceName: s.device,
-      location: s.location,
-      ipAddress: s.ip,
-      time: s.time,
-      createdAt: s.time,
-      loggedInAt: s.time || new Date().toISOString(),
-      status: s.status,
-    }));
+  async sendSupportRequest(input: SupportRequestInput): Promise<SupportRequestView> {
+    return (await this.post<{ ticket: SupportRequestView }>('/client/support/submit', input)).ticket;
   }
 }
 
@@ -645,11 +456,8 @@ class BranchApiService {
   }
 
   async getKycQueue(): Promise<BranchKycQueueItem[]> {
-    // The route is /kyc-queue (not /kyc/queue, which 404'd) and it answers
-    // with `data`, not `queue`, so the old res.queue was always undefined and
-    // the KYC queue screen rendered empty.
-    const res = await api.request<{ success: boolean; data: BranchKycQueueItem[] }>('/branch/kyc-queue');
-    return res.data || [];
+    const res = await api.request<{ success: boolean; data?: BranchKycQueueItem[] }>('/branch/kyc-queue');
+    return listOf(res.data, 'queue');
   }
 
   async reviewKyc(payload: {
@@ -660,16 +468,8 @@ class BranchApiService {
     rejectedDocumentIds?: string[];
     reason?: string;
   }): Promise<{ success: boolean; status?: string; reviewedAt?: string; reviewerName?: string }> {
-    // The route is /kyc/:id/review, so the client id has to be in the path.
-    // Posting to /kyc/review 404'd and no KYC decision could be recorded.
     const { clientId, ...body } = payload;
-    return api.request<{ success: boolean; status?: string; reviewedAt?: string; reviewerName?: string }>(
-      `/branch/kyc/${encodeURIComponent(clientId)}/review`,
-      {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }
-    );
+    return api.request(`/branch/kyc/${encodeURIComponent(clientId)}/review`, { method: 'POST', body: JSON.stringify(body) });
   }
 }
 

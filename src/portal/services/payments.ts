@@ -1,39 +1,40 @@
-import { ApiError, clientRequest } from './clientApi';
-import { PaymentProofResult, PaymentRecordItem } from '../types';
+import { clientRequest } from './clientApi';
+import type { ReceiptDocument } from '../../../shared/lending';
+import type { PaymentView, ProofView } from '../../lending/repayment';
+
+export type PayoffQuote = Awaited<ReturnType<typeof import('../../lending/repayment').payoffQuote>>;
+export type MemberProof = Omit<ProofView, 'storageRef'>;
 
 export const paymentService = {
-  async list(loanId?: string): Promise<PaymentRecordItem[]> {
-    const url = loanId ? `/api/client/loans/${loanId}/payments` : '/api/client/payments';
-    const payload = await clientRequest(url);
-    const rows = payload?.payments || payload || [];
-    return rows.map((p: any, i: number) => ({
-      id: String(p.id ?? i),
-      loanId: p.loanId || p.loanNumber,
-      loanNumber: p.loanNumber || '',
-      amount: Number(p.amount) || 0,
-      paymentDate: p.paymentDate,
-      paymentMethod: p.paymentMethod || 'CASH',
-      referenceNumber: p.referenceNumber || '',
-      officialReceiptNumber: p.officialReceiptNumber,
-      status: p.status || 'COMPLETED',
-      notes: p.notes,
-    }));
+  /** Posted (and reversed) payments on all the member's loans, newest first. */
+  async list(): Promise<PaymentView[]> {
+    return (await clientRequest('/api/client/payments'))?.payments || [];
   },
 
-  async submitPaymentProof(input: {
+  async proofs(): Promise<MemberProof[]> {
+    return (await clientRequest('/api/client/payment-proofs'))?.proofs || [];
+  },
+
+  async payoff(loanId: string): Promise<PayoffQuote> {
+    return (await clientRequest(`/api/client/loans/${encodeURIComponent(loanId)}/payoff`))?.payoff;
+  },
+
+  async receipt(paymentId: string): Promise<ReceiptDocument> {
+    return (await clientRequest(`/api/client/payments/${encodeURIComponent(paymentId)}/receipt`))?.receipt;
+  },
+
+  /** Sends proof of a bank or e-wallet transfer; staff verify it before anything is posted. */
+  async submitProof(input: {
     loanId: string;
-    loanNumber: string;
-    amount: number;
-    paymentMethod: string;
+    amount: string;
+    method: string;
     referenceNumber: string;
     paymentDate: string;
     notes?: string;
-  }): Promise<PaymentProofResult> {
-    const payload = await clientRequest('/api/client/submit-payment-proof', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    if (payload?.error) throw new ApiError(payload.error);
-    return payload?.payment || payload?.proof || payload;
+    fileBase64: string;
+    fileName: string;
+  }): Promise<MemberProof> {
+    const payload = await clientRequest('/api/client/submit-payment-proof', { method: 'POST', body: JSON.stringify(input) });
+    return payload.proof;
   },
 };

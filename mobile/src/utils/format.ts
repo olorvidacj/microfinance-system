@@ -1,17 +1,12 @@
 import { colors } from '../theme';
+import { formatDisplayDate, formatDisplayDateTime, formatMoney } from '../shared/client';
 
+/** Money from the API (exact decimal string) or a peso number, via the shared exact formatter. */
 export function formatCurrency(value?: number | string | null): string {
-  const num = Number(value || 0);
-  if (isNaN(num)) return '₱ 0.00';
-  const sign = num < 0 ? '-₱ ' : '₱ ';
-  return `${sign}${Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return value === null || value === undefined || value === '' ? '₱0.00' : formatMoney(value);
 }
 
-export function formatPeso(value?: number | string | null): string {
-  const num = Number(value || 0);
-  if (isNaN(num)) return '₱0.00';
-  return `₱${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+export const formatPeso = formatCurrency;
 
 export function formatCompact(value?: number | string | null): string {
   const num = Number(value || 0);
@@ -21,18 +16,13 @@ export function formatCompact(value?: number | string | null): string {
   return `₱${num.toFixed(0)}`;
 }
 
-export function formatDate(iso?: string | null, opts: Intl.DateTimeFormatOptions = {}): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', ...opts });
+/** Calendar dates as that date on any device; timestamps in Philippine time (shared/client/format.ts). */
+export function formatDate(iso?: string | null): string {
+  return formatDisplayDate(iso);
 }
 
 export function formatDateTime(iso?: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return `${formatDate(iso)}, ${d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}`;
+  return formatDisplayDateTime(iso);
 }
 
 export function timeAgo(iso?: string | null): string {
@@ -80,7 +70,7 @@ export function initials(name?: string | null): string {
 export function statusColor(status: string): string {
   const s = status.toUpperCase().replace(/\s+/g, '_');
   if (['VERIFIED', 'COMPLETED', 'PAID', 'PAID_OFF', 'ACTIVE', 'APPROVED', 'SUCCESS', 'COMPLETED', 'CONFIRMED'].includes(s)) return colors.green;
-  if (['PENDING', 'UNDER_REVIEW', 'IN_PROGRESS', 'PENDING_TELLER_VERIFICATION', 'FORMING'].includes(s)) return colors.warning;
+  if (['PENDING', 'SUBMITTED', 'UNDER_REVIEW', 'IN_PROGRESS', 'PENDING_REVIEW', 'PENDING_TELLER_VERIFICATION', 'FORMING', 'DRAFT'].includes(s)) return colors.warning;
   if (['REJECTED', 'OVERDUE', 'FAILED', 'LATE', 'IN_ARREARS', 'CANCELLED', 'EXPIRED'].includes(s)) return colors.danger;
   if (['CORRECTION_REQUIRED', 'DISBURSED'].includes(s)) return colors.info;
   return colors.textMuted;
@@ -89,7 +79,7 @@ export function statusColor(status: string): string {
 export function statusBgColor(status: string): string {
   const s = status.toUpperCase().replace(/\s+/g, '_');
   if (['VERIFIED', 'COMPLETED', 'PAID', 'PAID_OFF', 'ACTIVE', 'APPROVED', 'SUCCESS', 'CONFIRMED'].includes(s)) return colors.greenSoft;
-  if (['PENDING', 'UNDER_REVIEW', 'IN_PROGRESS', 'PENDING_TELLER_VERIFICATION', 'FORMING'].includes(s)) return colors.warningSoft;
+  if (['PENDING', 'SUBMITTED', 'UNDER_REVIEW', 'IN_PROGRESS', 'PENDING_REVIEW', 'PENDING_TELLER_VERIFICATION', 'FORMING', 'DRAFT'].includes(s)) return colors.warningSoft;
   if (['REJECTED', 'OVERDUE', 'FAILED', 'LATE', 'IN_ARREARS', 'CANCELLED', 'EXPIRED'].includes(s)) return colors.dangerSoft;
   if (['CORRECTION_REQUIRED', 'DISBURSED'].includes(s)) return colors.infoSoft;
   return colors.background;

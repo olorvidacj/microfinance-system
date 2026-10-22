@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 
@@ -11,6 +11,22 @@ export const LoadingView: React.FC<{ text?: string; style?: ViewStyle; color?: s
   <View style={[styles.center, style]}>
     <ActivityIndicator size="large" color={color} />
     <Text style={styles.text}>{text}</Text>
+  </View>
+);
+
+/** A failed load, with what went wrong and a way to try again. */
+export const ErrorView: React.FC<{ message: string; onRetry?: () => void; style?: ViewStyle }> = ({ message, onRetry, style }) => (
+  <View style={[styles.empty, style]} accessibilityRole="alert">
+    <View style={[styles.emptyIcon, { backgroundColor: colors.dangerSoft }]}>
+      <Ionicons name="alert-circle-outline" size={28} color={colors.danger} />
+    </View>
+    <Text style={styles.emptyTitle}>Something went wrong</Text>
+    <Text style={styles.emptyMsg}>{message}</Text>
+    {onRetry ? (
+      <Pressable onPress={onRetry} style={styles.retry} accessibilityRole="button">
+        <Text style={styles.retryText}>Try again</Text>
+      </Pressable>
+    ) : null}
   </View>
 );
 
@@ -60,6 +76,17 @@ const styles = StyleSheet.create({
   emptyTitle: {
     ...typography.title3,
     textAlign: 'center',
+  },
+  retry: {
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   emptyMsg: {
     fontSize: 13,

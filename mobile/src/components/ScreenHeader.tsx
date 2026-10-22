@@ -19,7 +19,7 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ title, subtitle, sho
   return (
     <View style={styles.header}>
       {showBack ? (
-        <TouchableOpacity style={styles.backBtn} onPress={goBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity style={styles.backBtn} onPress={goBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </TouchableOpacity>
       ) : (

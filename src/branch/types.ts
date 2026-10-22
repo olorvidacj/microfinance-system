@@ -1,3 +1,5 @@
+import type { LoanDetailView } from '../lending/service';
+import type { PaymentView } from '../lending/repayment';
 export type SystemPermissionKey = string;
 
 export interface BranchPersonnel {
@@ -165,9 +167,8 @@ export interface InstallmentRow {
 }
 
 export interface BranchLoanDetail {
-  loan: BranchLoan;
-  amortization: InstallmentRow[];
-  payments: BranchPayment[];
+  view: LoanDetailView;
+  payments: PaymentView[];
   borrower: ClientDetail | null;
 }
 
@@ -337,15 +338,21 @@ export interface BranchDashboard {
     activeClients: number;
     pendingVerification: number;
     activeLoans: number;
-    outstandingBalance: number;
-    todayCollections: number;
+    /** Decimal pesos, exact (src/reports/portfolio.ts). */
+    outstandingBalance: string;
+    /** Decimal pesos, exact (src/reports/portfolio.ts). */
+    todayCollections: string;
     todayTransactionCount: number;
     pendingApplications: number;
-    totalSavings: number;
-    todayDeposits: number;
-    todayWithdrawals: number;
+    /** Decimal pesos, exact (src/reports/portfolio.ts). */
+    totalSavings: string;
+    /** Decimal pesos, exact (src/reports/portfolio.ts). */
+    todayDeposits: string;
+    /** Decimal pesos, exact (src/reports/portfolio.ts). */
+    todayWithdrawals: string;
     overdueLoans: number;
-    overdueOutstanding: number;
+    /** Decimal pesos, exact (src/reports/portfolio.ts). */
+    overdueOutstanding: string;
   };
 }
 
@@ -362,20 +369,7 @@ export interface PerformanceData {
   savings: { deposits: number; withdrawals: number; net: number };
 }
 
-export interface LoanProduct {
-  id: string;
-  name: string;
-  code: string;
-  minAmount?: number;
-  maxAmount?: number;
-  minTermMonths?: number;
-  maxTermMonths?: number;
-  interestRatePerMonth?: number;
-  interestRate?: number;
-  interestType?: string;
-  processingFeePercentage?: number;
-  description?: string;
-}
+export type { LoanProduct } from '../../shared/lending';
 
 export interface LoanAssessment {
   monthlyIncome: number;
@@ -395,7 +389,7 @@ export interface LoanAssessment {
 
 export interface TodayCollections {
   payments: BranchPayment[];
-  totals: { total: number; count: number; cash: number; other: number };
+  totals: { total: string; count: number; cash: string; other: string };
 }
 
 export interface ReportRow {
@@ -501,16 +495,8 @@ export interface KycQueueItem extends ClientDetail {
   } | null;
 }
 
+export type { KycQueueRow } from '../components/kyc/KycQueueView';
 export interface KycQueueResult {
-  data: KycQueueItem[];
-  counts: {
-    all: number;
-    pending: number;
-    underReview: number;
-    correctionRequired: number;
-    resubmitted: number;
-    approved: number;
-    rejected: number;
-    notStarted: number;
-  };
+  data: import('../components/kyc/KycQueueView').KycQueueRow[];
+  counts: import('../components/kyc/KycQueueView').KycQueueResultView['counts'];
 }

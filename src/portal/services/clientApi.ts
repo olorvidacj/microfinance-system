@@ -3,11 +3,14 @@ import { authFetch, getStoredToken } from '../../context/AuthContext';
 export class ApiError extends Error {
   status: number;
   code?: string;
-  constructor(message: string, status: number = 0, code?: string) {
+  /** The full error payload, e.g. { issues, requiredStep } for an incomplete KYC submission. */
+  details?: Record<string, unknown>;
+  constructor(message: string, status: number = 0, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -33,7 +36,7 @@ export async function clientRequest(
   } catch {}
 
   if (!res.ok) {
-    throw new ApiError(payload?.error || payload?.message || 'Request failed', res.status, payload?.code);
+    throw new ApiError(payload?.error || payload?.message || 'Request failed', res.status, payload?.code, payload);
   }
 
   if (parse) return parse(payload);
@@ -44,7 +47,7 @@ export async function clientRequest(
  * Public (non-authenticated) request used by client login / OTP / reset flows.
  */
 export async function publicRequest(url: string, body?: unknown, method: 'POST' = 'POST'): Promise<any> {
-  const token = getStoredToken();
+  const token = getStoredToken('member');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(url, {

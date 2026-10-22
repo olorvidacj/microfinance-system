@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AuditLog, formatDate } from '../data/mockData';
 import { adminApi } from '../services/adminApi';
+import { useAdminBranch } from '../branchScope';
 
 const MODULES = [
   'User Management', 'Client Management', 'KYC Verification', 'Loan Management',
@@ -15,6 +16,7 @@ const MODULES = [
 ];
 
 export const AuditLogsPage: React.FC = () => {
+  const { branchId } = useAdminBranch();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState('');
@@ -25,8 +27,8 @@ export const AuditLogsPage: React.FC = () => {
   const [toast, setToast] = useState('');
 
   useEffect(() => {
-    adminApi.auditLogs().then(setLogs).catch(() => setLogs([]));
-  }, []);
+    adminApi.auditLogs(branchId).then(setLogs).catch(() => setLogs([]));
+  }, [branchId]);
 
   const filtered = useMemo(() => {
     return logs.filter((log) => {

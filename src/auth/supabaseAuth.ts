@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { getDb, schema } from '../db/index';
-import { createClientProfile, findBorrowerByContact } from '../db/clientProvisioning';
-import { getServerSupabase } from '../db/supabaseServer';
+import { createClientProfile, findUnlinkedBorrowerByEmail } from '../db/clientProvisioning';
+import { createAuthFlowClient, getServerSupabase } from '../db/supabaseServer';
 import { authStore, hashPassword } from './index';
 import { sendOtpEmail, isDirectSmtpConfigured } from '../services/emailService';
 
@@ -126,6 +126,23 @@ function getRequiredSupabase() {
 }
 
 /**
+ * A new client for one user-facing auth call. Signing a user in on the shared
+ * service-role client would leave that user's session in it, and every later
+ * server request (uploads included) would then run as that user.
+ */
+function authFlowClient() {
+  const client = createAuthFlowClient();
+  if (!client) {
+    throw new SupabaseAuthError(
+      503,
+      'Supabase authentication is not configured on this server. Please set SUPABASE_URL and SUPABASE_ANON_KEY.',
+      'AUTH_SERVICE_UNAVAILABLE'
+    );
+  }
+  return client;
+}
+
+/**
  * Validates a password against Supabase Auth by performing a real sign-in.
  * Used by login paths. Resolves a phone identifier to the stored email first
  * (via the local projection) so phone-based sign-in keeps working.
@@ -134,7 +151,7 @@ export async function supabaseSignIn(
   identifier: string,
   password: string
 ): Promise<{ sessionToken: string; user: SupabaseUserLike }> {
-  const supabase = getRequiredSupabase();
+  const flow = authFlowClient();
 
   let email = String(identifier).trim().toLowerCase();
   if (!email.includes('@')) {
@@ -149,7 +166,7 @@ export async function supabaseSignIn(
     }
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await flow.auth.signInWithPassword({
     email,
     password: String(password),
   });
@@ -164,7 +181,8 @@ export async function supabaseSignIn(
 
 /** Resolves a bearer token through Supabase Auth. Returns null when invalid. */
 export async function supabaseGetUser(token: string): Promise<SupabaseUserLike | null> {
-  const supabase = getServerSupabase();
+  // getUser(token) checks the given token and stores no session, so either client will do.
+  const supabase = getServerSupabase() ?? createAuthFlowClient();
   if (!supabase) return null;
   try {
     const { data, error } = await supabase.auth.getUser(token);
@@ -333,7 +351,7 @@ export async function supabaseSendEmailOtp(email: string, purpose: 'registration
 
   // 2. Otherwise, attempt Supabase Cloud native email delivery
   try {
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await authFlowClient().auth.signInWithOtp({
       email: sendEmail,
       options: {
         shouldCreateUser: true,
@@ -378,9 +396,11 @@ export async function supabaseVerifyEmailOtp(email: string, token: string): Prom
   if (cleanToken.length < 6 || cleanToken.length > 8) {
     throw new SupabaseAuthError(400, 'The verification code must be 6 to 8 digits.', 'INVALID_CODE_FORMAT');
   }
+  // A verified code signs the user in; that session must stay out of the shared client.
+  const flow = authFlowClient();
 
   // 1. Attempt verification with type: 'signup' (used for new registrations generated via link)
-  let verifyRes = await supabase.auth.verifyOtp({
+  let verifyRes = await flow.auth.verifyOtp({
     email: verifyEmail,
     token: cleanToken,
     type: 'signup' as any,
@@ -388,7 +408,7 @@ export async function supabaseVerifyEmailOtp(email: string, token: string): Prom
 
   // 2. If invalid, attempt type: 'magiclink' (used for existing accounts)
   if (verifyRes.error) {
-    const res2 = await supabase.auth.verifyOtp({
+    const res2 = await flow.auth.verifyOtp({
       email: verifyEmail,
       token: cleanToken,
       type: 'magiclink' as any,
@@ -398,7 +418,7 @@ export async function supabaseVerifyEmailOtp(email: string, token: string): Prom
 
   // 3. If invalid, attempt type: 'email' (standard email OTP)
   if (verifyRes.error) {
-    const res3 = await supabase.auth.verifyOtp({
+    const res3 = await flow.auth.verifyOtp({
       email: verifyEmail,
       token: cleanToken,
       type: 'email' as any,
@@ -408,7 +428,7 @@ export async function supabaseVerifyEmailOtp(email: string, token: string): Prom
 
   // 4. If invalid, attempt type: 'recovery' (password reset)
   if (verifyRes.error) {
-    const res4 = await supabase.auth.verifyOtp({
+    const res4 = await flow.auth.verifyOtp({
       email: verifyEmail,
       token: cleanToken,
       type: 'recovery' as any,
@@ -448,10 +468,10 @@ export async function supabaseVerifyEmailOtp(email: string, token: string): Prom
 }
 
 export async function supabaseResetPassword(email: string, redirectTo?: string): Promise<void> {
-  const supabase = getServerSupabase();
-  if (!supabase) return;
+  const flow = createAuthFlowClient();
+  if (!flow) return;
   try {
-    await supabase.auth.resetPasswordForEmail(email.toLowerCase(), redirectTo ? { redirectTo } : undefined);
+    await flow.auth.resetPasswordForEmail(email.toLowerCase(), redirectTo ? { redirectTo } : undefined);
   } catch (err: any) {
     if (/rate limit/i.test(String(err?.message || ''))) {
       throw new SupabaseAuthError(429, 'Too many reset requests. Please wait a few minutes.', 'RATE_LIMITED');
@@ -495,7 +515,7 @@ function toDisplayPhone(phone: string | null | undefined): string {
  * so the rest of the system (drizzle queries, RBAC, portal) works unchanged.
  *
  * - Existing local account (by email) is reused when present.
- * - Otherwise links an existing borrower by phone/email when a match exists.
+ * - Otherwise links a branch-registered member with exactly this verified email.
  * - Otherwise provisions a COMPLETE borrower profile from the registration input
  *   with all financials at zero and KYC/member status Pending.
  *
@@ -516,7 +536,7 @@ export async function ensureLocalClientUser(input: LocalClientUserInput): Promis
     // Self-heal missing borrowerId on existing client accounts
     if (existing.role === 'CLIENT' && !existing.borrowerId && db) {
       try {
-        let match = await findBorrowerByContact(phone, normalizedEmail);
+        let match = await findUnlinkedBorrowerByEmail(normalizedEmail);
         let bId = match?.id || null;
         if (!bId) {
           const provisioned = await createClientProfile({
@@ -542,14 +562,12 @@ export async function ensureLocalClientUser(input: LocalClientUserInput): Promis
   let borrowerId: string | null = null;
   let borrowerNumber: string | null = null;
   if (db) {
-    // Match an existing borrower by phone or email first (e.g. staff pre-registered members).
-    try {
-      const match = await findBorrowerByContact(phone, normalizedEmail);
-      if (match) {
-        borrowerId = match.id;
-        borrowerNumber = match.borrowerNumber;
-      }
-    } catch {}
+    // A member the branch registered with this exact (Supabase-verified) email.
+    const match = await findUnlinkedBorrowerByEmail(normalizedEmail);
+    if (match) {
+      borrowerId = match.id;
+      borrowerNumber = match.borrowerNumber;
+    }
 
     if (!borrowerId) {
       try {

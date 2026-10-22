@@ -208,10 +208,10 @@ const ClientProfilePage: React.FC = () => {
         <KycReviewPanel
           clientId={client.id}
           onClose={() => setKycReviewOpen(false)}
-          onDone={(status) => {
+          onDone={() => {
             setKycReviewOpen(false);
             reload();
-            toast.success(`KYC review submitted (${status})`);
+            toast.success('KYC decision recorded.');
           }}
         />
       )}
