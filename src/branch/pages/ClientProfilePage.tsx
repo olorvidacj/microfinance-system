@@ -13,6 +13,8 @@ import { Field, Input, Select, Textarea } from '../../portal/components/ui/Field
 import { useToast } from '../../portal/components/ui/Toast';
 import { useBranchData } from '../hooks/useBranchData';
 import { clientsService } from '../services';
+import { BranchApiError } from '../services/api';
+import { CIVIL_STATUSES, EMPLOYMENT_STATUSES, GENDERS, identityLockedByKyc, type StaffMemberField } from '../../../shared/kyc-core';
 import { KycReviewPanel } from '../components/KycReviewPanel';
 
 const ClientProfilePage: React.FC = () => {
@@ -219,67 +221,85 @@ const ClientProfilePage: React.FC = () => {
   );
 };
 
-const EditProfileModal: React.FC<{ client: any; open: boolean; onClose: () => void; onDone: () => void }> = ({
-  client,
-  open,
-  onClose,
-  onDone,
-}) => {
+/** The member fields the branch edits; values as the client record holds them. */
+interface EditableClient {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string;
+  address: string;
+  dateOfBirth: string;
+  gender: string;
+  civilStatus: string;
+  employmentStatus: string;
+  employerOrBusiness: string;
+  occupation: string;
+  monthlyIncome: number | string | null;
+  monthlyExpenses: number | string | null;
+  notes?: string | null;
+  kycStatus?: string | null;
+}
+
+type EditForm = Record<StaffMemberField, string>;
+
+const formFrom = (c: EditableClient): EditForm => ({
+  fullName: c.fullName ?? '',
+  phone: c.phone ?? '',
+  email: c.email ?? '',
+  address: c.address ?? '',
+  dateOfBirth: c.dateOfBirth ?? '',
+  gender: c.gender ?? '',
+  civilStatus: c.civilStatus ?? '',
+  employmentStatus: c.employmentStatus ?? '',
+  employerOrBusiness: c.employerOrBusiness ?? '',
+  occupation: c.occupation ?? '',
+  monthlyIncome: String(c.monthlyIncome ?? '0'),
+  monthlyExpenses: String(c.monthlyExpenses ?? '0'),
+  notes: c.notes ?? '',
+});
+
+/** The shared choices, plus the stored value when it is an older one, so opening the form never changes it. */
+const choices = (list: readonly string[], current: string) => (current && !list.includes(current) ? [current, ...list] : [...list]);
+
+/**
+ * Staff edit a member's record. The server applies the same rules as the
+ * member's own edits (shared/kyc-core/profile.ts), checks that the phone and
+ * email are not used by anyone else, and changes the member's login with them;
+ * its per-field messages are shown under each field.
+ */
+const EditProfileModal: React.FC<{ client: EditableClient; open: boolean; onClose: () => void; onDone: () => void }> = ({ client, open, onClose, onDone }) => {
   const toast = useToast();
-  const [form, setForm] = React.useState({
-    fullName: client.fullName,
-    phone: client.phone,
-    email: client.email,
-    address: client.address,
-    dateOfBirth: client.dateOfBirth,
-    gender: client.gender,
-    civilStatus: client.civilStatus,
-    employmentStatus: client.employmentStatus,
-    employerOrBusiness: client.employerOrBusiness,
-    occupation: client.occupation,
-    monthlyIncome: String(client.monthlyIncome || 0),
-    monthlyExpenses: String(client.monthlyExpenses || 0),
-    notes: client.notes || '',
-  });
+  const [form, setForm] = React.useState<EditForm>(() => formFrom(client));
+  const [errors, setErrors] = React.useState<Partial<Record<StaffMemberField, string>>>({});
   const [loading, setLoading] = React.useState(false);
+  const identityLocked = identityLockedByKyc(client.kycStatus);
 
   React.useEffect(() => {
-    setForm({
-      fullName: client.fullName,
-      phone: client.phone,
-      email: client.email,
-      address: client.address,
-      dateOfBirth: client.dateOfBirth,
-      gender: client.gender,
-      civilStatus: client.civilStatus,
-      employmentStatus: client.employmentStatus,
-      employerOrBusiness: client.employerOrBusiness,
-      occupation: client.occupation,
-      monthlyIncome: String(client.monthlyIncome || 0),
-      monthlyExpenses: String(client.monthlyExpenses || 0),
-      notes: client.notes || '',
-    });
+    setForm(formFrom(client));
+    setErrors({});
   }, [client]);
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+  const set = (k: StaffMemberField) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
+    setErrors((x) => ({ ...x, [k]: undefined }));
+  };
 
   const submit = async () => {
     setLoading(true);
+    setErrors({});
     try {
-      await clientsService.update(client.id, {
-        ...form,
-        monthlyIncome: Number(form.monthlyIncome) || 0,
-        monthlyExpenses: Number(form.monthlyExpenses) || 0,
-      });
+      // Sent as typed: the server validates each value and changes only what differs.
+      await clientsService.update(client.id, form);
       onDone();
-    } catch (err: any) {
-      toast.error(err?.message || 'Unable to update client.');
+    } catch (err) {
+      if (err instanceof BranchApiError && Object.keys(err.fieldErrors).length) setErrors(err.fieldErrors);
+      toast.error(err instanceof Error ? err.message : 'Unable to update client.');
     } finally {
       setLoading(false);
     }
   };
 
+  const lockHint = identityLocked ? 'Fixed by the member’s KYC; the member updates it through KYC.' : undefined;
   return (
     <Modal
       open={open}
@@ -294,55 +314,56 @@ const EditProfileModal: React.FC<{ client: any; open: boolean; onClose: () => vo
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Full name">
-          <Input value={form.fullName} onChange={set('fullName')} />
+        <Field label="Full name" hint={lockHint} error={errors.fullName}>
+          <Input value={form.fullName} onChange={set('fullName')} disabled={identityLocked} aria-invalid={Boolean(errors.fullName)} />
         </Field>
-        <Field label="Phone">
-          <Input value={form.phone} onChange={set('phone')} />
+        <Field label="Mobile number" hint={lockHint ?? 'Also the member’s sign-in. e.g. 0917 123 4567'} error={errors.phone}>
+          <Input value={form.phone} onChange={set('phone')} disabled={identityLocked} inputMode="tel" aria-invalid={Boolean(errors.phone)} />
         </Field>
-        <Field label="Email">
-          <Input value={form.email} onChange={set('email')} />
+        <Field label="Email" hint={lockHint ?? 'Also the member’s sign-in.'} error={errors.email}>
+          <Input type="email" value={form.email} onChange={set('email')} disabled={identityLocked} aria-invalid={Boolean(errors.email)} />
         </Field>
-        <Field label="Date of birth">
-          <Input type="date" value={form.dateOfBirth} onChange={set('dateOfBirth')} />
+        <Field label="Date of birth" hint={lockHint} error={errors.dateOfBirth}>
+          <Input type="date" value={form.dateOfBirth} onChange={set('dateOfBirth')} disabled={identityLocked} aria-invalid={Boolean(errors.dateOfBirth)} />
         </Field>
-        <Field label="Gender">
+        <Field label="Gender" error={errors.gender}>
           <Select value={form.gender} onChange={set('gender')}>
-            <option>Not specified</option>
-            <option>Female</option>
-            <option>Male</option>
+            {choices(GENDERS, client.gender).map((o) => (
+              <option key={o}>{o}</option>
+            ))}
           </Select>
         </Field>
-        <Field label="Civil status">
+        <Field label="Civil status" error={errors.civilStatus}>
           <Select value={form.civilStatus} onChange={set('civilStatus')}>
-            <option>Single</option>
-            <option>Married</option>
-            <option>Widowed</option>
-            <option>Separated</option>
+            {choices(CIVIL_STATUSES, client.civilStatus).map((o) => (
+              <option key={o}>{o}</option>
+            ))}
           </Select>
         </Field>
-        <Field label="Employment status">
+        <Field label="Employment status" error={errors.employmentStatus}>
           <Select value={form.employmentStatus} onChange={set('employmentStatus')}>
-            <option>Employed</option>
-            <option>Self-Employed</option>
-            <option>Unemployed</option>
-            <option>Retired</option>
+            {choices(EMPLOYMENT_STATUSES, client.employmentStatus).map((o) => (
+              <option key={o}>{o}</option>
+            ))}
           </Select>
         </Field>
-        <Field label="Occupation">
+        <Field label="Address" error={errors.address}>
+          <Input value={form.address} onChange={set('address')} />
+        </Field>
+        <Field label="Occupation" error={errors.occupation}>
           <Input value={form.occupation} onChange={set('occupation')} />
         </Field>
-        <Field label="Employer / business">
+        <Field label="Employer / business" error={errors.employerOrBusiness}>
           <Input value={form.employerOrBusiness} onChange={set('employerOrBusiness')} />
         </Field>
-        <Field label="Monthly income">
-          <Input type="number" value={form.monthlyIncome} onChange={set('monthlyIncome')} />
+        <Field label="Monthly income (₱)" error={errors.monthlyIncome}>
+          <Input inputMode="decimal" value={form.monthlyIncome} onChange={set('monthlyIncome')} />
         </Field>
-        <Field label="Monthly expenses">
-          <Input type="number" value={form.monthlyExpenses} onChange={set('monthlyExpenses')} />
+        <Field label="Monthly expenses (₱)" error={errors.monthlyExpenses}>
+          <Input inputMode="decimal" value={form.monthlyExpenses} onChange={set('monthlyExpenses')} />
         </Field>
         <div className="sm:col-span-2">
-          <Field label="Notes">
+          <Field label="Notes" error={errors.notes}>
             <Textarea rows={3} value={form.notes} onChange={set('notes')} />
           </Field>
         </div>

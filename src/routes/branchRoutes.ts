@@ -2,13 +2,14 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index';
-import { storeDocument, DOCUMENT_BUCKET } from '../db/documentStorage';
-import { getServerSupabase } from '../db/supabaseServer';
+import { storeDocument } from '../db/documentStorage';
+import { documentFileLink } from '../db/documentLinks';
 import { hasAnyPermission, getRolePermissions, normalizeRole, SystemPermission } from '../auth/permissions';
 import type { InstallmentStatus } from '../types';
 import type { AppDb } from '../kyc/errors';
 import { assertKycVerified, claimApplication, decideApplication, kycDossier, kycQueue, releaseApplication, type StaffActor } from '../kyc/service';
 import { registerByBranch } from '../onboarding/registration';
+import { updateMemberByStaff } from '../members/staffEdit';
 import { psgcResolver } from '../onboarding/geography';
 import { isKycVerified, kycStatusLabel, normaliseKycStatus } from '../../shared/kyc-core';
 import { PERIODS_PER_YEAR, RUNNING_LOAN_STATUSES, centsFromDb, centsToDecimal, daysBetween, normaliseLoanStatus, productToDto, savingsProductToDto, type LoanStatus } from '../../shared/lending';
@@ -604,42 +605,14 @@ branchRouter.put('/clients/:id', requireBranch(['register_clients', 'manage_kyc'
   const ctx = ctxOf(req);
   const db = getDb();
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const identityFields = ['fullName', 'dateOfBirth', 'phone', 'email'].filter((k) => body[k] !== undefined);
-  if (identityFields.length > 0) {
-    const current = await db.select({ kycStatus: schema.borrowers.kycStatus }).from(schema.borrowers).where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any)).limit(1);
-    if (!current[0]) return res.status(404).json({ error: 'Client not found in this branch.' });
-    const status = normaliseKycStatus(current[0].kycStatus);
-    if (['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'SUSPENDED'].includes(status)) {
-      return res.status(409).json({
-        error: `The member's KYC is ${kycStatusLabel(status).toLowerCase()}, so ${identityFields.join(', ')} cannot be changed here. Ask the member to update their KYC application instead.`,
-      });
-    }
+  try {
+    const editor = { userId: ctx.userId, name: ctx.staffName, role: ctx.staffRole, branchId: ctx.branchId, viewAll: ctx.viewAll };
+    const { changed } = await updateMemberByStaff(db as unknown as AppDb, editor, req.params.id, req.body || {}, manilaToday());
+    res.json({ success: true, changed });
+  } catch (err) {
+    sendError(res, err, 'branch-client-update');
   }
-  const row: any = {
-    ...(body.fullName !== undefined ? { fullName: String(body.fullName) } : {}),
-    ...(body.phone !== undefined ? { phone: String(body.phone) } : {}),
-    ...(body.email !== undefined ? { email: String(body.email) } : {}),
-    ...(body.address !== undefined ? { address: String(body.address) } : {}),
-    ...(body.dateOfBirth !== undefined ? { dateOfBirth: String(body.dateOfBirth) } : {}),
-    ...(body.gender !== undefined ? { gender: String(body.gender) } : {}),
-    ...(body.civilStatus !== undefined ? { civilStatus: String(body.civilStatus) } : {}),
-    ...(body.employmentStatus !== undefined ? { employmentStatus: String(body.employmentStatus) } : {}),
-    ...(body.employerOrBusiness !== undefined ? { employerOrBusiness: String(body.employerOrBusiness) } : {}),
-    ...(body.occupation !== undefined ? { occupation: String(body.occupation) } : {}),
-    ...(body.monthlyIncome !== undefined ? { monthlyIncome: Number(body.monthlyIncome) } : {}),
-    ...(body.monthlyExpenses !== undefined ? { monthlyExpenses: Number(body.monthlyExpenses) } : {}),
-    ...(body.notes !== undefined ? { notes: body.notes ? String(body.notes) : null } : {}),
-  };
-  if (!ctx.viewAll) finalizeBranchField(row);
-  await db.update(schema.borrowers).set(row).where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any));
-  await audit(ctx, 'CLIENT_UPDATED', `Updated client profile ${req.params.id}`, 'BORROWER', { targetType: 'Borrower', targetId: req.params.id });
-  res.json({ success: true });
 });
-
-function finalizeBranchField(_row: any) {
-  /* explicit no-op: branch assignment is enforced by the scope, not by client payload */
-}
 
 // ---------------------------------------------------------------------------
 // KYC (Know Your Customer) Review & Verification
@@ -765,7 +738,9 @@ async function listLoans(req: Request, res: Response) {
 branchRouter.get('/loan-applications', requireBranch(['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications', 'disburse_loans']), listLoans);
 branchRouter.get('/loans', requireBranch(LOAN_READ_PERMISSIONS), listLoans);
 
-branchRouter.get('/loan-products', requireBranch(['process_loan_applications', 'review_client_loan_info', 'monitor_loan_repayment']), async (_req, res) => {
+// Product terms only (no member data): every branch role may read them, as the loan calculator,
+// open to all staff, needs them.
+branchRouter.get('/loan-products', requireBranch([]), async (_req, res) => {
   const db = getDb();
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
   try {
@@ -1177,19 +1152,11 @@ branchRouter.get('/documents/:id/file', requireBranch(['view_client_info', 'regi
     .where(and(eq(schema.documents.id, req.params.id), scopeCond(ctx, schema.documents.branchId) as any))
     .limit(1);
   if (rows.length === 0) return res.status(404).json({ error: 'Document not found in this branch.' });
-
-  const ref = (rows[0] as any).fileUrl as string | null;
-  if (!ref) return res.status(404).json({ error: 'This document has no stored file.' });
-  // Externally hosted links are already retrievable; hand them back as-is.
-  if (/^https?:\/\//i.test(ref)) return res.json({ success: true, url: ref, expiresInSeconds: null });
-
-  const supabase = getServerSupabase();
-  if (!supabase) return res.status(503).json({ error: 'Document storage is unavailable.' });
-  const { data: signed, error: signErr } = await supabase.storage
-    .from(DOCUMENT_BUCKET)
-    .createSignedUrl(ref, 60 * 10);
-  if (signErr) return res.status(500).json({ error: `Could not sign the document: ${signErr.message}` });
-  res.json({ success: true, url: signed.signedUrl, expiresInSeconds: 600 });
+  try {
+    res.json({ success: true, ...(await documentFileLink(rows[0])) });
+  } catch (err) {
+    sendError(res, err, 'branch-document-file');
+  }
 });
 
 branchRouter.patch('/documents/:id', requireBranch(['register_clients', 'manage_kyc']), async (req, res) => {

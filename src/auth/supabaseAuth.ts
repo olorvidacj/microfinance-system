@@ -4,6 +4,7 @@ import { createClientProfile, findUnlinkedBorrowerByEmail } from '../db/clientPr
 import { createAuthFlowClient, getServerSupabase } from '../db/supabaseServer';
 import { authStore, hashPassword } from './index';
 import { sendOtpEmail, isDirectSmtpConfigured } from '../services/emailService';
+import { normalizePhilippineMobile } from '../../shared/kyc-core';
 
 export const activeEmailOtpStore = new Map<string, { otp: string; expiresAt: number; verified: boolean }>();
 
@@ -32,28 +33,6 @@ export class SupabaseAuthError extends Error {
 
 export function digitsOnly(value: string | number | null | undefined): string {
   return String(value ?? '').replace(/\D/g, '');
-}
-
-/**
- * Normalizes a Philippine mobile number (09xx, +639xx, 639xx, 9xx) to a
- * canonical display form. Returns null when the input is not a valid PH number.
- */
-export function normalizePhilippinePhone(raw: string): string | null {
-  const d = digitsOnly(raw);
-  if (d.length === 10 && d.startsWith('9')) {
-    return `+63 ${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
-  }
-  if (d.length === 11 && d.startsWith('09')) {
-    return `+63 ${d.slice(1, 4)} ${d.slice(4, 7)} ${d.slice(7)}`;
-  }
-  if (d.length === 12 && d.startsWith('63')) {
-    return `+63 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}`;
-  }
-  return null;
-}
-
-export function isValidPhilippinePhone(raw: string): boolean {
-  return normalizePhilippinePhone(raw) !== null;
 }
 
 /**
@@ -525,7 +504,7 @@ function toDisplayPhone(phone: string | null | undefined): string {
 export async function ensureLocalClientUser(input: LocalClientUserInput): Promise<any> {
   const db = getDb();
   const normalizedEmail = String(input.email || '').toLowerCase().trim();
-  const phone = input.phone ? normalizePhilippinePhone(input.phone) || toDisplayPhone(input.phone) : null;
+  const phone = input.phone ? normalizePhilippineMobile(input.phone) || toDisplayPhone(input.phone) : null;
 
   // 1. Reuse existing local account keyed by email (covers returning users).
   let existing = null;

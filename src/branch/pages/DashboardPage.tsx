@@ -45,6 +45,7 @@ import { StatusBadge } from '../../portal/components/ui/StatusBadge';
 import { LoadingState, ErrorState } from '../../portal/components/ui/States';
 import { Amount } from '../../portal/components/ui/Amount';
 import { useBranchData } from '../hooks/useBranchData';
+import { useBranchPermission } from '../hooks/useBranchPermission';
 import { useBranchContext } from '../context/BranchContext';
 import {
   dashboardService,
@@ -59,6 +60,9 @@ import { QuickActions } from '../components/QuickActions';
 import { KycReviewPanel } from '../components/KycReviewPanel';
 import { formatCurrency } from '../../utils/loanMath';
 import { ClientDetail } from '../types';
+
+/** The permissions GET /api/branch/loan-applications accepts. */
+const LOAN_APPLICATION_READERS = ['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications', 'disburse_loans'];
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -89,7 +93,9 @@ export const DashboardPage: React.FC = () => {
   const kycFetcher = useCallback(() => kycService.queue({ status: 'AWAITING' }), []);
   const kycQueue = useBranchData(kycFetcher);
 
-  const loansFetcher = useCallback(() => loansService.applications(), []);
+  // Only roles that may read loan applications ask for them (GET /api/branch/loan-applications refuses the rest).
+  const canSeeLoanApps = useBranchPermission(LOAN_APPLICATION_READERS);
+  const loansFetcher = useCallback(() => (canSeeLoanApps ? loansService.applications() : Promise.resolve([])), [canSeeLoanApps]);
   const loanApps = useBranchData(loansFetcher);
 
   const txnsFetcher = useCallback(() => transactionsService.list(), []);

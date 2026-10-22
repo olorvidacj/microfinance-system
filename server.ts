@@ -16,6 +16,7 @@ import { sendError } from './src/routes/httpErrors';
 import type { AppDb } from './src/kyc/errors';
 import { clientKycRouter } from './src/routes/clientKycRoutes';
 import { openLocalObject } from './src/kyc/storage';
+import { storageRouter } from './src/routes/storageRoutes';
 import { normaliseKycStatus } from './shared/kyc-core';
 import { claimApplication, decideApplication, kycDossier, kycQueue, releaseApplication, type StaffActor } from './src/kyc/service';
 import { listProducts, saveProduct, type LendingStaff } from './src/lending/service';
@@ -44,9 +45,7 @@ import {
   supabaseSendEmailOtp,
   supabaseVerifyEmailOtp,
   ensureLocalClientUser,
-  normalizePhilippinePhone,
   digitsOnly,
-  isValidPhilippinePhone,
   isDemoMode,
   isGeneratedEmail,
   generateClientEmail,
@@ -131,18 +130,8 @@ app.get('/api/kyc/files/:token', async (req, res) => {
   }
 });
 
-app.use('/api/storage', (req, res) => {
-  const safePath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
-  // Identity documents are never served from here, signed or not.
-  if (/^[\/\\]?kyc([\/\\]|$)/i.test(safePath)) {
-    return res.status(404).json({ error: 'File not found' });
-  }
-  const filePath = path.join(process.cwd(), 'uploads', safePath);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'File not found' });
-  }
-  res.sendFile(filePath);
-});
+// Local branch-document files, through signed expiring links only (src/routes/storageRoutes.ts).
+app.use('/api/storage', storageRouter);
 
 
 // ---------- Auth & RBAC Plumbing ----------
@@ -2817,11 +2806,28 @@ async function initServer() {
       },
       appType: 'spa',
     });
+    // As in production: a path naming a file that is in neither the project nor public/ is a
+    // missing file, not an app route (Vite's fallback would answer it with index.html).
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || !path.extname(req.path) || req.path.startsWith('/@') || req.path.startsWith('/node_modules/')) return next();
+      let file: string;
+      try {
+        file = decodeURIComponent(req.path);
+      } catch {
+        return res.status(400).json({ error: 'Bad request path' });
+      }
+      const root = process.cwd();
+      if (fs.existsSync(path.join(root, file)) || fs.existsSync(path.join(root, 'public', file))) return next();
+      res.status(404).json({ error: 'Not found' });
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
+      // A path naming a file that is not in dist/ is a missing file, not an app route
+      // (as in development, where Vite's fallback does the same).
+      if (path.extname(req.path)) return res.status(404).json({ error: 'Not found' });
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

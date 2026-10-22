@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getServerSupabase } from './supabaseServer';
+import { LOCAL_FILE_LINK_TTL_SECONDS, newStoredFileName, resolveUploadPath, signedUploadLink } from './localFiles';
 
 export const DOCUMENT_BUCKET = 'kyc-documents';
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -98,53 +99,44 @@ export async function storeDocument(params: {
   }
 
   const ext = EXT_BY_MIME[contentType] || 'bin';
-  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const safeOwner = toStorageSlug(ownerId);
-  const safeFolder = toStorageSlug(folder);
-  const objectPath = `${scope}/${safeOwner}/${safeFolder}/${unique}`;
+  const unique = newStoredFileName(ext);
+  const objectPath = `${toStorageSlug(scope)}/${toStorageSlug(ownerId)}/${toStorageSlug(folder)}/${unique}`;
+  const stored = (signedUrl: string): StoredDocument => ({ path: objectPath, signedUrl, contentType, sizeBytes: buffer.length, fileName: fileName?.trim() || unique });
 
   const supabase = getServerSupabase();
+  let supabaseFailure: string | null = null;
   if (supabase) {
-    try {
-      const { error: upErr } = await supabase.storage
-        .from(DOCUMENT_BUCKET)
-        .upload(objectPath, buffer, { contentType, upsert: false });
-
-      if (!upErr) {
-        const { data: signed, error: signErr } = await supabase.storage
-          .from(DOCUMENT_BUCKET)
-          .createSignedUrl(objectPath, 60 * 30);
-        if (!signErr && signed?.signedUrl) {
-          return {
-            path: objectPath,
-            signedUrl: signed.signedUrl,
-            contentType,
-            sizeBytes: buffer.length,
-            fileName: fileName?.trim() || unique,
-          };
-        }
-      } else {
-        console.warn(`[Document Storage] Supabase storage error (${upErr.message}), saving to local storage.`);
-      }
-    } catch (e: any) {
-      console.warn(`[Document Storage] Supabase storage exception (${e.message}), saving to local storage.`);
+    // A network failure throws instead of returning an error; both are a storage failure, handled below.
+    const upErr = await supabase.storage
+      .from(DOCUMENT_BUCKET)
+      .upload(objectPath, buffer, { contentType, upsert: false })
+      .then(
+        (r) => r.error,
+        (e: unknown) => (e instanceof Error ? e : new Error(String(e))),
+      );
+    if (!upErr) {
+      const { data: signed, error: signErr } = await supabase.storage.from(DOCUMENT_BUCKET).createSignedUrl(objectPath, LOCAL_FILE_LINK_TTL_SECONDS);
+      if (signErr || !signed?.signedUrl) throw new Error('The file was stored, but a link to it could not be created. Open it again from the document list.');
+      return stored(signed.signedUrl);
     }
+    supabaseFailure = upErr.message;
   }
 
-  // Local persistent disk storage fallback
-  const localDir = path.join(process.cwd(), 'uploads', scope, safeOwner, safeFolder);
-  if (!fs.existsSync(localDir)) {
-    fs.mkdirSync(localDir, { recursive: true });
+  // The local store is for development. In production it is used only when
+  // ALLOW_LOCAL_FILE_STORAGE=true says this server's disk is where files belong.
+  if (!localFileStorageAllowed()) {
+    console.error(`[Document Storage] upload refused: ${supabaseFailure ? `Supabase storage failed (${supabaseFailure})` : 'Supabase storage is not configured'} and the local fallback is off in production.`);
+    throw new Error('The file could not be stored right now. Please try again later.');
   }
-  const filePath = path.join(localDir, unique);
-  fs.writeFileSync(filePath, buffer);
-  const localUrl = `/api/storage/${scope}/${safeOwner}/${safeFolder}/${unique}`;
+  if (supabaseFailure) console.warn(`[Document Storage] Supabase storage failed (${supabaseFailure}); saving to the local store.`);
+  const full = resolveUploadPath(objectPath);
+  if (!full) throw new Error('The file could not be stored.');
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, buffer, { flag: 'wx' });
+  return stored(signedUploadLink(objectPath));
+}
 
-  return {
-    path: objectPath,
-    signedUrl: localUrl,
-    contentType,
-    sizeBytes: buffer.length,
-    fileName: fileName?.trim() || unique,
-  };
+/** Whether files may be written to this server's disk: always in development, in production only when allowed explicitly. */
+export function localFileStorageAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.ALLOW_LOCAL_FILE_STORAGE === 'true';
 }

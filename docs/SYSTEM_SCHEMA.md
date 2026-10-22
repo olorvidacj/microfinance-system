@@ -61,20 +61,17 @@ Two server entry points exist:
 │   ├── types.ts            # Shared domain types
 │   ├── auth/index.ts       # scrypt hashing, HMAC token sign/verify, user store
 │   ├── context/
-│   │   ├── AuthContext.tsx # Session state (login/register/logout/restore)
-│   │   └── LoanContext.tsx # Staff console domain state (~1400 lines)
-│   ├── components/         # 35 view & modal components
+│   │   └── AuthContext.tsx # Session state (login/register/logout/restore)
+│   ├── portal/ branch/ admin/ # The member portal, branch staff app and admin console
+│   ├── components/         # Components shared by them (KYC review, status badges, ...)
 │   ├── db/
 │   │   ├── schema.ts       # Drizzle table definitions (16 tables)
 │   │   ├── index.ts        # Lazy DB connection (Cloud SQL / Supabase URL)
 │   │   └── seed.ts         # Idempotent demo seed
-│   ├── lib/supabase.ts     # Browser Supabase client (VITE_* env)
 │   └── utils/loanMath.ts   # Amortization / interest calculations
 ├── backend/                # CSFT auth microservice (plain JS, ESM)
 │   └── src/{routes,services,controllers,middleware,validators,utils}
 ├── database/migrations/    # Supabase Postgres migrations 0001–0010
-├── supabase_schema.sql     # Full consolidated schema dump
-├── public/supabase_schema.sql
 ├── Dockerfile / docker-compose.yml
 └── docs/SYSTEM_SCHEMA.md   # This document
 ```
@@ -92,24 +89,20 @@ flowchart LR
     B -->|no user| D{showAuth?}
     D -->|false| E[LandingView public]
     D -->|true| F[LoginView signin/register]
-    B -->|user CLIENT| G[ClientAppShell + ClientPortalView]
-    B -->|user STAFF| H[LoanProvider > MainApp staff console]
+    B -->|/portal| G[Member portal: PortalLayout + PortalRoutes]
+    B -->|/staff| H[Branch staff app: BranchRoutes]
+    B -->|/admin| I[Admin console: AdminRoutes]
 ```
 
 - **Public landing** (`LandingView.tsx`) → "Sign In" opens `LoginView` (with back navigation).
-- **Role shells**: `CLIENT` gets a slim portal shell; `STAFF` gets the full console.
+- **Sites**: members use `/portal`, branch staff `/staff/app`, head office `/admin`; each has its own login and session.
 - Session persists via `/api/auth/me` restore on boot.
-
-### Staff console tabs (`Navigation.tsx`)
-
-Dashboard · Membership · Loans · Payments · Savings · Group Lending · Client Portal · Reminders · Calculator · Branches · Products · Reports
 
 ### State model
 
 | Context | Scope | Notes |
 |---|---|---|
 | `AuthContext` | Whole app after login | Holds `AuthUser {id,email,fullName,role,staffId,borrowerId,avatar}` |
-| `LoanContext` | Staff console only | Borrowers, loans, payments, branches, products, groups, savings, audit log; modal orchestration lives in `MainApp` |
 
 ---
 
