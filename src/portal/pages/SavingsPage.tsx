@@ -225,7 +225,7 @@ const SavingsPage: React.FC = () => {
       {online ? (
         <OnlinePaymentsCard online={online} onAddAccount={() => requireKyc('add a payout account') && setAddAccountOpen(true)} onChanged={loadOnline} onError={(m) => toast.error(m)} />
       ) : (
-        onlineError && <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">Online deposits and instant withdrawals are not available right now. {onlineError}</p>
+        onlineError && <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">Online deposits and instant withdrawals are not available right now. Deposits and withdrawals at the branch work as usual.</p>
       )}
 
       {requests.length > 0 && (

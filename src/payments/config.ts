@@ -1,6 +1,7 @@
 import { parsePesos, type Cents } from '../../shared/lending';
 import { DEFAULT_INSTANT_DAILY_LIMIT, PAYMENT_PROVIDERS, type PaymentProviderName } from '../../shared/payments';
 import { HttpError } from '../kyc/errors';
+import { resolveActiveConnectionString } from '../db/index';
 import { sendOtpEmail } from '../services/emailService';
 import { MockProvider } from './mockProvider';
 import type { PaymentProvider } from './provider';
@@ -9,8 +10,9 @@ import { XenditProvider } from './xenditProvider';
 /**
  * Online payment settings (server environment):
  *
- *   PAYMENT_PROVIDER               mock | xendit. Defaults to mock outside production;
- *                                  required in production, where mock is refused.
+ *   PAYMENT_PROVIDER               mock | xendit. Defaults to mock outside production.
+ *                                  Mock moves no real money, so it runs only against a
+ *                                  local database (never production, never Supabase).
  *   XENDIT_SECRET_KEY              Xendit secret API key (server only).
  *   XENDIT_WEBHOOK_TOKEN           Xendit webhook verification token.
  *   ONLINE_WITHDRAWAL_DAILY_LIMIT  Instant withdrawals per member per day, in pesos (default 5000).
@@ -27,9 +29,54 @@ export interface PaymentDeps {
 }
 
 let cached: PaymentDeps | null = null;
+let schemaMissing: string | null = null;
+const reported = new Set<string>();
 
-function unavailable(message: string): never {
-  throw new HttpError(503, `Online payments are not available: ${message}`, 'PAYMENTS_UNAVAILABLE');
+/** Online payments are off. The reason stays on the server; the answer sent is plain. */
+export class PaymentsUnavailableError extends HttpError {
+  constructor(readonly reason: string) {
+    super(503, 'Online payments are not available right now.', 'PAYMENTS_UNAVAILABLE');
+  }
+}
+
+/** The reason goes to the server log (once); members and staff get no configuration details. */
+function unavailable(reason: string): never {
+  if (!reported.has(reason)) {
+    reported.add(reason);
+    console.warn(`[Online payments] not available: ${reason}`);
+  }
+  throw new PaymentsUnavailableError(reason);
+}
+
+/** The migration that creates the payment tables. */
+export const PAYMENTS_MIGRATION = '0030_online_payments.sql';
+
+/** The server found PAYMENTS_MIGRATION pending: no payments until the tables exist. */
+export function markPaymentsSchemaMissing(pending: string): void {
+  schemaMissing = `the database needs migration ${pending} (npm run db:migrate).`;
+}
+
+/** Whether online payments can run, and if not, why (for the server log). */
+export function paymentsAvailability(): { ok: boolean; reason: string } {
+  try {
+    paymentDeps();
+    return { ok: true, reason: '' };
+  } catch (err) {
+    if (!(err instanceof PaymentsUnavailableError)) throw err;
+    return { ok: false, reason: err.reason };
+  }
+}
+
+/** A database on this machine: the only place the mock provider may run. */
+export function isLocalDatabase(connectionString = resolveActiveConnectionString()): boolean {
+  if (!connectionString) return false;
+  try {
+    // URL keeps IPv6 hosts in brackets ("[::1]").
+    const host = new URL(connectionString).hostname.replace(/^\[|\]$/g, '');
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return false;
+  }
 }
 
 export function publicBaseUrl(): string {
@@ -37,12 +84,16 @@ export function publicBaseUrl(): string {
 }
 
 export function paymentDeps(): PaymentDeps {
+  if (schemaMissing) unavailable(schemaMissing);
   if (cached) return cached;
   const production = process.env.NODE_ENV === 'production';
   const name = (process.env.PAYMENT_PROVIDER || (production ? '' : 'mock')).trim().toLowerCase() as PaymentProviderName;
   if (!name) unavailable('PAYMENT_PROVIDER is not set.');
   if (!(PAYMENT_PROVIDERS as readonly string[]).includes(name)) unavailable(`unknown PAYMENT_PROVIDER "${name}".`);
   if (name === 'mock' && production) unavailable('the mock provider moves no real money and is refused in production.');
+  if (name === 'mock' && !isLocalDatabase()) {
+    unavailable('the mock provider moves no real money, so it only runs against a local database (npm run db:local). Against this database, set PAYMENT_PROVIDER=xendit with test-mode keys.');
+  }
 
   const otpSecret = process.env.AUTH_SECRET || '';
   if (!otpSecret) unavailable('AUTH_SECRET is not set.');

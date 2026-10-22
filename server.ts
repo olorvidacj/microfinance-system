@@ -67,7 +67,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { clientMobileRouter } from './src/routes/clientMobileRoutes';
 import { branchRouter } from './src/routes/branchRoutes';
 import { paymentRouter } from './src/routes/paymentRoutes';
-import { paymentDeps } from './src/payments/config';
+import { PAYMENTS_MIGRATION, markPaymentsSchemaMissing, paymentDeps, paymentsAvailability } from './src/payments/config';
 import { sweepOnlinePayments } from './src/payments/service';
 import { psgcService } from './src/services/psgcService';
 
@@ -2776,6 +2776,8 @@ function startInterestPosting() {
  * credited, unconfirmed payouts checked or sent again), now and every 5 minutes.
  */
 function startOnlinePaymentSweep() {
+  // Off (no tables yet, no provider, mock against a shared database): the reason is logged once.
+  if (!paymentsAvailability().ok) return;
   const run = async () => {
     const db = getDb();
     if (!db) return;
@@ -2796,6 +2798,7 @@ async function initServer() {
   // reports pending migrations, then seeds an empty database.
   const schemaState = await verifyDbSchema();
   if (schemaState?.ok) await seedDatabase();
+  if (schemaState?.pending.includes(PAYMENTS_MIGRATION)) markPaymentsSchemaMissing(PAYMENTS_MIGRATION);
   startOverdueChecks();
   startInterestPosting();
   startOnlinePaymentSweep();
