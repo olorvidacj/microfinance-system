@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { getServerSupabase } from '../db/supabaseServer';
+import { getServerSupabase, isSupabaseConfigured } from '../db/supabaseServer';
 import { HttpError } from './errors';
 
 /**
@@ -49,6 +49,20 @@ export function activeBackend(): StorageBackend {
   return getServerSupabase() ? 'supabase' : 'local';
 }
 
+/**
+ * The service-role client uploads go through. On a server pointed at Supabase
+ * without the service-role key, uploads are refused: the public key would be
+ * refused by the bucket's RLS, and the server's own disk is not where a
+ * deployment's documents belong.
+ */
+function uploadClient() {
+  const supabase = getServerSupabase();
+  if (!supabase && isSupabaseConfigured() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new HttpError(503, 'Document storage is not set up on this server (SUPABASE_SERVICE_ROLE_KEY is missing).', 'STORAGE_UNAVAILABLE');
+  }
+  return supabase;
+}
+
 export async function putKycObject(input: {
   borrowerId: string;
   kind: string;
@@ -59,7 +73,7 @@ export async function putKycObject(input: {
   if (!ext) throw new HttpError(415, 'Unsupported file type.', 'UNSUPPORTED_TYPE');
   const objectPath = `kyc/${safeSegment(input.borrowerId)}/${safeSegment(input.kind)}/${crypto.randomUUID()}.${ext}`;
 
-  const supabase = getServerSupabase();
+  const supabase = uploadClient();
   if (supabase) {
     const { error } = await supabase.storage
       .from(KYC_BUCKET)
