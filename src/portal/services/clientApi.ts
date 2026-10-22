@@ -47,7 +47,7 @@ export async function clientRequest(
  * Public (non-authenticated) request used by client login / OTP / reset flows.
  */
 export async function publicRequest(url: string, body?: unknown, method: 'POST' = 'POST'): Promise<any> {
-  const token = getStoredToken();
+  const token = getStoredToken('member');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(url, {

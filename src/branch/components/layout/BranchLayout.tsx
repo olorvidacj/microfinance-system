@@ -404,7 +404,7 @@ const BranchAssignmentGate: React.FC = () => {
       // Persist the refreshed JWT returned by the backend so branch-scoped API
       // authorization carries the confirmed branchId.
       if (data.token) {
-        setStoredToken(data.token);
+        setStoredToken('staff', data.token);
       }
       if (data.staff?.branch) {
         await refreshUser();

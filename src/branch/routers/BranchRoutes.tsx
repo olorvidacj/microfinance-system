@@ -25,9 +25,10 @@ import ReportsPage from '../pages/ReportsPage';
 import PersonnelProfilePage from '../pages/PersonnelProfilePage';
 import ActivityLogPage from '../pages/ActivityLogPage';
 
+/** Mounted at /staff/*, so paths here are relative to /staff. */
 export const BranchRoutes: React.FC = () => (
   <Routes>
-    <Route path="/staff/app" element={<BranchLayout />}>
+    <Route path="/app" element={<BranchLayout />}>
       <Route path="" element={<DashboardPage />} />
       <Route path="performance" element={<PerformancePage />} />
       <Route path="clients" element={<ClientsPage />} />
@@ -53,7 +54,7 @@ export const BranchRoutes: React.FC = () => (
       <Route path="activity" element={<ActivityLogPage />} />
       <Route path="*" element={<Navigate to="/staff/app" replace />} />
     </Route>
-    <Route path="/staff/login" element={<Navigate to="/staff/app" replace />} />
+    <Route path="/login" element={<Navigate to="/staff/app" replace />} />
     <Route path="*" element={<Navigate to="/staff/app" replace />} />
   </Routes>
 );
