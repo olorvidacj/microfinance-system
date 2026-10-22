@@ -22,6 +22,7 @@ import {
   type SavingsProductDto,
   displayPercent,
 } from '../../../shared/lending';
+import { useAdminBranch } from '../branchScope';
 
 const STATUSES = ['Active', 'Dormant', 'Frozen', 'Closed'];
 // Money to the centavo (the API sends plain numbers with up to 2 decimals).
@@ -54,6 +55,7 @@ const csvCell = (v: unknown) => {
  * by branch tellers, where they are ledgered and receipted.
  */
 export const SavingsManagementPage: React.FC = () => {
+  const { branchId } = useAdminBranch();
   const { user } = useAuth();
   const canEdit = hasPermission(user?.staffRole, 'manage_settings');
   const [accounts, setAccounts] = useState<AdminSavingsAccount[]>([]);
@@ -70,13 +72,13 @@ export const SavingsManagementPage: React.FC = () => {
   const load = useCallback(async () => {
     setLoadError('');
     try {
-      const [a, p] = await Promise.all([adminApi.savings(), adminApi.savingsProducts.list()]);
+      const [a, p] = await Promise.all([adminApi.savings(branchId), adminApi.savingsProducts.list()]);
       setAccounts(a);
       setProducts(p);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Savings data could not be loaded.');
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     load();

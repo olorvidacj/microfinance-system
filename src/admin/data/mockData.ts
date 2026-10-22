@@ -24,6 +24,9 @@ export interface AdminUser {
   dateRegistered: string;
   avatar: string;
   branch: string;
+  /** Staff: the branch they work in ('all' for head office); null when none. */
+  branchId: string | null;
+  accountRole: 'STAFF' | 'CLIENT';
 }
 
 export interface AdminClient {

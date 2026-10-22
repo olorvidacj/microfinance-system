@@ -10,12 +10,14 @@ import { Modal } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AdminTransaction, formatPHP } from '../data/mockData';
 import { adminApi } from '../services/adminApi';
+import { useAdminBranch } from '../branchScope';
 
 const TYPES = ['Deposit', 'Withdrawal', 'Loan Payment', 'Loan Disbursement', 'Savings Deposit', 'Savings Withdrawal'];
 const STATUSES = ['Completed', 'Pending', 'Failed', 'Cancelled'];
 const METHODS = ['Cash', 'GCash', 'Bank Transfer', 'Maya', 'Cheque'];
 
 export const FinancialTransactionsPage: React.FC = () => {
+  const { branchId } = useAdminBranch();
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -25,8 +27,8 @@ export const FinancialTransactionsPage: React.FC = () => {
   const [toast, setToast] = useState('');
 
   useEffect(() => {
-    adminApi.transactions().then(setTransactions).catch(() => setTransactions([]));
-  }, []);
+    adminApi.transactions(branchId).then(setTransactions).catch(() => setTransactions([]));
+  }, [branchId]);
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {

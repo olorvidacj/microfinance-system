@@ -61,8 +61,9 @@ export interface ReportsData {
   };
   cards: Record<string, { title: string; value: string; highlight: string }[]>;
   tableRows: Record<string, { label: string; value: string }[]>;
-  /** All branches, exact (src/reports/portfolio.ts). */
+  /** The selected branch, or every branch (null), exact (src/reports/portfolio.ts). */
   portfolio: PortfolioSummary;
+  branchId: string | null;
   branches: { id: string; name: string; portfolio: PortfolioSummary }[];
   /** Trial balance of every posted journal line. */
   ledger: { debits: string; credits: string; difference: string; balanced: boolean };
@@ -185,6 +186,12 @@ async function put<T>(url: string, body: unknown): Promise<T> {
   return request<T>(url, { method: 'PUT', body: JSON.stringify(body) });
 }
 
+/** Adds the console's branch filter (null: every branch); the server checks it. */
+function withBranch(url: string, branchId: string | null | undefined): string {
+  if (!branchId) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}branchId=${encodeURIComponent(branchId)}`;
+}
+
 export interface AdminUserRecord {
   id: string;
   fullName: string;
@@ -198,11 +205,14 @@ export interface AdminUserRecord {
   isActive?: boolean | null;
   lastLoginAt?: string | null;
   createdAt?: string | null;
+  /** Staff: the branch they work in ('all' for head office). Members: their branch. */
+  branchId?: string | null;
+  branch?: string;
 }
 
 export const adminApi = {
-  users: (): Promise<AdminUser[]> =>
-    get<{ success: boolean; users?: AdminUserRecord[] }>('/api/admin/users').then(
+  users: (branchId?: string | null): Promise<AdminUser[]> =>
+    get<{ success: boolean; users?: AdminUserRecord[] }>(withBranch('/api/admin/users', branchId)).then(
       (r) =>
         (r.users || []).map((u) => ({
           id: u.id,
@@ -215,7 +225,9 @@ export const adminApi = {
           status: u.isActive === false ? 'Inactive' : 'Active',
           dateRegistered: u.createdAt ? new Date(u.createdAt).toISOString().slice(0, 10) : '',
           avatar: u.avatar || '',
-          branch: '',
+          branch: u.branch || '',
+          branchId: u.branchId ?? null,
+          accountRole: u.role === 'CLIENT' ? 'CLIENT' : 'STAFF',
         })),
     ),
 
@@ -233,12 +245,14 @@ export const adminApi = {
     phone?: string;
     borrowerId?: string;
     staffId?: string;
+    /** Required for staff: the branch they work in, or 'all' for head office. */
+    branchId?: string;
   }): Promise<AdminUserRecord> =>
     post<{ success: boolean; user: AdminUserRecord }>('/api/admin/users', input).then((r) => r.user),
 
   updateUser: (
     id: string,
-    patch: { fullName?: string; staffRole?: string; role?: string; staffId?: string | null; isActive?: boolean; phone?: string }
+    patch: { fullName?: string; staffRole?: string; role?: string; staffId?: string | null; isActive?: boolean; phone?: string; branchId?: string }
   ): Promise<{ success: boolean; message?: string }> => put<{ success: boolean; message?: string }>(`/api/admin/users/${id}`, patch),
 
   /** The KYC documents members must provide (kyc_required_documents). */
@@ -253,16 +267,18 @@ export const adminApi = {
   sendPasswordReset: (email: string): Promise<{ success: boolean; message?: string }> =>
     post<{ success: boolean; message?: string }>('/api/auth/forgot-password', { email }),
 
-  clients: (): Promise<AdminClient[]> => get<{ clients: AdminClient[] }>('/api/admin/clients').then((r) => r.clients || []),
-  loans: (): Promise<AdminLoan[]> => get<{ loans: AdminLoan[] }>('/api/admin/loans').then((r) => r.loans || []),
-  savings: (): Promise<AdminSavingsAccount[]> => get<{ accounts: AdminSavingsAccount[] }>('/api/admin/savings').then((r) => r.accounts || []),
-  transactions: (): Promise<AdminTransaction[]> => get<{ transactions: AdminTransaction[] }>('/api/admin/transactions').then((r) => r.transactions || []),
-  groups: (): Promise<LendingGroup[]> => get<{ groups: LendingGroup[] }>('/api/admin/groups').then((r) => r.groups || []),
-  /** Head-office KYC queue across all branches. */
-  kycQueue: (params: { status?: string; search?: string } = {}): Promise<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] }> => {
+  clients: (branchId?: string | null): Promise<AdminClient[]> => get<{ clients: AdminClient[] }>(withBranch('/api/admin/clients', branchId)).then((r) => r.clients || []),
+  loans: (branchId?: string | null): Promise<AdminLoan[]> => get<{ loans: AdminLoan[] }>(withBranch('/api/admin/loans', branchId)).then((r) => r.loans || []),
+  savings: (branchId?: string | null): Promise<AdminSavingsAccount[]> => get<{ accounts: AdminSavingsAccount[] }>(withBranch('/api/admin/savings', branchId)).then((r) => r.accounts || []),
+  transactions: (branchId?: string | null): Promise<AdminTransaction[]> =>
+    get<{ transactions: AdminTransaction[] }>(withBranch('/api/admin/transactions', branchId)).then((r) => r.transactions || []),
+  groups: (branchId?: string | null): Promise<LendingGroup[]> => get<{ groups: LendingGroup[] }>(withBranch('/api/admin/groups', branchId)).then((r) => r.groups || []),
+  /** Head-office KYC queue: every branch, or one. */
+  kycQueue: (params: { status?: string; search?: string; branchId?: string | null } = {}): Promise<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] }> => {
     const qs = new URLSearchParams();
     if (params.status) qs.set('status', params.status);
     if (params.search) qs.set('search', params.search);
+    if (params.branchId) qs.set('branchId', params.branchId);
     return get<{ requests: KycQueueRow[]; counts: KycQueueResultView['counts'] }>(`/api/admin/kyc-requests${qs.toString() ? `?${qs}` : ''}`).then((r) => ({ data: r.requests, counts: r.counts }));
   },
   kyc: {
@@ -272,15 +288,16 @@ export const adminApi = {
     decide: (borrowerId: string, body: { decision: KycDecision; reason: string; sections: string[] }, idempotencyKey: string) =>
       request(`/api/admin/kyc/${encodeURIComponent(borrowerId)}/decision`, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': idempotencyKey } }),
   },
-  notifications: (): Promise<AdminNotification[]> => get<{ notifications: AdminNotification[] }>('/api/admin/notifications').then((r) => r.notifications || []),
-  auditLogs: (): Promise<AuditLog[]> => get<{ logs: AuditLog[] }>('/api/admin/audit-logs').then((r) => r.logs || []),
+  notifications: (branchId?: string | null): Promise<AdminNotification[]> =>
+    get<{ notifications: AdminNotification[] }>(withBranch('/api/admin/notifications', branchId)).then((r) => r.notifications || []),
+  auditLogs: (branchId?: string | null): Promise<AuditLog[]> => get<{ logs: AuditLog[] }>(withBranch('/api/admin/audit-logs', branchId)).then((r) => r.logs || []),
   branches: (): Promise<AdminBranch[]> => get<{ branches: AdminBranch[] }>('/api/admin/branches').then((r) => r.branches || []),
   clientDetail: (id: string): Promise<ClientDetail> => get<{ data: ClientDetail }>(`/api/admin/clients/${id}`).then((r) => r.data),
   loansDetail: (id: string): Promise<LoanDetail> => get<{ data: LoanDetail }>(`/api/admin/loans/${id}`).then((r) => r.data),
   savingsDetail: (id: string): Promise<SavingsDetail> => get<{ data: SavingsDetail }>(`/api/admin/savings/${id}`).then((r) => r.data),
   groupDetail: (id: string): Promise<GroupDetail> => get<{ data: GroupDetail }>(`/api/admin/groups/${id}`).then((r) => r.data),
-  overview: (): Promise<AdminOverview> => get<{ data: AdminOverview }>('/api/admin/overview').then((r) => r.data),
-  reports: (): Promise<ReportsData> => get<ReportsData>('/api/admin/reports'),
+  overview: (branchId?: string | null): Promise<AdminOverview> => get<{ data: AdminOverview }>(withBranch('/api/admin/overview', branchId)).then((r) => r.data),
+  reports: (branchId?: string | null): Promise<ReportsData> => get<ReportsData>(withBranch('/api/admin/reports', branchId)),
   savingsProducts: {
     list: (): Promise<(SavingsProductDto & { id: string })[]> => get<{ data: (SavingsProductDto & { id: string })[] }>('/api/admin/savings-products').then((r) => r.data || []),
     create: (dto: SavingsProductDto): Promise<SavingsProductDto & { id: string }> => post<{ data: SavingsProductDto & { id: string } }>('/api/admin/savings-products', dto).then((r) => r.data),

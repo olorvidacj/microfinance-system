@@ -166,21 +166,23 @@ function requireBranch(permissions: SystemPermission[] = []) {
     let staffName = auth.email.split('@')[0] || 'Staff';
     let title = staffRole;
     let avatar = '';
+    // The staff record is where an administrator sets the branch (src/staff/assignment.ts);
+    // reading it here makes a reassignment apply at once, not at the next sign-in.
+    let assignedBranchId: string | null = null;
 
     if (db && auth.staffId) {
-      try {
-        const rows = await db.select().from(schema.staff).where(eq(schema.staff.id, auth.staffId as string)).limit(1);
-        if (rows.length > 0) {
-          staffName = (rows[0] as any).name || staffName;
-          title = (rows[0] as any).title || title;
-          avatar = (rows[0] as any).avatar || '';
-        }
-      } catch {
-        /* ignore */
+      const rows = await db.select().from(schema.staff).where(eq(schema.staff.id, auth.staffId as string)).limit(1);
+      if (rows.length > 0) {
+        staffName = rows[0].name || staffName;
+        title = rows[0].title || title;
+        avatar = rows[0].avatar || '';
+        assignedBranchId = rows[0].assignedBranchId || null;
       }
     }
 
-    const rawBranchId = auth.branchId || null;
+    // A head-office record ('all') keeps the branch its session works in.
+    const namesBranch = Boolean(assignedBranchId) && !['all', 'unassigned'].includes(String(assignedBranchId).toLowerCase());
+    const rawBranchId = namesBranch ? assignedBranchId : auth.branchId || null;
     const isGlobalBranch = !rawBranchId || rawBranchId === 'all' || rawBranchId.toLowerCase() === 'all';
     // Access to every branch comes only from role permissions. A staff account
     // with no branch assignment is refused below, never widened to all branches.

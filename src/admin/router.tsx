@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AdminLayout } from './layouts/AdminLayout';
+import { AdminBranchProvider } from './branchScope';
 import { AdminLoginPage } from './pages/AdminLoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { UserManagementPage } from './pages/UserManagementPage';
@@ -45,7 +46,7 @@ export const AdminRoutes: React.FC = () => {
     <Routes>
       <Route path="/login" element={<AdminLoginPage />} />
       <Route element={<AdminRouteGate />}>
-        <Route path="/" element={<AdminLayout />}>
+        <Route path="/" element={<AdminBranchProvider><AdminLayout /></AdminBranchProvider>}>
           <Route index element={<DashboardPage />} />
           <Route path="users" element={<UserManagementPage />} />
           <Route path="clients" element={<ClientManagementPage />} />

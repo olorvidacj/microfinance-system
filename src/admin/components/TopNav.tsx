@@ -12,10 +12,10 @@ import {
   ShieldCheck,
   CheckCircle2,
   Clock,
-  Building,
 } from 'lucide-react';
 import { adminApi } from '../services/adminApi';
 import type { AdminNotification } from '../data/mockData';
+import { BranchSwitcher, useAdminBranch } from '../branchScope';
 
 interface TopNavProps {
   onToggleSidebar: () => void;
@@ -36,10 +36,11 @@ export const TopNav: React.FC<TopNavProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { branchId, branchName } = useAdminBranch();
 
   useEffect(() => {
-    adminApi.notifications().then(setNotifications).catch(() => setNotifications([]));
-  }, []);
+    adminApi.notifications(branchId).then(setNotifications).catch(() => setNotifications([]));
+  }, [branchId]);
 
   const unread = notifications.filter((n) => !n.isRead).length;
 
@@ -75,11 +76,8 @@ export const TopNav: React.FC<TopNavProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100/90 border border-slate-200/80 font-medium text-slate-700">
-              <Building className="w-3.5 h-3.5 text-amber-600" />
-              <span>Tacloban Main Branch</span>
-            </span>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <BranchSwitcher />
             <span className="hidden md:inline-flex items-center gap-1 text-slate-400 text-[11px]">
               <Clock className="w-3 h-3 text-slate-400" />
               <span>PST (GMT+8)</span>
@@ -243,7 +241,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                   </div>
                   <p className="text-sm font-bold text-slate-900 mt-1">{adminName}</p>
                   <p className="text-xs text-slate-500">{adminRole}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Tacloban Main Branch</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Showing {branchName}</p>
                 </div>
 
                 <div className="py-1">

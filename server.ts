@@ -25,6 +25,7 @@ import { ledgerCheck, monthlyCollections, portfolioSummary } from './src/reports
 import { transactions as savingsTxnTable } from './src/savings/tables';
 import { listSavingsProducts, runInterestPosting, saveSavingsProduct } from './src/savings/service';
 import { fundView, groupDetail, groupMeetings, listGroups } from './src/groups/service';
+import { assignStaffBranch, branchFilter, checkAssignableBranch, staffBranches } from './src/staff/assignment';
 import { seedDatabase } from './src/db/seed';
 import { getServerSupabase, testServerSupabaseConnection } from './src/db/supabaseServer';
 import {
@@ -816,97 +817,23 @@ app.get('/api/staff/branch-assignment', requireAuth(['STAFF']), async (req: Auth
 });
 
 // 2. Administrator Cooperative Branch Assignment (Admin Authorized Only)
-app.post('/api/admin/staff/assign-branch', requireAuth(['STAFF']), async (req: AuthedRequest, res) => {
+// Puts a staff login in a branch (src/staff/assignment.ts). User Management saves
+// through PUT /api/admin/users/:id; the branch app's assignment notice sends a staff id.
+app.post('/api/admin/staff/assign-branch', requirePermission('manage_users'), async (req: AuthedRequest, res) => {
   try {
-    const caller = req.authUser!;
-    const { staffId, branchId } = req.body || {};
-
-    if (!staffId || !branchId) {
-      return res.status(400).json({ success: false, error: 'staffId and branchId are required' });
-    }
-
-    // Only an account that manages users may assign branches. There is no
-    // password override: a shared admin password would let any staff member
-    // assign themselves to any branch.
-    const authorized = caller.staffRole === 'ADMINISTRATOR' || hasPermission(caller.staffRole, 'manage_users');
-
-    if (!authorized) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied. Only an authorized HOSCOMCO System Administrator can assign cooperative branches.',
-      });
-    }
-
     const db = getDb();
-    const supabase = getServerSupabase();
-
-    // 1. Update DB staff record (staff.assigned_branch_id is the source of truth;
-    //    the users table has no branch column, so it must not be updated here)
-    if (db) {
-      try {
-        await db.update(schema.staff).set({ assignedBranchId: branchId }).where(eq(schema.staff.id, staffId));
-      } catch (e: any) {
-        console.warn('[Staff Assignment] DB update warning:', e.message);
-      }
+    if (!db) return res.status(503).json({ success: false, error: 'The database is not available right now.' });
+    const { userId, staffId, branchId } = req.body || {};
+    let target: string | null = typeof userId === 'string' && userId ? userId : null;
+    if (!target && typeof staffId === 'string' && staffId) {
+      const [byStaff] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.staffId, staffId)).limit(1);
+      target = byStaff?.id ?? null;
     }
-
-    // 2. Update Supabase if available
-    if (supabase) {
-      try {
-        await supabase.from('staff').update({ assigned_branch_id: branchId }).eq('id', staffId);
-      } catch {}
-    }
-
-    // 3. Update in-memory initial staff list
-    const memStaff = INITIAL_STAFF.find((s) => s.id === staffId);
-    if (memStaff) {
-      memStaff.assignedBranchId = branchId;
-    }
-
-    // 4. Log Audit Trail
-    if (db) {
-      try {
-        await db.insert(schema.auditLogs).values({
-          id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          timestamp: new Date().toISOString(),
-          action: 'STAFF_BRANCH_ASSIGNMENT',
-          details: `Staff member ${staffId} assigned to ${branchId} (Tacloban Main Branch) by System Administrator.`,
-          performedBy: `${caller.email || caller.id} (${caller.staffRole || 'STAFF'})`,
-          branchId: branchId || 'all',
-          type: 'BRANCH',
-          userName: caller.email,
-          userRole: caller.staffRole,
-          ipAddress: req.ip || '127.0.0.1',
-        });
-      } catch {}
-    }
-
-    // 5. Add Branch Notification
-    if (db) {
-      try {
-        await db.insert(schema.branchNotifications).values({
-          id: `NOTIF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          branchId: branchId || 'all',
-          targetStaffId: null,
-          type: 'INFO',
-          title: 'Staff Branch Assignment Finalized',
-          message: `Staff member (${staffId}) was officially assigned to Tacloban Main Branch.`,
-          relatedType: 'Staff',
-          relatedId: staffId,
-          isRead: false,
-          createdAt: new Date().toISOString(),
-        });
-      } catch {}
-    }
-
-    res.json({
-      success: true,
-      message: 'Staff account successfully assigned to Tacloban Main Branch.',
-      staffId,
-      branchId,
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    if (!target) return res.status(400).json({ success: false, error: 'Say which staff account to assign.' });
+    const assignment = await assignStaffBranch(db as unknown as AppDb, adminActor(req), { userId: target, branchId });
+    res.json({ success: true, message: `Assigned to ${assignment.branchName}.`, ...assignment });
+  } catch (err) {
+    sendError(res, err, 'admin-assign-branch');
   }
 });
 
@@ -1051,9 +978,29 @@ app.get('/api/admin/users', requirePermission(['manage_users', 'view_all_records
   try {
     const db = getDb();
     if (db) {
+      const filter = await adminBranch(req);
       const dbUsers = await db.select().from(schema.users);
-      const mapped = dbUsers.map((u) => ({
+      const [staffBranch, memberRows, branchNames] = await Promise.all([
+        staffBranches(db as unknown as AppDb, dbUsers.filter((u) => u.role === 'STAFF').map((u) => u.id)),
+        db.select({ id: schema.borrowers.id, branchId: schema.borrowers.branchId }).from(schema.borrowers),
+        resolveBranchNames(db),
+      ]);
+      const memberBranch = new Map(memberRows.map((b) => [b.id, b.branchId]));
+      const branchOf = (u: (typeof dbUsers)[number]): { branchId: string | null; branch: string } => {
+        if (u.role === 'STAFF') {
+          const b = staffBranch.get(u.id);
+          return b ? { branchId: b.branchId, branch: b.branchName } : { branchId: null, branch: '' };
+        }
+        const id = u.borrowerId ? memberBranch.get(u.borrowerId) ?? null : null;
+        return { branchId: id, branch: id ? branchNames.get(id) || id : '' };
+      };
+      const mapped = dbUsers
+        .map((u) => ({ u, b: branchOf(u) }))
+        .filter(({ b }) => !filter || b.branchId === filter)
+        .map(({ u, b }) => ({
         id: u.id,
+        branchId: b.branchId,
+        branch: b.branch,
         email: u.email,
         fullName: u.fullName,
         role: u.role,
@@ -1094,8 +1041,8 @@ app.get('/api/admin/users', requirePermission(['manage_users', 'view_all_records
     }
 
     res.json({ success: true, users: [] });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-users');
   }
 });
 
@@ -1120,6 +1067,17 @@ app.post('/api/admin/users', requirePermission('manage_users'), async (req: Auth
       });
     }
 
+    // A staff login is created with its branch, checked before the account exists
+    // so a refused branch never leaves a login that can sign in but work nowhere.
+    const db = getDb();
+    if (isStaff && !db) return res.status(503).json({ error: 'The database is not available right now.' });
+    // Linking an existing staff record (staffId) keeps the branch that record already has.
+    const [linked] =
+      isStaff && db && staffId && req.body?.branchId === undefined
+        ? await db.select({ branchId: schema.staff.assignedBranchId }).from(schema.staff).where(eq(schema.staff.id, String(staffId))).limit(1)
+        : [];
+    const branchId = isStaff && !linked?.branchId ? await checkAssignableBranch(db as unknown as AppDb, staffRole, req.body?.branchId) : null;
+
     const normEmail = String(email).trim().toLowerCase();
     const existing = await authStore.findByEmail(normEmail);
     if (existing) {
@@ -1138,13 +1096,15 @@ app.post('/api/admin/users', requirePermission('manage_users'), async (req: Auth
       avatar: `https://ui-avatars.com/api/?background=4F46E5&color=fff&name=${encodeURIComponent(String(fullName).trim())}`,
     });
 
+    const assignment = isStaff && branchId ? await assignStaffBranch(db as unknown as AppDb, adminActor(req), { userId: user.id, branchId }) : null;
+
     res.status(201).json({
       success: true,
-      user: publicUser(user),
-      message: `User account '${fullName}' created with role '${role === 'STAFF' ? staffRole : 'CLIENT'}'`,
+      user: { ...publicUser(user), staffId: assignment?.staffId ?? user.staffId ?? null, branchId: assignment?.branchId ?? null, branch: assignment?.branchName ?? '' },
+      message: `User account '${fullName}' created with role '${role === 'STAFF' ? staffRole : 'CLIENT'}'${assignment ? ` in ${assignment.branchName}` : ''}`,
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-create-user');
   }
 });
 
@@ -1152,7 +1112,16 @@ app.post('/api/admin/users', requirePermission('manage_users'), async (req: Auth
 app.put('/api/admin/users/:id', requirePermission('manage_users'), async (req: AuthedRequest, res) => {
   try {
     const { id } = req.params;
-    const { fullName, staffRole, role, staffId, isActive, phone } = req.body || {};
+    const { fullName, staffRole, role, staffId, isActive, phone, branchId } = req.body || {};
+
+    // Check the branch against the role the account will have before changing anything.
+    const db = getDb();
+    if (branchId !== undefined) {
+      if (!db) return res.status(503).json({ error: 'The database is not available right now.' });
+      const current = await authStore.findById(id);
+      if (!current) return res.status(404).json({ error: 'That account does not exist.' });
+      await checkAssignableBranch(db as unknown as AppDb, staffRole ?? current.staffRole, branchId);
+    }
 
     await authStore.updateUser(id, {
       ...(fullName !== undefined ? { fullName } : {}),
@@ -1163,9 +1132,11 @@ app.put('/api/admin/users/:id', requirePermission('manage_users'), async (req: A
       ...(phone !== undefined ? { phone } : {}),
     });
 
-    res.json({ success: true, message: `User ${id} updated successfully` });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    const assignment = branchId !== undefined && db ? await assignStaffBranch(db as unknown as AppDb, adminActor(req), { userId: id, branchId }) : null;
+
+    res.json({ success: true, message: `User ${id} updated successfully`, ...(assignment ? { branchId: assignment.branchId, branch: assignment.branchName } : {}) });
+  } catch (err) {
+    sendError(res, err, 'admin-update-user');
   }
 });
 
@@ -1184,6 +1155,24 @@ app.put('/api/admin/users/:id', requirePermission('manage_users'), async (req: A
 // permission (head office and oversight roles). Branch staff use /api/branch,
 // which is scoped to their branch.
 const ADMIN_READ_ANY: SystemPermission[] = ['view_all_records'];
+
+/**
+ * The admin console's branch filter (?branchId=): null for every branch. An id
+ * that is not a branch is refused, never read as "every branch".
+ */
+function adminBranch(req: AuthedRequest): Promise<string | null> {
+  return branchFilter(getDb() as unknown as AppDb, req.query.branchId);
+}
+
+/** A branch's members, as a subquery. Savings belong to the member's branch, as in src/reports/portfolio.ts. */
+function membersOf(db: NonNullable<ReturnType<typeof getDb>>, branchId: string) {
+  return db.select({ id: schema.borrowers.id }).from(schema.borrowers).where(eq(schema.borrowers.branchId, branchId));
+}
+
+function adminActor(req: AuthedRequest): { userId: string; name: string; role: string } {
+  const a = req.authUser!;
+  return { userId: a.id, name: a.fullName || a.email, role: normalizeRole(a.staffRole) };
+}
 
 function toMoney(v: any): number {
   const n = Number(v);
@@ -1388,11 +1377,15 @@ app.get('/api/admin/clients', requirePermission(ADMIN_READ_ANY), async (req: Aut
   try {
     const db = getDb();
     if (!db) return res.json({ success: true, clients: [] });
-    const [borrowers, branchNames] = await Promise.all([db.select().from(schema.borrowers), resolveBranchNames(db)]);
+    const branchId = await adminBranch(req);
+    const [borrowers, branchNames] = await Promise.all([
+      db.select().from(schema.borrowers).where(branchId ? eq(schema.borrowers.branchId, branchId) : undefined),
+      resolveBranchNames(db),
+    ]);
     const clients = borrowers.map((b: any) => mapAdminClient(b, branchNames));
     res.json({ success: true, clients });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-clients');
   }
 });
 
@@ -1452,16 +1445,17 @@ app.get('/api/admin/loans', requirePermission(ADMIN_READ_ANY), async (req: Authe
   try {
     const db = getDb();
     if (!db) return res.json({ success: true, loans: [] });
+    const branchId = await adminBranch(req);
     const [loans, branchNames, borrowerNumbers] = await Promise.all([
-      db.select().from(schema.loans),
+      db.select().from(schema.loans).where(branchId ? eq(schema.loans.branchId, branchId) : undefined),
       resolveBranchNames(db),
       resolveBorrowerNumbers(db),
     ]);
     const sorted = [...loans].sort((a: any, b: any) => String(b.applicationDate).localeCompare(String(a.applicationDate)));
     const mapped = sorted.map((l: any) => mapAdminLoan(l, branchNames, borrowerNumbers));
     res.json({ success: true, loans: mapped });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-loans');
   }
 });
 
@@ -1529,8 +1523,9 @@ app.get('/api/admin/savings', requirePermission(ADMIN_READ_ANY), async (req: Aut
   try {
     const db = getDb();
     if (!db) return res.json({ success: true, accounts: [] });
+    const branchId = await adminBranch(req);
     const [accounts, txns, products, branchNames] = await Promise.all([
-      db.select().from(schema.savingsAccounts),
+      db.select().from(schema.savingsAccounts).where(branchId ? inArray(schema.savingsAccounts.memberId, membersOf(db, branchId)) : undefined),
       db.select({ accountId: schema.savingsTransactions.savingsAccountId, date: schema.savingsTransactions.date }).from(schema.savingsTransactions),
       db.select().from(schema.savingsProducts),
       resolveBranchNames(db),
@@ -1543,8 +1538,8 @@ app.get('/api/admin/savings', requirePermission(ADMIN_READ_ANY), async (req: Aut
     }
     const mapped = accounts.map((a: any) => mapAdminSaving(a, productById.get(a.productId), lastTxnByAcct.get(a.id) || null, branchNames));
     res.json({ success: true, accounts: mapped });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-savings');
   }
 });
 
@@ -1593,12 +1588,16 @@ app.get('/api/admin/transactions', requirePermission(ADMIN_READ_ANY), async (req
   try {
     const db = getDb();
     if (!db) return res.json({ success: true, transactions: [] });
-    const [txns, branchNames] = await Promise.all([db.select().from(schema.financialTransactions), resolveBranchNames(db)]);
+    const branchId = await adminBranch(req);
+    const [txns, branchNames] = await Promise.all([
+      db.select().from(schema.financialTransactions).where(branchId ? eq(schema.financialTransactions.branchId, branchId) : undefined),
+      resolveBranchNames(db),
+    ]);
     const sorted = [...txns].sort((a: any, b: any) => String(b.transactionDate).localeCompare(String(a.transactionDate)));
     const mapped = sorted.map((t: any) => mapAdminTxn(t, branchNames));
     res.json({ success: true, transactions: mapped });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-transactions');
   }
 });
 
@@ -1609,10 +1608,11 @@ const GROUP_STATUS_WORD: Record<string, string> = { FORMING: 'Forming', ACTIVE: 
 app.get('/api/admin/groups', requirePermission(ADMIN_READ_ANY), async (req: AuthedRequest, res) => {
   try {
     const db = onboardingDb();
+    const branchId = await adminBranch(req);
     const [list, branchNames] = await Promise.all([listGroups(db, productAdminActor(req)), resolveBranchNames(getDb())]);
     res.json({
       success: true,
-      groups: list.map((g) => ({
+      groups: list.filter((g) => !branchId || g.branchId === branchId).map((g) => ({
         id: g.id,
         groupId: g.groupCode,
         groupName: g.groupName,
@@ -1792,7 +1792,7 @@ app.get('/api/admin/kyc-requests', requireHeadOfficeKyc(false), async (req: Auth
     const { items, counts } = await kycQueue(onboardingDb(), { branchId: null, viewAll: true }, {
       status: req.query.status ? String(req.query.status) : undefined,
       search: req.query.search ? String(req.query.search) : undefined,
-      branchId: req.query.branchId ? String(req.query.branchId) : undefined,
+      branchId: (await adminBranch(req)) ?? undefined,
     });
     res.json({ success: true, requests: items, counts });
   } catch (err) {
@@ -1842,9 +1842,15 @@ app.get('/api/admin/notifications', requirePermission(ADMIN_READ_ANY), async (re
   try {
     const db = getDb();
     if (!db) return res.json({ success: true, notifications: [] });
+    const branchId = await adminBranch(req);
     const [branchNotifs, pendingWithdrawals, kycRows, loanRows, borrowerRows, branchNames] = await Promise.all([
-      db.select().from(schema.branchNotifications).where(eq(schema.branchNotifications.audience, 'STAFF')).orderBy(desc(schema.branchNotifications.createdAt)).limit(30),
-      db.select().from(schema.savingsWithdrawalRequests),
+      db
+        .select()
+        .from(schema.branchNotifications)
+        .where(and(eq(schema.branchNotifications.audience, 'STAFF'), branchId ? eq(schema.branchNotifications.branchId, branchId) : undefined))
+        .orderBy(desc(schema.branchNotifications.createdAt))
+        .limit(30),
+      db.select().from(schema.savingsWithdrawalRequests).where(branchId ? eq(schema.savingsWithdrawalRequests.branchId, branchId) : undefined),
       db
         .select({
           id: schema.kycSubmissions.id,
@@ -1854,9 +1860,15 @@ app.get('/api/admin/notifications', requirePermission(ADMIN_READ_ANY), async (re
           fullName: schema.borrowers.fullName,
         })
         .from(schema.kycSubmissions)
-        .leftJoin(schema.borrowers, eq(schema.kycSubmissions.borrowerId, schema.borrowers.id)),
-      db.select().from(schema.loans),
-      db.select().from(schema.borrowers).orderBy(desc(schema.borrowers.joinedDate)).limit(10),
+        .leftJoin(schema.borrowers, eq(schema.kycSubmissions.borrowerId, schema.borrowers.id))
+        .where(branchId ? eq(schema.borrowers.branchId, branchId) : undefined),
+      db.select().from(schema.loans).where(branchId ? eq(schema.loans.branchId, branchId) : undefined),
+      db
+        .select()
+        .from(schema.borrowers)
+        .where(branchId ? eq(schema.borrowers.branchId, branchId) : undefined)
+        .orderBy(desc(schema.borrowers.joinedDate))
+        .limit(10),
       resolveBranchNames(db),
     ]);
 
@@ -1917,8 +1929,8 @@ app.get('/api/admin/notifications', requirePermission(ADMIN_READ_ANY), async (re
     for (const n of out) dedup.set(`${n.type}:${n.title}:${n.timestamp}`, n);
     const notifications = [...dedup.values()].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 40);
     res.json({ success: true, notifications });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-notifications');
   }
 });
 
@@ -1926,7 +1938,12 @@ app.get('/api/admin/audit-logs', requirePermission(ADMIN_READ_ANY), async (req: 
   try {
     const db = getDb();
     if (!db) return res.json({ success: true, logs: [] });
-    const rows = await db.select().from(schema.auditLogs).orderBy(desc(schema.auditLogs.timestamp));
+    const branchId = await adminBranch(req);
+    const rows = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(branchId ? eq(schema.auditLogs.branchId, branchId) : undefined)
+      .orderBy(desc(schema.auditLogs.timestamp));
     const mapped = rows.map((l: any) => ({
       id: l.id,
       userName: l.userName || l.performedBy || 'System',
@@ -1938,8 +1955,8 @@ app.get('/api/admin/audit-logs', requirePermission(ADMIN_READ_ANY), async (req: 
       status: mapAuditStatus(l.type),
     }));
     res.json({ success: true, logs: mapped });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-audit-logs');
   }
 });
 
@@ -1989,21 +2006,29 @@ app.get('/api/admin/reports', requirePermission(ADMIN_READ_ANY), async (req: Aut
     const appDb = db as unknown as AppDb;
     // Every amount below comes from src/reports/portfolio.ts, the same figures the
     // branch app and the client portal show (exact; formatted with formatPeso).
-    const p = await portfolioSummary(appDb, { branchId: null });
+    const branchId = await adminBranch(req);
+    const p = await portfolioSummary(appDb, { branchId });
     const branchRows = await db.select({ id: schema.branches.id, name: schema.branches.name }).from(schema.branches);
     const perBranch = await Promise.all(branchRows.map(async (b) => ({ branch: b, p: await portfolioSummary(appDb, { branchId: b.id }) })));
     const [borrowers, loanRows, groups, kycRows, savingsRows] = await Promise.all([
-      db.select({ joinedDate: schema.borrowers.joinedDate, branchId: schema.borrowers.branchId }).from(schema.borrowers),
-      db.select({ applicationDate: schema.loans.applicationDate, status: schema.loans.status }).from(schema.loans),
-      db.select({ formedDate: schema.solidarityGroups.formedDate }).from(schema.solidarityGroups),
-      db.select({ submittedAt: schema.kycSubmissions.submittedAt, reviewedAt: schema.kycSubmissions.reviewedAt }).from(schema.kycSubmissions),
-      db.select({ kind: savingsTxnTable.kind, amount: savingsTxnTable.amount, date: savingsTxnTable.date }).from(savingsTxnTable),
+      db.select({ joinedDate: schema.borrowers.joinedDate, branchId: schema.borrowers.branchId }).from(schema.borrowers).where(branchId ? eq(schema.borrowers.branchId, branchId) : undefined),
+      db.select({ applicationDate: schema.loans.applicationDate, status: schema.loans.status }).from(schema.loans).where(branchId ? eq(schema.loans.branchId, branchId) : undefined),
+      db.select({ formedDate: schema.solidarityGroups.formedDate }).from(schema.solidarityGroups).where(branchId ? eq(schema.solidarityGroups.branchId, branchId) : undefined),
+      db
+        .select({ submittedAt: schema.kycSubmissions.submittedAt, reviewedAt: schema.kycSubmissions.reviewedAt })
+        .from(schema.kycSubmissions)
+        .innerJoin(schema.borrowers, eq(schema.kycSubmissions.borrowerId, schema.borrowers.id))
+        .where(branchId ? eq(schema.borrowers.branchId, branchId) : undefined),
+      db
+        .select({ kind: savingsTxnTable.kind, amount: savingsTxnTable.amount, date: savingsTxnTable.date })
+        .from(savingsTxnTable)
+        .where(branchId ? inArray(savingsTxnTable.memberId, membersOf(db, branchId)) : undefined),
     ]);
 
     const months = lastSixMonthKeys();
     const count = (rows: { d: string | null }[]) => months.map((m) => ({ month: shortMonth(m), value: rows.filter((r) => String(r.d ?? '').startsWith(m)).length }));
     const pesosByMonth = (rows: { d: string; cents: number }[]) => months.map((m) => ({ month: shortMonth(m), value: centsToPesos(rows.filter((r) => r.d.startsWith(m)).reduce((t, r) => t + r.cents, 0)) }));
-    const collections = await monthlyCollections(appDb, null, months);
+    const collections = await monthlyCollections(appDb, branchId, months);
     const deposits = savingsRows.filter((t) => t.kind === 'DEPOSIT').map((t) => ({ d: t.date, cents: centsFromDb(t.amount) }));
     const withdrawals = savingsRows.filter((t) => t.kind === 'WITHDRAWAL').map((t) => ({ d: t.date, cents: centsFromDb(t.amount) }));
 
@@ -2126,6 +2151,7 @@ app.get('/api/admin/reports', requirePermission(ADMIN_READ_ANY), async (req: Aut
       cards,
       tableRows,
       portfolio: p,
+      branchId,
       branches: perBranch.map((x) => ({ id: x.branch.id, name: x.branch.name, portfolio: x.p })),
       ledger: { debits: ledger.debits, credits: ledger.credits, difference: ledger.difference, balanced: ledger.balanced },
     });
@@ -2164,24 +2190,30 @@ app.get('/api/admin/overview', requirePermission(ADMIN_READ_ANY), async (req: Au
     };
     if (!db) return res.json({ success: true, data: emptyData });
 
-    const [users, borrowers, loans, txns, payments, groups, kycRows, branchNotifs, pendingWithdrawals, savingsTxns, branchNames, borrowerNumbers] = await Promise.all([
-      db.select({ role: schema.users.role }).from(schema.users),
-      db.select().from(schema.borrowers),
-      db.select().from(schema.loans),
-      db.select().from(schema.financialTransactions),
-      db.select({ id: schema.payments.id, paymentDate: schema.payments.paymentDate, amount: schema.payments.amount }).from(schema.payments),
-      db.select({ status: schema.solidarityGroups.status }).from(schema.solidarityGroups),
-      db.select({ status: schema.kycSubmissions.status }).from(schema.kycSubmissions),
-      db.select().from(schema.branchNotifications),
-      db.select().from(schema.savingsWithdrawalRequests),
-      db.select({ date: schema.savingsTransactions.date, amount: schema.savingsTransactions.amount }).from(schema.savingsTransactions),
+    const branchId = await adminBranch(req);
+    const inBranch = <T extends { branchId: any }>(t: T) => (branchId ? eq(t.branchId, branchId) : undefined);
+    const [staffRows, borrowers, loans, txns, payments, groups, kycRows, branchNotifs, pendingWithdrawals, savingsTxns, branchNames, borrowerNumbers] = await Promise.all([
+      db.select({ id: schema.staff.id }).from(schema.staff).where(branchId ? eq(schema.staff.assignedBranchId, branchId) : undefined),
+      db.select().from(schema.borrowers).where(inBranch(schema.borrowers)),
+      db.select().from(schema.loans).where(inBranch(schema.loans)),
+      db.select().from(schema.financialTransactions).where(inBranch(schema.financialTransactions)),
+      db.select({ id: schema.payments.id, paymentDate: schema.payments.paymentDate, amount: schema.payments.amount }).from(schema.payments).where(inBranch(schema.payments)),
+      db.select({ status: schema.solidarityGroups.status }).from(schema.solidarityGroups).where(inBranch(schema.solidarityGroups)),
+      db
+        .select({ status: schema.kycSubmissions.status })
+        .from(schema.kycSubmissions)
+        .innerJoin(schema.borrowers, eq(schema.kycSubmissions.borrowerId, schema.borrowers.id))
+        .where(inBranch(schema.borrowers)),
+      db.select().from(schema.branchNotifications).where(inBranch(schema.branchNotifications)),
+      db.select().from(schema.savingsWithdrawalRequests).where(inBranch(schema.savingsWithdrawalRequests)),
+      db.select({ date: schema.savingsTransactions.date, amount: schema.savingsTransactions.amount }).from(schema.savingsTransactions).where(branchId ? inArray(schema.savingsTransactions.memberId, membersOf(db, branchId)) : undefined),
       resolveBranchNames(db),
       resolveBorrowerNumbers(db),
     ]);
     // Counts and balances shared with the reports, the branch app and the portal (src/reports/portfolio.ts).
-    const portfolio = await portfolioSummary(db as unknown as AppDb, { branchId: null });
+    const portfolio = await portfolioSummary(db as unknown as AppDb, { branchId });
 
-    const totalUsers = users.filter((u: any) => u.role === 'STAFF').length;
+    const totalUsers = staffRows.length;
     const activeClients = portfolio.members.active;
     const pendingKyc = portfolio.members.kycAwaitingReview;
     const totalLoanApplications = loans.length;
@@ -2341,8 +2373,8 @@ app.get('/api/admin/overview', requirePermission(ADMIN_READ_ANY), async (req: Au
         notifications,
       },
     });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch (err) {
+    sendError(res, err, 'admin-overview');
   }
 });
 

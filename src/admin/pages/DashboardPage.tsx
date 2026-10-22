@@ -14,14 +14,16 @@ import { Badge } from '../components/Badge';
 import { DataTable } from '../components/DataTable';
 import { formatPHP } from '../data/mockData';
 import { adminApi, AdminOverview } from '../services/adminApi';
+import { useAdminBranch } from '../branchScope';
 
 export const DashboardPage: React.FC = () => {
+  const { branchId, branchName } = useAdminBranch();
   const [quickLoading, setQuickLoading] = useState(false);
   const [overview, setOverview] = useState<AdminOverview | null>(null);
 
   useEffect(() => {
-    adminApi.overview().then(setOverview).catch(() => setOverview(null));
-  }, []);
+    adminApi.overview(branchId).then(setOverview).catch(() => setOverview(null));
+  }, [branchId]);
 
   const stats = overview?.stats;
   const recentLoans = overview?.recentLoans || [];
@@ -201,7 +203,7 @@ export const DashboardPage: React.FC = () => {
               <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                 Loan Origination & Approval Trajectory
               </h3>
-              <p className="text-xs text-slate-400">Monthly loan volume across all branches</p>
+              <p className="text-xs text-slate-400">Monthly loan volume{branchId ? ` · ${branchName}` : ' across all branches'}</p>
             </div>
             <div className="flex items-center gap-2">
               {stats && stats.totalLoanApplications > 0 && <Badge variant="gold" dot>{stats.approvalRate}% Avg Approval</Badge>}
@@ -288,7 +290,7 @@ export const DashboardPage: React.FC = () => {
               <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                 New Client Membership Onboarding
               </h3>
-              <p className="text-xs text-slate-400">Client registration across all branches</p>
+              <p className="text-xs text-slate-400">Client registration{branchId ? ` · ${branchName}` : ' across all branches'}</p>
             </div>
             <Link to="/admin/clients" className="text-xs font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-1">
               Client Registry <ArrowUpRight className="w-3 h-3" />

@@ -23,17 +23,19 @@ import { AppShell, AppNavSection, railLabelClass } from '../../ui';
 import { TopNav } from '../components/TopNav';
 import { adminApi } from '../services/adminApi';
 import { useAuth } from '../../context/AuthContext';
+import { useAdminBranch } from '../branchScope';
 
 export const AdminLayout: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
   const { logout, user } = useAuth();
+  const { branchId, branchName } = useAdminBranch();
 
   useEffect(() => {
-    adminApi.notifications()
+    adminApi.notifications(branchId)
       .then((items) => setUnreadCount(items.filter((n) => !n.isRead).length))
       .catch(() => setUnreadCount(0));
-  }, []);
+  }, [branchId]);
 
   const handleLogout = () => {
     logout();
@@ -99,15 +101,15 @@ export const AdminLayout: React.FC = () => {
         return (
           <div className="p-3">
             <div
-              title={isExpanded ? undefined : 'Tacloban Main Branch · PHP Settlement Node'}
+              title={isExpanded ? undefined : `Showing ${branchName}`}
               className="mb-2 flex items-center overflow-hidden rounded-lg border border-navy-700 bg-navy-900 px-[7px] py-2"
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-gold-500 to-gold-400 text-navy-950">
                 <Landmark className="h-4 w-4" />
               </div>
               <div className={`${railLabelClass(isExpanded)} ${isExpanded ? 'min-w-0' : ''}`}>
-                <p className="truncate text-[11px] text-slate-400">Tacloban Main Branch</p>
-                <p className="truncate text-[11px] font-semibold text-gold-400">PHP Settlement Node</p>
+                <p className="truncate text-[11px] text-slate-400">Showing</p>
+                <p className="truncate text-[11px] font-semibold text-gold-400">{branchName}</p>
               </div>
             </div>
             <button

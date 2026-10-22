@@ -6,6 +6,7 @@ import {
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { adminApi, ReportsData } from '../services/adminApi';
 import { formatDisplayDate, formatMoney } from '../../../shared/client/format';
+import { useAdminBranch } from '../branchScope';
 
 export type ReportCategory = 'client' | 'kyc' | 'loan' | 'repayment' | 'savings' | 'transactions' | 'groups' | 'branches';
 
@@ -28,6 +29,7 @@ const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` 
 
 /** All figures come from GET /api/admin/reports, computed by src/reports/portfolio.ts (the same as the branch app and the member portal). */
 export const ReportsAnalyticsPage: React.FC = () => {
+  const { branchId, branchName } = useAdminBranch();
   const [category, setCategory] = useState<ReportCategory>('client');
   const [reports, setReports] = useState<ReportsData | null>(null);
   const [error, setError] = useState('');
@@ -35,11 +37,11 @@ export const ReportsAnalyticsPage: React.FC = () => {
   const load = useCallback(async () => {
     setError('');
     try {
-      setReports(await adminApi.reports());
+      setReports(await adminApi.reports(branchId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The reports could not be loaded.');
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     load();
@@ -56,6 +58,7 @@ export const ReportsAnalyticsPage: React.FC = () => {
     if (!reports) return;
     const lines = [
       ['Report', current.label],
+      ['Branch', branchName],
       ['As of', reports.portfolio.asOf],
       [],
       ...summaryCards.map((c) => [c.title, c.value]),
@@ -79,7 +82,7 @@ export const ReportsAnalyticsPage: React.FC = () => {
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Reports</h1>
           <p className="text-xs sm:text-sm text-slate-500">
-            All branches{reports ? ` · as of ${formatDisplayDate(reports.portfolio.asOf)}` : ''}. The same figures the branch app and the member portal show.
+            {branchName}{reports ? ` · as of ${formatDisplayDate(reports.portfolio.asOf)}` : ''}. The same figures the branch app and the member portal show.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -211,16 +214,16 @@ export const ReportsAnalyticsPage: React.FC = () => {
         <div className="flex items-center justify-between mb-4 gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 tracking-tight">Breakdown</h3>
-            <p className="text-[11px] text-slate-500">{current.label}, all branches.</p>
+            <p className="text-[11px] text-slate-500">{current.label}, {branchId ? branchName : 'all branches'}.</p>
           </div>
           {reports &&
             (reports.ledger.balanced ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title={`Debits ${formatMoney(reports.ledger.debits)} = credits ${formatMoney(reports.ledger.credits)}`}>
-                <CheckCircle2 className="w-3 h-3" /> Ledger balanced
+                <CheckCircle2 className="w-3 h-3" /> Ledger balanced{branchId ? ' (whole cooperative)' : ''}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                <AlertTriangle className="w-3 h-3" /> Ledger out of balance by {formatMoney(reports.ledger.difference)}
+                <AlertTriangle className="w-3 h-3" /> Ledger out of balance by {formatMoney(reports.ledger.difference)}{branchId ? ' (whole cooperative)' : ''}
               </span>
             ))}
         </div>

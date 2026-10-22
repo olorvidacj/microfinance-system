@@ -11,6 +11,7 @@ import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AdminLoan, formatPHP, formatDate } from '../data/mockData';
 import { adminApi, LoanDetail } from '../services/adminApi';
 import { LOAN_STATUSES } from '../../../shared/lending';
+import { useAdminBranch } from '../branchScope';
 
 const STATUSES = [...LOAN_STATUSES];
 
@@ -18,6 +19,7 @@ const STATUSES = [...LOAN_STATUSES];
 const workspaceLink = (id: string) => `/staff/app/loans/${encodeURIComponent(id)}`;
 
 export const LoanManagementPage: React.FC = () => {
+  const { branchId } = useAdminBranch();
   const [loans, setLoans] = useState<AdminLoan[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -27,8 +29,8 @@ export const LoanManagementPage: React.FC = () => {
   const [detailTab, setDetailTab] = useState<'overview' | 'schedule' | 'history'>('overview');
 
   useEffect(() => {
-    adminApi.loans().then(setLoans).catch(() => setLoans([]));
-  }, []);
+    adminApi.loans(branchId).then(setLoans).catch(() => setLoans([]));
+  }, [branchId]);
 
   useEffect(() => {
     if (!selected) { setDetail(null); return; }

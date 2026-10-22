@@ -9,6 +9,7 @@ import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { LendingGroup, formatDate } from '../data/mockData';
 import { adminApi, GroupDetail } from '../services/adminApi';
 import { peso } from '../../components/lending';
+import { useAdminBranch } from '../branchScope';
 
 const STATUSES = ['Forming', 'Active', 'Suspended', 'Dissolved'];
 // Money to the centavo (the API sends numbers with up to 2 decimals).
@@ -19,6 +20,7 @@ const php = (n: number | string | null | undefined) => peso(n === null || n === 
  * branch loan officers (Group lending in the staff app); this page is read-only.
  */
 export const LendingGroupsPage: React.FC = () => {
+  const { branchId } = useAdminBranch();
   const [groups, setGroups] = useState<LendingGroup[]>([]);
   const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
@@ -28,8 +30,8 @@ export const LendingGroupsPage: React.FC = () => {
   const [tab, setTab] = useState<'members' | 'loan' | 'payments' | 'fund' | 'meetings'>('members');
 
   useEffect(() => {
-    adminApi.groups().then(setGroups, (err) => setLoadError(err instanceof Error ? err.message : 'Groups could not be loaded.'));
-  }, []);
+    adminApi.groups(branchId).then(setGroups, (err) => setLoadError(err instanceof Error ? err.message : 'Groups could not be loaded.'));
+  }, [branchId]);
 
   useEffect(() => {
     if (!selected) {
