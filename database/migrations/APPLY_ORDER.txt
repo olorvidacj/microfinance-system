@@ -32,3 +32,4 @@
 0028_group_lending.sql
 0029_ledger_immutable.sql
 0030_online_payments.sql
+0031_private_documents_bucket.sql

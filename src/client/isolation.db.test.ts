@@ -17,6 +17,7 @@ import { clientNotifications, markAllNotificationsRead, markNotificationRead } f
 import { ownProfile, updateOwnProfile } from './profile';
 import { sendSupportRequest, supportRequests } from './support';
 import { clientTransaction, clientTransactions } from './transactions';
+import { verifyLocalToken } from '../kyc/storage';
 
 /**
  * B6 security: a member can never read or change another member's data
@@ -173,6 +174,29 @@ describe("a member cannot reach another member's records by id", () => {
   it('documents: the file link is "not found"', async () => {
     await expectHttp(clientDocumentLink(db, A, b.documentId), 404);
     expect((await clientDocumentLink(db, B, b.documentId)).url).toContain('b-agreement.pdf');
+  });
+
+  it('documents: a stored file is served through a fresh signed link, to its owner only', async () => {
+    process.env.AUTH_SECRET ??= 'isolation-test-secret';
+    const storagePath = `kyc/${B.borrowerId}/loan-proof-of-income/stored.png`;
+    await db.insert(schema.documents).values({
+      id: 'doc-iso-b-stored',
+      docNumber: 'DOC-ISO-B2',
+      branchId: 'br-a',
+      clientId: B.borrowerId,
+      docName: 'Proof of income',
+      docType: 'PROOF_OF_INCOME',
+      // The link saved at upload, long expired: never handed out again.
+      fileUrl: 'https://proj.supabase.co/storage/v1/object/sign/kyc-documents/old?token=expired',
+      storagePath,
+      uploadedBy: 'tel1',
+      createdAt: new Date().toISOString(),
+    });
+    await expectHttp(clientDocumentLink(db, A, 'doc-iso-b-stored'), 404);
+    const link = await clientDocumentLink(db, B, 'doc-iso-b-stored');
+    expect(link.expiresInSeconds).toBe(600);
+    expect(link.url).toMatch(/^\/api\/kyc\/files\//);
+    expect(verifyLocalToken(link.url.split('/').pop() ?? '')).toBe(storagePath);
   });
 
   it('notifications: cannot mark another member\'s as read', async () => {

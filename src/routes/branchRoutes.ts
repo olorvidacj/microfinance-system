@@ -2,8 +2,8 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { getDb, schema } from '../db/index';
-import { storeDocument, DOCUMENT_BUCKET } from '../db/documentStorage';
-import { getServerSupabase } from '../db/supabaseServer';
+import { storeDocument } from '../db/documentStorage';
+import { documentFileLink } from '../db/documentLinks';
 import { hasAnyPermission, getRolePermissions, normalizeRole, SystemPermission } from '../auth/permissions';
 import type { InstallmentStatus } from '../types';
 import type { AppDb } from '../kyc/errors';
@@ -1177,19 +1177,11 @@ branchRouter.get('/documents/:id/file', requireBranch(['view_client_info', 'regi
     .where(and(eq(schema.documents.id, req.params.id), scopeCond(ctx, schema.documents.branchId) as any))
     .limit(1);
   if (rows.length === 0) return res.status(404).json({ error: 'Document not found in this branch.' });
-
-  const ref = (rows[0] as any).fileUrl as string | null;
-  if (!ref) return res.status(404).json({ error: 'This document has no stored file.' });
-  // Externally hosted links are already retrievable; hand them back as-is.
-  if (/^https?:\/\//i.test(ref)) return res.json({ success: true, url: ref, expiresInSeconds: null });
-
-  const supabase = getServerSupabase();
-  if (!supabase) return res.status(503).json({ error: 'Document storage is unavailable.' });
-  const { data: signed, error: signErr } = await supabase.storage
-    .from(DOCUMENT_BUCKET)
-    .createSignedUrl(ref, 60 * 10);
-  if (signErr) return res.status(500).json({ error: `Could not sign the document: ${signErr.message}` });
-  res.json({ success: true, url: signed.signedUrl, expiresInSeconds: 600 });
+  try {
+    res.json({ success: true, ...(await documentFileLink(rows[0])) });
+  } catch (err) {
+    sendError(res, err, 'branch-document-file');
+  }
 });
 
 branchRouter.patch('/documents/:id', requireBranch(['register_clients', 'manage_kyc']), async (req, res) => {
