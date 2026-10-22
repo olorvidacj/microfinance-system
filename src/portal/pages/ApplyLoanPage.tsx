@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, BadgeCheck, Building2, Check, Clock, Eye, FileCheck, PackageCheck, ShieldCheck, Trash2, Upload, UserCheck, XCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BadgeCheck, Building2, Check, FileCheck, PackageCheck, ShieldCheck, Trash2, Upload, UserCheck } from 'lucide-react';
 import { loanService } from '../services/loans';
 import { profileService } from '../services/profile';
 import { ApiError } from '../services/clientApi';
@@ -15,7 +15,8 @@ import {
   type LoanProduct,
   type LoanPurpose,
 } from '../../../shared/lending';
-import { UPLOAD_LIMITS, isKycVerified, normaliseKycStatus, type KycStatus } from '../../../shared/kyc-core';
+import { UPLOAD_LIMITS, isKycVerified } from '../../../shared/kyc-core';
+import { KycStatusPanel } from '../kyc/KycStatusPanel';
 import { LoanQuoteView, ProductTerms, useLoanQuote } from '../../components/lending';
 import { Button, Card, CardBody, CardHeader, CardTitle, ErrorState, Field, Input, LoadingState, Select, Textarea } from '../components/ui';
 import { InfoRow } from '../components/common';
@@ -34,16 +35,6 @@ const DOC_SLOTS: { docType: UploadedDoc['docType']; title: string; hint: string 
   { docType: 'PROOF_OF_INCOME', title: 'Proof of income / livelihood', hint: 'Recent payslip, ITR, certificate of employment, or business permit / receipts.' },
   { docType: 'GUARANTOR_COLLATERAL', title: 'Guarantor ID / collateral proof', hint: "Guarantor's valid ID, or proof of ownership of declared collateral." },
 ];
-
-const KYC_GATE: Partial<Record<KycStatus, { icon: React.ElementType; title: string; desc: string; cls: string; fix: boolean }>> = {
-  NOT_STARTED: { icon: ShieldCheck, title: 'KYC verification required', desc: 'Complete and pass KYC verification before applying for a loan.', cls: 'border-amber-200 bg-amber-50 text-amber-700', fix: true },
-  IN_PROGRESS: { icon: Clock, title: 'Finish your KYC', desc: 'Finish and submit your KYC verification. Once it is verified you can apply.', cls: 'border-blue-200 bg-blue-50 text-blue-700', fix: true },
-  SUBMITTED: { icon: Eye, title: 'KYC under review', desc: 'Your KYC is waiting for review. You can apply once it is verified.', cls: 'border-blue-200 bg-blue-50 text-blue-700', fix: false },
-  UNDER_REVIEW: { icon: Eye, title: 'KYC under review', desc: 'Our staff are checking your documents. You will be notified when it is verified.', cls: 'border-blue-200 bg-blue-50 text-blue-700', fix: false },
-  CORRECTION_REQUIRED: { icon: AlertTriangle, title: 'KYC needs changes', desc: 'Staff asked for changes to your KYC. Update it and submit again.', cls: 'border-amber-200 bg-amber-50 text-amber-700', fix: true },
-  REJECTED: { icon: XCircle, title: 'KYC not approved', desc: 'Your KYC was not approved. Review the reason and submit again.', cls: 'border-rose-200 bg-rose-50 text-rose-700', fix: true },
-  SUSPENDED: { icon: XCircle, title: 'Account suspended', desc: 'Your KYC is suspended. Please visit your branch.', cls: 'border-rose-200 bg-rose-50 text-rose-700', fix: false },
-};
 
 const ApplyLoanPage: React.FC = () => {
   const toast = useToast();
@@ -157,29 +148,18 @@ const ApplyLoanPage: React.FC = () => {
   if (loading) return <LoadingState label="Loading loan products…" />;
   if (error) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
 
-  const kycStatus = normaliseKycStatus(kyc?.kycStatus);
-  if (!isKycVerified(kycStatus)) {
-    const c = KYC_GATE[kycStatus] ?? KYC_GATE.NOT_STARTED!;
-    const Icon = c.icon;
-    const reason = kycStatus === 'REJECTED' ? kyc?.rejectionReason : kycStatus === 'CORRECTION_REQUIRED' ? kyc?.correctionReason : null;
+  // The server refuses loan applications until KYC is approved; this explains why, and what to do next.
+  if (!kyc || !isKycVerified(kyc.kycStatus)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <div className={`flex h-16 w-16 items-center justify-center rounded-full ${c.cls}`}>
-          <Icon className="h-8 w-8" />
+      <div className="mx-auto max-w-xl space-y-4">
+        <div className="text-center">
+          <h1 className="text-xl font-bold text-navy-950">Verify your identity to apply for a loan</h1>
+          <p className="mt-1 text-sm text-slate-600">Loans are open to members whose identity has been verified by their branch.</p>
         </div>
-        <h2 className="mt-4 text-xl font-bold text-slate-900">{c.title}</h2>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">{c.desc}</p>
-        {reason && <p className="mt-2 text-sm text-slate-700">Reason: {reason}</p>}
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          {c.fix && (
-            <Link to="/portal/kyc">
-              <Button variant="brand">
-                <ShieldCheck className="h-4 w-4" /> Go to KYC
-              </Button>
-            </Link>
-          )}
-          <Link to="/portal">
-            <Button variant="outline">Back to dashboard</Button>
+        {kyc && <KycStatusPanel status={kyc} />}
+        <div className="text-center">
+          <Link to="/portal" className="text-sm font-semibold text-navy-900 underline">
+            Back to my dashboard
           </Link>
         </div>
       </div>

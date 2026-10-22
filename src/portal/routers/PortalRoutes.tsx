@@ -5,7 +5,7 @@ import ProfilePage from '../pages/ProfilePage';
 import LoansPage from '../pages/LoansPage';
 import LoanDetailPage from '../pages/LoanDetailPage';
 import ApplyLoanPage from '../pages/ApplyLoanPage';
-import KycPage from '../pages/KycPage';
+import KycWizardPage from '../kyc/KycWizardPage';
 import PaymentsPage from '../pages/PaymentsPage';
 import SavingsPage from '../pages/SavingsPage';
 import TransactionsPage from '../pages/TransactionsPage';
@@ -31,7 +31,7 @@ export const PORTAL_ROUTES: PortalRouteDef[] = [
   { path: 'loans', element: wrap(<LoansPage />) },
   { path: 'loans/:id', element: wrap(<LoanDetailPage />) },
   { path: 'apply', element: wrap(<ApplyLoanPage />) },
-  { path: 'kyc', element: wrap(<KycPage />) },
+  { path: 'kyc', element: wrap(<KycWizardPage />) },
   { path: 'payments', element: wrap(<PaymentsPage />) },
   { path: 'savings', element: wrap(<SavingsPage />) },
   { path: 'transactions', element: wrap(<TransactionsPage />) },

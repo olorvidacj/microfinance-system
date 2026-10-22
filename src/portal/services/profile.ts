@@ -1,13 +1,7 @@
 import { ApiError, clientRequest } from './clientApi';
-import type { KycApplicationPayload } from '../../../shared/kyc-core';
-import {
-  ClientProfile,
-  KycStatusData,
-  KycSubmissionFull,
-  KycRequiredDocumentItem,
-  ExtractedIdData,
-  FaceMatchResult,
-} from '../types';
+import type { Discrepancy, KycApplicationPayload } from '../../../shared/kyc-core';
+import type { FaceMatchView, IdScanView, KycUploadView } from '../../../shared/client';
+import type { ClientProfile, KycStatusData } from '../types';
 
 export const profileService = {
   async get(): Promise<ClientProfile> {
@@ -37,89 +31,57 @@ export const profileService = {
   },
 
   async kycStatus(): Promise<KycStatusData> {
-    const payload = await clientRequest('/api/client/kyc-status');
-    return payload || { kycStatus: 'NOT_STARTED', isVerified: false, requiredDocuments: [], uploadedDocuments: [] };
+    const payload: KycStatusData | undefined = await clientRequest('/api/client/kyc-status', undefined, (p) => (p?.kycStatus ? p : undefined));
+    if (!payload) throw new ApiError('Your verification status could not be loaded.');
+    return payload;
   },
 
-  async saveDraft(data: KycApplicationPayload & { currentStep?: number }): Promise<any> {
+  /** Saves progress. Only parts the member may change now are accepted by the server. */
+  async saveDraft(data: KycApplicationPayload & { currentStep?: number }): Promise<{ submissionId: string | null; status: string }> {
     const payload = await clientRequest('/api/client/kyc/save-draft', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Failed to save draft');
-    return payload;
+    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Your progress could not be saved.');
+    return { submissionId: payload.submissionId ?? null, status: payload.status };
   },
 
-  async submitKyc(data: KycApplicationPayload): Promise<any> {
+  async submitKyc(data: KycApplicationPayload): Promise<{ status: string; statusLabel: string; referenceNumber: string | null }> {
     const payload = await clientRequest('/api/client/kyc/submit', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'KYC submission failed');
-    return payload;
+    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Your application could not be submitted.');
+    return { status: payload.status, statusLabel: payload.statusLabel, referenceNumber: payload.referenceNumber ?? null };
   },
 
-  async kycDocuments(): Promise<any[]> {
-    const payload = await clientRequest('/api/client/kyc/documents');
-    return payload?.documents || [];
-  },
-
-  async uploadKycDocument(doc: {
-    documentType: string;
-    documentName: string;
-    fileName?: string;
-    imageBase64?: string;
-    side?: string;
-    mime?: string;
-  }): Promise<any> {
+  /** Stores one supporting document (the server checks its type, size and photo quality). */
+  async uploadKycDocument(doc: { documentType: string; documentName: string; fileName?: string; imageBase64: string; side?: 'FRONT' | 'BACK' }): Promise<KycUploadView['document']> {
     const payload = await clientRequest('/api/client/kyc/documents/upload', {
       method: 'POST',
       body: JSON.stringify(doc),
     });
-    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Document upload failed');
-    return payload?.document;
+    if (!payload?.document) throw new ApiError(payload?.error || payload?.message || 'The document could not be uploaded.');
+    return payload.document;
   },
 
-  async uploadSelfie(imageBase64: string, mime?: string): Promise<any> {
-    const payload = await clientRequest('/api/client/kyc/selfie', {
-      method: 'POST',
-      body: JSON.stringify({ imageBase64, mime }),
-    });
-    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Selfie upload failed');
-    return payload;
-  },
-
-  async processId(data: {
-    frontImageBase64: string;
-    backImageBase64?: string;
-    documentType?: string;
-    fileName?: string;
-  }): Promise<{
-    validation: { isReadable: boolean; confidenceScore: number; detectedType: string; validationWarnings: string[] };
-    extractedData: ExtractedIdData;
-    document: { id: string; frontFileUrl?: string; backFileUrl?: string };
-  }> {
+  /** Stores the ID photo(s) and reads them automatically; the reading is for the member to check, not a verification. */
+  async processId(data: { frontImageBase64?: string; backImageBase64?: string; fileName?: string } = {}): Promise<IdScanView & { discrepancies: Discrepancy[] }> {
     const payload = await clientRequest('/api/client/kyc/process-id', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'ID verification failed');
+    if (!payload?.validation) throw new ApiError(payload?.error || payload?.message || 'Your ID could not be checked.');
     return payload;
   },
 
-  async matchFace(data: {
-    selfieImageBase64: string;
-    idImageBase64?: string;
-    livenessAction?: string;
-  }): Promise<{
-    matchResult: FaceMatchResult;
-    selfie: { id: string; fileUrl?: string };
-  }> {
+  /** Stores a new selfie (if given) and compares the stored selfie with the stored ID photo on the server. */
+  async matchFace(data: { selfieImageBase64?: string } = {}): Promise<FaceMatchView> {
     const payload = await clientRequest('/api/client/kyc/match-face', {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    if (!payload?.success) throw new ApiError(payload?.error || payload?.message || 'Face matching failed');
+    if (!payload?.selfie) throw new ApiError(payload?.error || payload?.message || 'Your selfie could not be checked.');
     return payload;
   },
 

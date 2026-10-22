@@ -5,7 +5,7 @@
 // they consume these types via the service layer.
 // ---------------------------------------------------------------------------
 
-import type { ClientProfileView, KycStatusView } from '../../shared/client/contracts';
+import type { ClientProfileView, KycStatusFullView } from '../../shared/client/contracts';
 
 export type PaymentStatus = 'COMPLETED' | 'PENDING' | 'FAILED' | 'PENDING_TELLER_VERIFICATION' | 'VERIFIED' | 'REJECTED';
 
@@ -53,148 +53,11 @@ export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'GCASH' | 'MAYA' | 'EWALL
 /** Exactly what GET /api/client/profile sends (shared/client/contracts.ts). */
 export type ClientProfile = ClientProfileView;
 
-export interface KycDocumentItem {
-  type: string;
-  name: string;
-  submitted: boolean;
-  status: 'PENDING' | 'VERIFIED' | 'REJECTED';
-}
-
-export interface IdQualityChecks {
-  isBlurry: boolean;
-  isTooDark: boolean;
-  isTooBrightOrGlare: boolean;
-  isCutOff: boolean;
-  isTooFar: boolean;
-  isUpsideDown: boolean;
-  isRecognizedDoc: boolean;
-}
-
-export interface IdValidationResult {
-  /** COMPLETED, or UNAVAILABLE/FAILED when the ID could not be read automatically. */
-  status?: 'COMPLETED' | 'UNAVAILABLE' | 'FAILED';
-  isReadable: boolean | null;
-  confidenceScore: number | null;
-  detectedType: string | null;
-  qualityChecks?: IdQualityChecks;
-  qualityMessage?: string;
-  authenticityNotice?: string;
-  validationWarnings?: string[];
-}
-
-export interface ExtractedIdData {
-  fullName?: string;
-  firstName?: string;
-  middleName?: string;
-  lastName?: string;
-  suffix?: string;
-  dateOfBirth?: string;
-  gender?: string;
-  civilStatus?: string;
-  nationality?: string;
-  address?: string;
-  houseNumber?: string;
-  street?: string;
-  barangay?: string;
-  city?: string;
-  province?: string;
-  postalCode?: string;
-  idType?: string;
-  idTypeName?: string;
-  idNumber?: string;
-  issueDate?: string | null;
-  expirationDate?: string | null;
-  isExpired?: boolean;
-  confidenceScore?: number;
-  isReadable?: boolean;
-  detectedType?: string;
-  qualityChecks?: IdQualityChecks;
-  qualityMessage?: string;
-  authenticityNotice?: string;
-  validationWarnings?: string[];
-  autoFilledFields?: string[];
-}
-
-export interface FaceMatchResult {
-  isMatch: boolean;
-  matchConfidence: number;
-  /** NO_MATCH blocks submission; UNAVAILABLE/FAILED mean no automated comparison was made. */
-  matchStatus: 'MATCH' | 'LOW_CONFIDENCE' | 'NO_MATCH' | 'UNAVAILABLE' | 'FAILED';
-  livenessVerified: boolean;
-  details: string;
-  recommendation?: 'CONTINUE' | 'RETRY_SELFIE' | 'MANUAL_REVIEW';
-  timestamp?: string;
-}
-
-/** GET /api/client/kyc-status: the shared view plus the scan and face results the web wizard restores. */
-export type KycStatusData = KycStatusView & {
+/** GET /api/client/kyc-status: the shared full view plus the fields older portal pages read. */
+export type KycStatusData = KycStatusFullView & {
   submissionId: string | null;
   uploadedDocuments: Array<{ type?: string; documentType?: string; fileUrl?: string | null }>;
-  extractedIdData?: ExtractedIdData | null;
-  faceMatchResult?: FaceMatchResult | null;
 };
-
-// ---------------------------------------------------------------------------
-// KYC Submission
-// ---------------------------------------------------------------------------
-
-export interface KycPersonalInfo {
-  firstName: string;
-  middleName: string;
-  lastName: string;
-  dateOfBirth: string;
-  gender: string;
-  civilStatus: string;
-  phone: string;
-  email: string;
-}
-
-export interface KycAddress {
-  houseUnit: string;
-  street: string;
-  barangay: string;
-  city: string;
-  province: string;
-  postalCode: string;
-}
-
-export interface KycEmployment {
-  occupation: string;
-  employmentStatus: string;
-  employer: string;
-  monthlyIncome: number;
-  sourceOfIncome: string;
-}
-
-export interface KycRequiredDocumentItem {
-  id: string;
-  documentType: string;
-  documentName: string;
-  description?: string;
-  isActive: boolean;
-  sortOrder: number;
-}
-
-export interface KycSubmissionFull {
-  id: string;
-  borrowerId: string;
-  status: KYCStatus;
-  personalInfo: KycPersonalInfo;
-  address: KycAddress;
-  employment: KycEmployment;
-  submittedAt?: string;
-  reviewedAt?: string;
-  reviewedBy?: string;
-  reviewedByName?: string;
-  correctionReason?: string;
-  rejectionReason?: string;
-  verifiedAt?: string;
-  documents: KycDocumentItem[];
-  extractedIdData?: ExtractedIdData;
-  faceMatchResult?: FaceMatchResult;
-  createdAt: string;
-  updatedAt: string;
-}
 
 // ---------------------------------------------------------------------------
 // Loans
