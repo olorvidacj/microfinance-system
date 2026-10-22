@@ -85,18 +85,33 @@ function timedInit(init?: RequestInit): RequestInit {
   return { ...(init || {}), signal };
 }
 
-function readKey(key: string): string {
+/**
+ * Where each site keeps its session. The member portal and the staff app
+ * remember it in the browser; the admin console only for the open tab, so
+ * opening it in a new tab or after closing the browser asks for the password.
+ */
+type Store = 'local' | 'tab';
+const SESSION_STORE: Readonly<Record<AuthScope, Store>> = { member: 'local', staff: 'local', admin: 'tab' };
+
+/** Without activity for this long, the admin console signs out by itself. */
+export const ADMIN_IDLE_MS = 15 * 60 * 1000;
+const ADMIN_SEEN_KEY = 'HOSCOMCO_session_admin_seen';
+const ADMIN_SIGNED_OUT_KEY = 'HOSCOMCO_admin_signed_out';
+
+const storage = (store: Store): Storage => (store === 'tab' ? sessionStorage : localStorage);
+
+function readKey(key: string, store: Store = 'local'): string {
   try {
-    return localStorage.getItem(key) || '';
+    return storage(store).getItem(key) || '';
   } catch {
     return '';
   }
 }
 
-function writeKey(key: string, value: string): void {
+function writeKey(key: string, value: string, store: Store = 'local'): void {
   try {
-    if (value) localStorage.setItem(key, value);
-    else localStorage.removeItem(key);
+    if (value) storage(store).setItem(key, value);
+    else storage(store).removeItem(key);
   } catch {
     // Storage blocked (private mode): the session lasts until the page is closed.
   }
@@ -104,12 +119,23 @@ function writeKey(key: string, value: string): void {
 
 /** The token of one site's session. */
 export function getStoredToken(scope: AuthScope): string {
-  return readKey(STORAGE_KEYS[scope]);
+  return readKey(STORAGE_KEYS[scope], SESSION_STORE[scope]);
 }
 
 export function setStoredToken(scope: AuthScope, token: string): void {
-  writeKey(STORAGE_KEYS[scope], token);
+  writeKey(STORAGE_KEYS[scope], token, SESSION_STORE[scope]);
 }
+
+/** Why the admin console last signed out by itself, once (for its sign-in page). */
+export function takeAdminSignOutReason(): 'idle' | null {
+  const reason = readKey(ADMIN_SIGNED_OUT_KEY, 'tab');
+  writeKey(ADMIN_SIGNED_OUT_KEY, '', 'tab');
+  return reason === 'idle' ? 'idle' : null;
+}
+
+const adminSeen = () => Number(readKey(ADMIN_SEEN_KEY, 'tab')) || 0;
+const markAdminSeen = () => writeKey(ADMIN_SEEN_KEY, String(Date.now()), 'tab');
+const adminIdle = () => Date.now() - adminSeen() > ADMIN_IDLE_MS;
 
 /** The site the current page belongs to (API calls use its session only). */
 function currentScope(): AuthScope | null {
@@ -137,8 +163,13 @@ async function parseJson(res: Response): Promise<any> {
   }
 }
 
-/** Moves the old shared token into the site its account belongs to, once. */
+/**
+ * Moves the old shared token into the site its account belongs to, once, and
+ * drops an admin session remembered in the browser before the admin console
+ * kept it per tab.
+ */
 function migrateLegacyToken(): void {
+  writeKey(STORAGE_KEYS.admin, '', 'local');
   const legacy = readKey(LEGACY_TOKEN_KEY);
   if (!legacy) return;
   try {
@@ -197,6 +228,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let cancelled = false;
     migrateLegacyToken();
+    if (getStoredToken('admin') && adminIdle()) {
+      setStoredToken('admin', '');
+      writeKey(ADMIN_SIGNED_OUT_KEY, 'idle', 'tab');
+    }
     (async () => {
       const restored = { ...NO_SESSIONS };
       for (const scope of AUTH_SCOPES) {
@@ -229,8 +264,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('storage', onStorage);
   }, [check, put]);
 
+  // The admin console signs out after ADMIN_IDLE_MS without activity in this tab.
+  const adminSignedIn = Boolean(sessions.admin);
+  useEffect(() => {
+    if (!adminSignedIn) return;
+    let last = 0;
+    const seen = () => {
+      if (Date.now() - last < 10_000) return;
+      last = Date.now();
+      markAdminSeen();
+    };
+    const checkIdle = () => {
+      if (!adminIdle()) return;
+      setStoredToken('admin', '');
+      writeKey(ADMIN_SIGNED_OUT_KEY, 'idle', 'tab');
+      put('admin', null);
+    };
+    const events = ['pointerdown', 'keydown', 'mousemove', 'scroll', 'touchstart'] as const;
+    for (const e of events) window.addEventListener(e, seen, { passive: true });
+    document.addEventListener('visibilitychange', checkIdle);
+    const timer = setInterval(checkIdle, 20_000);
+    return () => {
+      for (const e of events) window.removeEventListener(e, seen);
+      document.removeEventListener('visibilitychange', checkIdle);
+      clearInterval(timer);
+    };
+  }, [adminSignedIn, put]);
+
   const adopt = useCallback(
     (scope: AuthScope, token: string, user: AuthUser) => {
+      if (scope === 'admin') markAdminSeen();
       setStoredToken(scope, token);
       put(scope, user);
       setLastSignedIn(scope);

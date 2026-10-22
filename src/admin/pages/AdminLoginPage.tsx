@@ -4,7 +4,7 @@ import {
   Building2, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShieldCheck, MapPin, Phone, ArrowLeft,
 } from 'lucide-react';
 import { COOP_INFO } from '../data/mockData';
-import { useAuth } from '../../context/AuthContext';
+import { ADMIN_IDLE_MS, takeAdminSignOutReason, useAuth } from '../../context/AuthContext';
 
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -12,7 +12,7 @@ export const AdminLoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [signedOutIdle] = useState(() => takeAdminSignOutReason() === 'idle');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -105,6 +105,12 @@ export const AdminLoginPage: React.FC = () => {
             <h2 className="text-xl font-bold text-slate-900">Administrator Sign In</h2>
             <p className="mt-1 text-sm text-slate-500">Enter your credentials to access the admin dashboard.</p>
 
+            {signedOutIdle && !error && (
+              <div id="admin-idle-notice" className="mt-4 flex items-start gap-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm" role="status">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>You were signed out after {ADMIN_IDLE_MS / 60_000} minutes without activity. Sign in again to continue.</span>
+              </div>
+            )}
             {error && (
               <div className="mt-4 flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -155,18 +161,9 @@ export const AdminLoginPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-gold-600 focus:ring-gold-500"
-                  />
-                  Remember me
-                </label>
-                <span className="text-[11px] text-slate-400">2FA Enabled</span>
-              </div>
+              <p className="text-xs text-slate-500">
+                For security, you are signed out when you close this tab, and after {ADMIN_IDLE_MS / 60_000} minutes without activity.
+              </p>
 
               <button
                 type="submit"
