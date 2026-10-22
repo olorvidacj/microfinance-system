@@ -12,13 +12,21 @@ import { KycReviewPanel, type KycReviewApi } from './KycReviewPanel';
 export type KycQueueResultView = Awaited<ReturnType<typeof kycQueue>>;
 export type KycQueueRow = KycQueueResultView['items'][number];
 
+/** Queue filters; submission dates are Philippine calendar days, inclusive. */
+export interface KycQueueParams {
+  status?: string;
+  search?: string;
+  submittedFrom?: string;
+  submittedTo?: string;
+}
+
 type Tab = 'AWAITING' | 'UNDER_REVIEW' | 'CORRECTION_REQUIRED' | 'APPROVED' | 'REJECTED' | 'IN_PROGRESS' | 'ALL';
 
 const TABS: Array<{ key: Tab; label: string; count: (c: KycQueueResultView['counts']) => number; icon: React.ReactNode }> = [
   { key: 'AWAITING', label: 'Waiting for review', count: (c) => c.pending + c.underReview, icon: <Clock className="h-4 w-4 text-amber-500" /> },
   { key: 'UNDER_REVIEW', label: 'Under review', count: (c) => c.underReview, icon: <Eye className="h-4 w-4 text-blue-500" /> },
-  { key: 'CORRECTION_REQUIRED', label: 'Resubmission required', count: (c) => c.correctionRequired, icon: <AlertTriangle className="h-4 w-4 text-orange-500" /> },
-  { key: 'APPROVED', label: 'Verified', count: (c) => c.approved, icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" /> },
+  { key: 'CORRECTION_REQUIRED', label: 'Additional information required', count: (c) => c.correctionRequired, icon: <AlertTriangle className="h-4 w-4 text-orange-500" /> },
+  { key: 'APPROVED', label: 'Approved', count: (c) => c.approved, icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" /> },
   { key: 'REJECTED', label: 'Rejected', count: (c) => c.rejected, icon: <XCircle className="h-4 w-4 text-rose-500" /> },
   { key: 'IN_PROGRESS', label: 'Started, not submitted', count: (c) => c.inProgress + c.notStarted, icon: <ShieldCheck className="h-4 w-4 text-slate-400" /> },
   { key: 'ALL', label: 'All members', count: (c) => c.all, icon: null },
@@ -29,7 +37,7 @@ const POLL_MS = 15_000;
 export interface KycQueueViewProps {
   title: string;
   subtitle: string;
-  load: (params: { status?: string; search?: string }) => Promise<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] }>;
+  load: (params: KycQueueParams) => Promise<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] }>;
   api: KycReviewApi;
   canDecide: boolean;
   showBranch?: boolean;
@@ -40,6 +48,8 @@ const fmt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('en-PH'
 export const KycQueueView: React.FC<KycQueueViewProps> = ({ title, subtitle, load, api, canDecide, showBranch }) => {
   const [tab, setTab] = useState<Tab>('AWAITING');
   const [search, setSearch] = useState('');
+  const [submittedFrom, setSubmittedFrom] = useState('');
+  const [submittedTo, setSubmittedTo] = useState('');
   const [result, setResult] = useState<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] } | null>(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
@@ -47,14 +57,14 @@ export const KycQueueView: React.FC<KycQueueViewProps> = ({ title, subtitle, loa
   const refresh = useCallback(async () => {
     try {
       const status = tab === 'ALL' ? undefined : tab === 'IN_PROGRESS' ? undefined : tab;
-      const r = await load({ status, search: search.trim() || undefined });
+      const r = await load({ status, search: search.trim() || undefined, submittedFrom: submittedFrom || undefined, submittedTo: submittedTo || undefined });
       const data = tab === 'IN_PROGRESS' ? r.data.filter((i) => i.kycStatus === 'IN_PROGRESS' || i.kycStatus === 'NOT_STARTED') : r.data;
       setResult({ data, counts: r.counts });
       setError('');
-    } catch (e: any) {
-      setError(e?.message || 'Could not load the KYC queue.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the KYC queue.');
     }
-  }, [load, tab, search]);
+  }, [load, tab, search, submittedFrom, submittedTo]);
 
   useEffect(() => {
     refresh();
@@ -70,11 +80,31 @@ export const KycQueueView: React.FC<KycQueueViewProps> = ({ title, subtitle, loa
         title={title}
         subtitle={subtitle}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <Input className="w-64 pl-9" placeholder="Name, member no., reference…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search KYC applications" />
             </div>
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              Submitted from
+              <Input type="date" className="w-36" value={submittedFrom} max={submittedTo || undefined} onChange={(e) => setSubmittedFrom(e.target.value)} aria-label="Submitted from" />
+            </label>
+            <label className="flex items-center gap-1 text-xs text-slate-500">
+              to
+              <Input type="date" className="w-36" value={submittedTo} min={submittedFrom || undefined} onChange={(e) => setSubmittedTo(e.target.value)} aria-label="Submitted to" />
+            </label>
+            {(submittedFrom || submittedTo) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSubmittedFrom('');
+                  setSubmittedTo('');
+                }}
+              >
+                Clear dates
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={refresh} title="Refresh">
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -137,8 +167,8 @@ export const KycQueueView: React.FC<KycQueueViewProps> = ({ title, subtitle, loa
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600">{fmt(i.submittedAt)}</td>
                     <td className="px-4 py-3 text-xs">
-                      <span className={i.faceCheckStatus === 'NO_MATCH' ? 'text-rose-700' : i.faceCheckStatus === 'MATCH' ? 'text-emerald-700' : 'text-slate-500'}>
-                        Face: {i.faceCheckStatus ? i.faceCheckStatus.replace('_', ' ').toLowerCase() : 'not run'}
+                      <span className={i.faceCheckStatus === 'NO_MATCH' ? 'text-rose-700' : i.faceVerified ? 'text-emerald-700' : 'text-slate-500'}>
+                        Face: {i.faceVerified ? 'verified match' : i.faceCheckStatus === 'NO_MATCH' ? 'may not match' : i.faceCheckStatus ? 'compare manually' : 'not run'}
                         {i.faceConfidence != null ? ` (${i.faceConfidence}%)` : ''}
                       </span>
                       {i.discrepancyCount > 0 && <span className="ml-2 text-rose-700">· {i.discrepancyCount} mismatch{i.discrepancyCount > 1 ? 'es' : ''}</span>}
