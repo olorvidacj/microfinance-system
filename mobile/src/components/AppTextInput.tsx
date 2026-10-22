@@ -43,6 +43,9 @@ export const AppTextInput: React.FC<AppTextInputProps> = ({
           placeholderTextColor={colors.textFaint}
           style={[styles.input, isSecure && styles.inputPadded, style]}
           secureTextEntry={isSecure}
+          // The visible label names the field for screen readers; an error or hint is read after it.
+          accessibilityLabel={rest.accessibilityLabel ?? label}
+          accessibilityHint={rest.accessibilityHint ?? (error || hint || undefined)}
           {...rest}
         />
         {secure ? (
@@ -50,6 +53,8 @@ export const AppTextInput: React.FC<AppTextInputProps> = ({
             style={styles.eye}
             onPress={() => setShowPassword((v) => !v)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
           >
             <Ionicons
               name={showPassword ? 'eye-off-outline' : 'eye-outline'}
