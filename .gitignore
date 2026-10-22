@@ -14,3 +14,6 @@ database/backups/
 # uploaded member documents and the local KYC store (personal data; never commit)
 uploads/
 .data/
+
+# Scratch output
+*.tmp

@@ -29,7 +29,7 @@ Every row of the first audit is accounted for: it now reads **works**, or it is 
 | # | Finding | Status | Detail |
 |---|---|---|---|
 | **U1** | KYC files publicly readable | **works** | Migration 0018 was applied to production on 2026-10-22: `kyc-documents` is private and the anon key lists nothing. The server no longer runs DDL at start-up, so nothing re-opens it; identity files are served only through short-lived signed links. **Remains:** the `documents` bucket (branch documents such as loan papers) is still `public = true`; listing is refused, but a file can be fetched by anyone who knows its exact path. Make it private and serve it through signed links, as the KYC bucket now is. |
-| **U2** | Source files corrupted on disk | **remains (your decision)** | The 10 files in `shared/kyc/` are still the corrupted copies. Nothing imports them any more: `shared/kyc-core/` replaced them and is type-checked and tested. The Supabase copy of migration 0023 was restored. Delete `shared/kyc/` (or restore it from OneDrive history), and move the repository out of OneDrive or commit regularly. |
+| **U2** | Source files corrupted on disk | **works** | The 10 corrupted, never-committed files in `shared/kyc/` were deleted on 2026-10-22; nothing imported them (the web app, server and mobile app use `shared/kyc-core/`, type-checked and tested). The Supabase copy of migration 0023 was restored earlier. Work is now committed regularly; moving the repository out of OneDrive is still advisable. |
 | **U3** | Account takeover by phone-number matching | **works** | Auto-linking by phone suffix is gone ([clientProvisioning.ts:175](../src/db/clientProvisioning.ts#L175)); a login is linked to a member only by verified email, and registration creates the member in the same transaction. |
 | **U4** | Unassigned branch staff saw every branch | **works** | All-branch access now comes only from the `view_all_records` permission; staff without it and without a branch get 403 ([branchRoutes.ts](../src/routes/branchRoutes.ts) `requireBranch`). |
 | **U5** | Every staff role could read all-branch data through the admin API | **works** | The admin read gate is now `view_all_records` only ([server.ts](../server.ts) `ADMIN_READ_ANY`); a teller gets 403 (checked in the scenario). The admin console screens require the same permission ([admin/router.tsx](../src/admin/router.tsx)). |
@@ -157,11 +157,10 @@ All ledger, loan, schedule, payment, savings and fund money columns are `numeric
 ## What remains
 
 1. Make the `documents` storage bucket private and serve branch documents through signed links (U1).
-2. **U2** Delete the corrupted `shared/kyc/` folder; move the repository out of OneDrive or commit.
-3. **Superseded migrations** into `superseded/` folders, if you want `supabase db reset` to build the same database (4.1).
-4. Branch **performance** charts on the portfolio module (3.2).
-5. Branch **client edit** of a phone number: shared validation and uniqueness check (3.2).
-6. **`/api/storage`** development fallback: signed links (3.4).
-7. **16 legacy float columns** to `numeric` (4.2).
-8. **Delete** the unreachable legacy shell components and `public/supabase_schema.sql` (served to anyone; schema only, no data).
-9. Not audited: `/api/gemini/*`.
+2. **Superseded migrations** into `superseded/` folders, if you want `supabase db reset` to build the same database (4.1).
+3. Branch **performance** charts on the portfolio module (3.2).
+4. Branch **client edit** of a phone number: shared validation and uniqueness check (3.2).
+5. **`/api/storage`** development fallback: signed links (3.4).
+6. **16 legacy float columns** to `numeric` (4.2).
+7. **Delete** the unreachable legacy shell components and `public/supabase_schema.sql` (served to anyone; schema only, no data).
+8. Not audited: `/api/gemini/*`.
