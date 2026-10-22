@@ -53,6 +53,18 @@ const NoStaffRole: React.FC = () => {
 };
 
 /**
+ * Registration is open whether or not a member is signed in on this device (the
+ * page says who is, and registering replaces that session). The same element in
+ * both route trees keeps the page, and its success screen, when the new
+ * account signs in.
+ */
+const REGISTER_PAGE = (
+  <PublicPortalLayout>
+    <ClientRegisterPage />
+  </PublicPortalLayout>
+);
+
+/**
  * The member portal: only the member session counts here, never a staff or admin one.
  * Mounted at /portal/*, so paths here are relative to /portal.
  */
@@ -63,7 +75,7 @@ const MemberSite: React.FC = () => {
     return (
       <Routes>
         <Route path="/login" element={<PublicPortalLayout><ClientLoginPage /></PublicPortalLayout>} />
-        <Route path="/register" element={<PublicPortalLayout><ClientRegisterPage /></PublicPortalLayout>} />
+        <Route path="/register" element={REGISTER_PAGE} />
         <Route path="*" element={<Navigate to="/portal/login" replace />} />
       </Routes>
     );
@@ -71,7 +83,7 @@ const MemberSite: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/portal" replace />} />
-      <Route path="/register" element={<Navigate to="/portal" replace />} />
+      <Route path="/register" element={REGISTER_PAGE} />
       <Route path="/" element={<PortalLayout />}>
         {PORTAL_ROUTES.map((r) => (
           <Route key={r.path} path={r.path} element={r.element} />

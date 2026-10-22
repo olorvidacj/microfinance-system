@@ -44,8 +44,10 @@ const StepDots: React.FC<{ step: Step }> = ({ step }) => {
 };
 
 export const ClientRegisterPage: React.FC = () => {
-  const { register } = useAuth();
+  const { register, user } = useAuth();
   const navigate = useNavigate();
+  // Who was signed in on this device when the page opened (not the account registered here).
+  const [signedInAs] = useState(() => user?.fullName ?? null);
 
   const [step, setStep] = useState<Step>('email');
   const [error, setError] = useState('');
@@ -192,6 +194,15 @@ export const ClientRegisterPage: React.FC = () => {
         <h2 className="text-2xl font-bold tracking-tight text-slate-900">Become a member</h2>
         <StepDots step={step} />
       </div>
+
+      {signedInAs && (
+        <div id="register-signed-in-notice" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 sm:text-sm">
+          <strong>{signedInAs}</strong> is signed in on this device. Registering a new member signs them out of the portal here.{' '}
+          <Link to="/portal" className="font-semibold text-amber-950 underline">
+            Go to {signedInAs}’s account instead
+          </Link>
+        </div>
+      )}
 
       {error && (
         <div id="register-error-banner" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700 sm:text-sm" role="alert">
