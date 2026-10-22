@@ -738,7 +738,9 @@ async function listLoans(req: Request, res: Response) {
 branchRouter.get('/loan-applications', requireBranch(['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications', 'disburse_loans']), listLoans);
 branchRouter.get('/loans', requireBranch(LOAN_READ_PERMISSIONS), listLoans);
 
-branchRouter.get('/loan-products', requireBranch(['process_loan_applications', 'review_client_loan_info', 'monitor_loan_repayment']), async (_req, res) => {
+// Product terms only (no member data): every branch role may read them, as the loan calculator,
+// open to all staff, needs them.
+branchRouter.get('/loan-products', requireBranch([]), async (_req, res) => {
   const db = getDb();
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
   try {
