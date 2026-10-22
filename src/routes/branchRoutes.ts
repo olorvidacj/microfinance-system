@@ -9,6 +9,7 @@ import type { InstallmentStatus } from '../types';
 import type { AppDb } from '../kyc/errors';
 import { assertKycVerified, claimApplication, decideApplication, kycDossier, kycQueue, releaseApplication, type StaffActor } from '../kyc/service';
 import { registerByBranch } from '../onboarding/registration';
+import { updateMemberByStaff } from '../members/staffEdit';
 import { psgcResolver } from '../onboarding/geography';
 import { isKycVerified, kycStatusLabel, normaliseKycStatus } from '../../shared/kyc-core';
 import { PERIODS_PER_YEAR, RUNNING_LOAN_STATUSES, centsFromDb, centsToDecimal, daysBetween, normaliseLoanStatus, productToDto, savingsProductToDto, type LoanStatus } from '../../shared/lending';
@@ -604,42 +605,14 @@ branchRouter.put('/clients/:id', requireBranch(['register_clients', 'manage_kyc'
   const ctx = ctxOf(req);
   const db = getDb();
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const body = req.body || {};
-  const identityFields = ['fullName', 'dateOfBirth', 'phone', 'email'].filter((k) => body[k] !== undefined);
-  if (identityFields.length > 0) {
-    const current = await db.select({ kycStatus: schema.borrowers.kycStatus }).from(schema.borrowers).where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any)).limit(1);
-    if (!current[0]) return res.status(404).json({ error: 'Client not found in this branch.' });
-    const status = normaliseKycStatus(current[0].kycStatus);
-    if (['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'SUSPENDED'].includes(status)) {
-      return res.status(409).json({
-        error: `The member's KYC is ${kycStatusLabel(status).toLowerCase()}, so ${identityFields.join(', ')} cannot be changed here. Ask the member to update their KYC application instead.`,
-      });
-    }
+  try {
+    const editor = { userId: ctx.userId, name: ctx.staffName, role: ctx.staffRole, branchId: ctx.branchId, viewAll: ctx.viewAll };
+    const { changed } = await updateMemberByStaff(db as unknown as AppDb, editor, req.params.id, req.body || {}, manilaToday());
+    res.json({ success: true, changed });
+  } catch (err) {
+    sendError(res, err, 'branch-client-update');
   }
-  const row: any = {
-    ...(body.fullName !== undefined ? { fullName: String(body.fullName) } : {}),
-    ...(body.phone !== undefined ? { phone: String(body.phone) } : {}),
-    ...(body.email !== undefined ? { email: String(body.email) } : {}),
-    ...(body.address !== undefined ? { address: String(body.address) } : {}),
-    ...(body.dateOfBirth !== undefined ? { dateOfBirth: String(body.dateOfBirth) } : {}),
-    ...(body.gender !== undefined ? { gender: String(body.gender) } : {}),
-    ...(body.civilStatus !== undefined ? { civilStatus: String(body.civilStatus) } : {}),
-    ...(body.employmentStatus !== undefined ? { employmentStatus: String(body.employmentStatus) } : {}),
-    ...(body.employerOrBusiness !== undefined ? { employerOrBusiness: String(body.employerOrBusiness) } : {}),
-    ...(body.occupation !== undefined ? { occupation: String(body.occupation) } : {}),
-    ...(body.monthlyIncome !== undefined ? { monthlyIncome: Number(body.monthlyIncome) } : {}),
-    ...(body.monthlyExpenses !== undefined ? { monthlyExpenses: Number(body.monthlyExpenses) } : {}),
-    ...(body.notes !== undefined ? { notes: body.notes ? String(body.notes) : null } : {}),
-  };
-  if (!ctx.viewAll) finalizeBranchField(row);
-  await db.update(schema.borrowers).set(row).where(and(eq(schema.borrowers.id, req.params.id), scopeCond(ctx, schema.borrowers.branchId) as any));
-  await audit(ctx, 'CLIENT_UPDATED', `Updated client profile ${req.params.id}`, 'BORROWER', { targetType: 'Borrower', targetId: req.params.id });
-  res.json({ success: true });
 });
-
-function finalizeBranchField(_row: any) {
-  /* explicit no-op: branch assignment is enforced by the scope, not by client payload */
-}
 
 // ---------------------------------------------------------------------------
 // KYC (Know Your Customer) Review & Verification
