@@ -19,6 +19,21 @@ import { cancelApplication, clientLoans, createApplication, listProducts, loanDe
 import { clientProofs, loanPayments, payoffQuote, receiptFor, submitProof } from '../lending/repayment';
 import { storeLoanDocuments } from '../lending/documents';
 import { cancelWithdrawalRequest, listAccounts, requestWithdrawal, statement, withdrawalRequests } from '../savings/service';
+import { PAYOUT_CHANNELS } from '../../shared/payments';
+import { paymentDeps } from '../payments/config';
+import {
+  addPayoutAccount,
+  cancelMyPayout,
+  confirmPayout,
+  instantLimits,
+  myDeposits,
+  myPayoutAccounts,
+  myPayouts,
+  refreshMyDeposit,
+  removePayoutAccount,
+  startDeposit,
+  startPayout,
+} from '../payments/service';
 import { myGroup, recordConsent } from '../groups/service';
 import { changePassword, setPassword } from '../auth/passwords';
 import { clientDashboard } from '../client/dashboard';
@@ -544,6 +559,62 @@ clientMobileRouter.post('/savings/withdraw', requireAuth(), (req: AuthedRequest,
   clientRoute(res, 'client-savings-withdraw', async (db) => {
     const request = await requestWithdrawal(db, lendingClientOf(req), req.body || {});
     res.status(201).json({ success: true, request });
+  }),
+);
+
+// -------------------------------------------------------------
+// 8b. Online deposits and instant withdrawals (src/payments/service.ts)
+// A deposit is credited only when the provider confirms it to the server;
+// GET /savings/online/deposits/:id asks the provider, never trusts the browser.
+// -------------------------------------------------------------
+clientMobileRouter.get('/savings/online', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-payments', async (db) => {
+    const actor = lendingClientOf(req);
+    const deps = paymentDeps();
+    const [limits, deposits, payouts, payoutAccounts] = await Promise.all([instantLimits(db, deps, actor), myDeposits(db, actor), myPayouts(db, actor), myPayoutAccounts(db, actor)]);
+    res.json({ success: true, provider: deps.provider.name, limits, deposits, payouts, payoutAccounts, channels: PAYOUT_CHANNELS });
+  }),
+);
+
+clientMobileRouter.post('/savings/online/deposits', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-deposit-start', async (db) => {
+    res.status(201).json({ success: true, deposit: await startDeposit(db, paymentDeps(), lendingClientOf(req), req.body || {}) });
+  }),
+);
+
+clientMobileRouter.get('/savings/online/deposits/:id', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-deposit', async (db) => {
+    res.json({ success: true, deposit: await refreshMyDeposit(db, paymentDeps(), lendingClientOf(req), req.params.id) });
+  }),
+);
+
+clientMobileRouter.post('/savings/online/payout-accounts', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-payout-account-add', async (db) => {
+    res.status(201).json({ success: true, payoutAccount: await addPayoutAccount(db, lendingClientOf(req), req.body || {}) });
+  }),
+);
+
+clientMobileRouter.post('/savings/online/payout-accounts/:id/remove', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-payout-account-remove', async (db) => {
+    res.json({ success: true, payoutAccount: await removePayoutAccount(db, lendingClientOf(req), req.params.id) });
+  }),
+);
+
+clientMobileRouter.post('/savings/online/payouts', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-payout-start', async (db) => {
+    res.status(201).json({ success: true, ...(await startPayout(db, paymentDeps(), lendingClientOf(req), req.body || {})) });
+  }),
+);
+
+clientMobileRouter.post('/savings/online/payouts/:id/confirm', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-payout-confirm', async (db) => {
+    res.json({ success: true, payout: await confirmPayout(db, paymentDeps(), lendingClientOf(req), req.params.id, req.body || {}) });
+  }),
+);
+
+clientMobileRouter.post('/savings/online/payouts/:id/cancel', requireAuth(), (req: AuthedRequest, res: Response) =>
+  clientRoute(res, 'client-payout-cancel', async (db) => {
+    res.json({ success: true, payout: await cancelMyPayout(db, lendingClientOf(req), req.params.id) });
   }),
 );
 

@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts', 'shared/kyc-core/**/*.test.ts', 'shared/lending/**/*.test.ts', 'shared/auth/**/*.test.ts', 'shared/client/**/*.test.ts', 'scripts/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'shared/kyc-core/**/*.test.ts', 'shared/lending/**/*.test.ts', 'shared/auth/**/*.test.ts', 'shared/client/**/*.test.ts', 'shared/payments/**/*.test.ts', 'scripts/**/*.test.ts'],
     environment: 'node',
     // Database-backed suites run on in-process PGlite (src/db/testing); they are
     // slow to boot, so files run one at a time.

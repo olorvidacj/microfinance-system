@@ -22,6 +22,7 @@ import {
   Users,
   Wallet,
   Calculator,
+  Globe,
 } from 'lucide-react';
 import { setStoredToken, useAuth } from '../../../context/AuthContext';
 import { normalizeRole } from '../../../auth/permissions';
@@ -72,6 +73,7 @@ const PRIMARY_OPERATIONS_NAV: NavItem[] = [
   { to: '/staff/app/applications', label: 'Loan Applications', icon: FileText, permissions: ['process_loan_applications', 'review_client_loan_info', 'manage_loan_applications', 'disburse_loans'] },
   { to: '/staff/app/calculator', label: 'Loan Calculator', icon: Calculator, permissions: [] },
   { to: '/staff/app/savings', label: 'Savings Management', icon: PiggyBank, permissions: ['process_savings_deposits', 'process_savings_withdrawals'] },
+  { to: '/staff/app/online-payments', label: 'Online Payments', icon: Globe, permissions: ['process_savings_deposits', 'process_savings_withdrawals'] },
   { to: '/staff/app/transactions', label: 'Financial Transactions', icon: ScrollText, permissions: ['view_transaction_records'] },
   { to: '/staff/app/payments', label: 'Record Payment', icon: Wallet, permissions: ['process_loan_repayments'] },
   { to: '/staff/app/payment-proofs', label: 'Payment Proofs', icon: FileCheck2, permissions: ['process_loan_repayments'] },

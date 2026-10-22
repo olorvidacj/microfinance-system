@@ -5,6 +5,7 @@ import {
   DISBURSEMENT_METHOD_LABELS,
   DORMANCY_MONTHS,
   SAVINGS_KIND_LABELS,
+  SAVINGS_LEDGER,
   SAVINGS_TXN_LABELS,
   WITHDRAWAL_DESTINATIONS,
   centsFromDb,
@@ -187,12 +188,16 @@ async function syncMemberTotal(tx: AppDb, memberId: string) {
 // Posting
 // ---------------------------------------------------------------------------
 
-const PREFIX: Record<'DEPOSIT' | 'WITHDRAWAL' | 'INTEREST', string> = { DEPOSIT: 'SD', WITHDRAWAL: 'SW', INTEREST: 'SI' };
+type PostKind = 'DEPOSIT' | 'WITHDRAWAL' | 'INTEREST' | 'PAYOUT_REFUND';
+const PREFIX: Record<PostKind, string> = { DEPOSIT: 'SD', WITHDRAWAL: 'SW', INTEREST: 'SI', PAYOUT_REFUND: 'SR' };
+const REGISTER_TYPE: Record<PostKind, string> = { DEPOSIT: 'Savings Deposit', WITHDRAWAL: 'Savings Withdrawal', INTEREST: 'Savings Interest', PAYOUT_REFUND: 'Savings Payout Returned' };
 
 interface PostInput {
-  kind: 'DEPOSIT' | 'WITHDRAWAL' | 'INTEREST';
+  kind: PostKind;
   amount: number;
   method: DisbursementMethod;
+  /** Paid through the online payment provider: posts against 1030 and records the method as ONLINE. */
+  online?: { provider: string };
   reference: string | null;
   destinationAccount?: string | null;
   notes: string | null;
@@ -212,12 +217,13 @@ async function postTx(tx: AppDb, actor: SavingsActor, account: AccountRow, produ
   const today = manilaToday();
   const before = centsFromDb(account.balance);
   const signed = p.kind === 'WITHDRAWAL' ? -p.amount : p.amount;
+  const methodLabel = p.kind === 'INTEREST' ? 'Interest' : p.online ? `Online (${p.online.provider})` : DISBURSEMENT_METHOD_LABELS[p.method];
   const after = before + signed;
   if (after < 0) throw new HttpError(409, 'The balance cannot go below zero.', 'INSUFFICIENT');
   const seq = await nextSequence(tx, 'savings_txn_seq');
   const number = `${PREFIX[p.kind]}-${today.slice(0, 4)}-${String(seq).padStart(6, '0')}`;
   const entryId = await postJournal(tx, {
-    lines: savingsJournal(p.kind, product.kind, p.amount, p.method),
+    lines: savingsJournal(p.kind, product.kind, p.amount, p.method, p.online ? SAVINGS_LEDGER.DUE_FROM_PROVIDER : undefined),
     entryDate: today,
     description: `${SAVINGS_TXN_LABELS[p.kind]} ${account.passbookNumber} (${account.memberName})`,
     reference: number,
@@ -249,7 +255,7 @@ async function postTx(tx: AppDb, actor: SavingsActor, account: AccountRow, produ
       createdAt: at,
       kind: p.kind,
       signedAmount: centsToDecimal(signed),
-      method: p.kind === 'INTEREST' ? null : p.method,
+      method: p.kind === 'INTEREST' ? null : p.online ? 'ONLINE' : p.method,
       reference: p.reference,
       destinationAccount: p.destinationAccount ?? null,
       journalEntryId: entryId,
@@ -278,10 +284,10 @@ async function postTx(tx: AppDb, actor: SavingsActor, account: AccountRow, produ
     accountOrLoanId: account.id,
     accountOrLoanType: 'Savings',
     branchId: account.branchId,
-    transactionType: p.kind === 'DEPOSIT' ? 'Savings Deposit' : p.kind === 'WITHDRAWAL' ? 'Savings Withdrawal' : 'Savings Interest',
+    transactionType: REGISTER_TYPE[p.kind],
     amount: centsToDecimal(p.amount),
     transactionDate: today,
-    paymentMethod: p.kind === 'INTEREST' ? 'Interest' : DISBURSEMENT_METHOD_LABELS[p.method],
+    paymentMethod: methodLabel,
     processedBy: actor.name,
     processedByRole: actor.kind === 'client' ? 'CLIENT' : actor.role,
     status: 'Completed',
@@ -290,7 +296,7 @@ async function postTx(tx: AppDb, actor: SavingsActor, account: AccountRow, produ
     createdAt: at,
     updatedAt: at,
   });
-  const label = p.kind === 'DEPOSIT' ? 'Deposit' : p.kind === 'WITHDRAWAL' ? 'Withdrawal' : `Interest for ${p.interestPeriod}`;
+  const label = p.kind === 'DEPOSIT' ? 'Deposit' : p.kind === 'WITHDRAWAL' ? 'Withdrawal' : p.kind === 'PAYOUT_REFUND' ? 'Returned payout' : `Interest for ${p.interestPeriod}`;
   await audit(tx, account, actor, `SAVINGS_${p.kind}`, `${number}: ${label} of ${formatPeso(p.amount)} on ${account.passbookNumber}. Balance ${formatPeso(before)} -> ${formatPeso(after)}.`, at);
   await notify(tx, account, 'CLIENT', `SAVINGS_${p.kind}`, `Savings ${label.toLowerCase()}`, `${label} of ${formatPeso(p.amount)} on your savings ${account.passbookNumber}. New balance: ${formatPeso(after)}.`, at);
   return row;
@@ -335,12 +341,15 @@ export async function deposit(db: AppDb, actor: LendingStaff, accountId: string,
   return transactionResult(db, actor, row);
 }
 
+/** Withdrawals this month; a payout that failed and came back does not count. */
 async function withdrawalsThisMonth(tx: AppDb, accountId: string, today: string): Promise<number> {
   const [r] = await tx
-    .select({ n: sql<number>`count(*)::int` })
+    .select({
+      n: sql<number>`(count(*) filter (where ${transactions.kind} = 'WITHDRAWAL') - count(*) filter (where ${transactions.kind} = 'PAYOUT_REFUND'))::int`,
+    })
     .from(transactions)
-    .where(and(eq(transactions.savingsAccountId, accountId), eq(transactions.kind, 'WITHDRAWAL'), gte(transactions.date, `${periodOf(today)}-01`)));
-  return Number(r?.n ?? 0);
+    .where(and(eq(transactions.savingsAccountId, accountId), inArray(transactions.kind, ['WITHDRAWAL', 'PAYOUT_REFUND']), gte(transactions.date, `${periodOf(today)}-01`)));
+  return Math.max(0, Number(r?.n ?? 0));
 }
 
 async function withdrawTx(
@@ -393,6 +402,70 @@ export async function withdraw(db: AppDb, actor: LendingStaff, accountId: string
     return withdrawTx(tx, actor, account, product, { ...d, destinationAccount: dest }, key);
   });
   return transactionResult(db, actor, row);
+}
+
+// ---------------------------------------------------------------------------
+// Online payments (src/payments/service.ts)
+// ---------------------------------------------------------------------------
+
+/** Locks a savings account in the caller's transaction, checking the actor may use it. */
+export async function lockSavingsAccount(tx: AppDb, actor: SavingsActor, accountId: string) {
+  return lockAccount(tx, actor, accountId);
+}
+
+/**
+ * Posts an online deposit, instant withdrawal or returned payout through the
+ * same path as the counter (journal, register, audit, notification), against
+ * 1030 Due from Payment Provider. The account must be locked by the caller.
+ * The idempotency key makes a repeat return the first posting, never a second.
+ */
+export async function postOnlineMovement(
+  tx: AppDb,
+  actor: SavingsActor,
+  account: AccountRow,
+  product: SavingsProduct,
+  input: { kind: 'DEPOSIT' | 'WITHDRAWAL' | 'PAYOUT_REFUND'; amount: number; provider: string; reference: string; destinationAccount?: string | null; notes: string | null; idempotencyKey: string },
+): Promise<TxnRow> {
+  const prior = await replay(tx, input.idempotencyKey);
+  if (prior) return prior;
+  if (input.kind === 'DEPOSIT' && account.status === 'CLOSED') throw new HttpError(409, 'This account is closed.', 'ACCOUNT_CLOSED');
+  if (input.kind === 'WITHDRAWAL') {
+    const today = manilaToday();
+    const check = checkWithdrawal({
+      status: account.status as SavingsStatus,
+      balance: centsFromDb(account.balance),
+      product,
+      amount: input.amount,
+      withdrawalsThisMonth: await withdrawalsThisMonth(tx, account.id, today),
+      maturityDate: account.maturityDate,
+      today,
+    });
+    if (!check.ok) throw new HttpError(409, check.message, check.code, { available: centsToDecimal(check.available) });
+  }
+  return postTx(tx, actor, account, product, {
+    kind: input.kind,
+    amount: input.amount,
+    method: 'E_WALLET',
+    online: { provider: input.provider },
+    reference: input.reference,
+    destinationAccount: input.destinationAccount ?? null,
+    notes: input.notes,
+    idempotencyKey: input.idempotencyKey,
+  });
+}
+
+/** What the product rules allow from an account now, without posting anything. */
+export async function withdrawalCheckFor(tx: AppDb, account: AccountRow, product: SavingsProduct, amount: number) {
+  const today = manilaToday();
+  return checkWithdrawal({
+    status: account.status as SavingsStatus,
+    balance: centsFromDb(account.balance),
+    product,
+    amount,
+    withdrawalsThisMonth: await withdrawalsThisMonth(tx, account.id, today),
+    maturityDate: account.maturityDate,
+    today,
+  });
 }
 
 // ---------------------------------------------------------------------------

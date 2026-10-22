@@ -24,6 +24,7 @@ import NotificationsPage from '../pages/NotificationsPage';
 import ReportsPage from '../pages/ReportsPage';
 import PersonnelProfilePage from '../pages/PersonnelProfilePage';
 import ActivityLogPage from '../pages/ActivityLogPage';
+import OnlinePaymentsPage from '../pages/OnlinePaymentsPage';
 
 /** Mounted at /staff/*, so paths here are relative to /staff. */
 export const BranchRoutes: React.FC = () => (
@@ -46,6 +47,7 @@ export const BranchRoutes: React.FC = () => (
       <Route path="savings/:id" element={<SavingsTransactionsPage />} />
       <Route path="groups" element={<GroupLendingPage />} />
       <Route path="groups/:id" element={<GroupDetailPage />} />
+      <Route path="online-payments" element={<OnlinePaymentsPage />} />
       <Route path="transactions" element={<TransactionLedgerPage />} />
       <Route path="documents" element={<DocumentsPage />} />
       <Route path="notifications" element={<NotificationsPage />} />

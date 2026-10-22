@@ -414,3 +414,28 @@ export const activityService = {
 };
 
 export type { BranchPayment, ClientDetail };
+// ---------------------------------------------------------------------------
+// Online payments (src/payments/service.ts)
+// ---------------------------------------------------------------------------
+
+export type OnlineReview = Awaited<ReturnType<typeof import('../../payments/service').needsReview>>;
+export type OnlineDailyReport = Awaited<ReturnType<typeof import('../../payments/service').dailyReport>>;
+
+export const onlinePaymentsService = {
+  /** Problem payments and payout accounts waiting for verification, in your branch. */
+  review: async (): Promise<OnlineReview> => (await branchRequest('/api/branch/payments/review'))?.data,
+
+  /** One day's online payments against the ledger and the provider. */
+  dailyReport: async (date: string): Promise<OnlineDailyReport> => (await branchRequest(`/api/branch/payments/daily-report?date=${enc(date)}`))?.data,
+
+  decidePayoutAccount: async (id: string, decision: 'VERIFY' | 'REJECT', reason: string) =>
+    (await jsonPost(`/api/branch/payments/payout-accounts/${enc(id)}/decision`, { decision, reason }))?.data,
+
+  resolveDeposit: async (id: string, action: 'CREDIT_PAID' | 'DISMISS', note: string) => (await jsonPost(`/api/branch/payments/deposits/${enc(id)}/resolve`, { action, note }))?.data,
+
+  resolvePayout: async (id: string, action: 'RECHECK' | 'RETRY' | 'REFUND', note: string) => (await jsonPost(`/api/branch/payments/payouts/${enc(id)}/resolve`, { action, note }))?.data,
+
+  /** Asks the provider now about payments whose confirmation has not arrived. */
+  checkNow: async (): Promise<{ depositsChecked: number; payoutsChecked: number; sentAgain: number; toReview: number; errors: string[] }> =>
+    (await jsonPost('/api/branch/payments/check-now', {}))?.data,
+};

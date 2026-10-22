@@ -41,6 +41,8 @@ import {
   withdraw,
   withdrawalRequests,
 } from '../savings/service';
+import { paymentDeps } from '../payments/config';
+import { dailyReport, decidePayoutAccount, needsReview, resolveDeposit, resolvePayout, sweepOnlinePayments } from '../payments/service';
 import {
   addMember,
   changeGroupStatus,
@@ -974,6 +976,14 @@ repaymentRoute('post', '/savings/withdrawal-requests/:id/decision', ['process_sa
 repaymentRoute('get', '/savings/reconcile', ['view_all_records', 'approve_sensitive_operations', 'manage_settings'], (db) => reconcileSavings(db), 'savings-reconcile');
 repaymentRoute('post', '/savings/run-interest', ['approve_sensitive_operations', 'manage_settings'], (db) => runInterestPosting(db, manilaToday()), 'savings-interest');
 repaymentRoute('post', '/savings/open', ['process_savings_deposits'], (db, s, req) => openAccount(db, s, req.body || {}, req.get('Idempotency-Key')), 'savings-open');
+
+// Online payments (src/payments/service.ts): problem payments, payout accounts to verify, daily report.
+repaymentRoute('get', '/payments/review', SAVINGS_READ, (db, s) => needsReview(db, s), 'payments-review');
+repaymentRoute('get', '/payments/daily-report', SAVINGS_READ, (db, s, req) => dailyReport(db, paymentDeps(), s, req.query.date), 'payments-daily-report');
+repaymentRoute('post', '/payments/deposits/:id/resolve', ['process_savings_deposits'], (db, s, req) => resolveDeposit(db, paymentDeps(), s, req.params.id, req.body || {}), 'payments-deposit-resolve');
+repaymentRoute('post', '/payments/payouts/:id/resolve', ['process_savings_withdrawals'], (db, s, req) => resolvePayout(db, paymentDeps(), s, req.params.id, req.body || {}), 'payments-payout-resolve');
+repaymentRoute('post', '/payments/payout-accounts/:id/decision', ['process_savings_withdrawals'], (db, s, req) => decidePayoutAccount(db, s, req.params.id, req.body || {}), 'payments-payout-account');
+repaymentRoute('post', '/payments/check-now', ['process_savings_deposits', 'process_savings_withdrawals'], (db) => sweepOnlinePayments(db, paymentDeps()), 'payments-sweep');
 
 repaymentRoute('get', '/savings', SAVINGS_READ, (db, s, req) =>
   listAccounts(db, s, { status: req.query.status ? String(req.query.status) : undefined, search: req.query.search ? String(req.query.search) : undefined }), 'savings-list');

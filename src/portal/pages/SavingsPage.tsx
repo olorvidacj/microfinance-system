@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowUpFromLine, Clock, PiggyBank, ShieldAlert } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDownToLine, ArrowUpFromLine, Clock, PiggyBank, ShieldAlert, Zap } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ACCRUAL_METHOD_LABELS,
   SAVINGS_KIND_LABELS,
@@ -21,6 +21,8 @@ import { Button, Card, CardBody, CardHeader, CardTitle, EmptyState, ErrorState, 
 import { useToast } from '../components/ui/Toast';
 import { manilaToday, peso } from '../../components/lending';
 import { StatementView, type SavingsStatement } from '../../components/savings/SavingsStatement';
+import { onlinePaymentsService, type OnlineOverview } from '../services/onlinePayments';
+import { AddPayoutAccountModal, DepositReturnBanner, InstantWithdrawModal, OnlineDepositModal, OnlinePaymentsCard } from '../components/online/OnlinePayments';
 
 const statusTone = (s: string) => (s === 'ACTIVE' ? 'green' : s === 'FROZEN' ? 'red' : s === 'DORMANT' ? 'amber' : 'slate') as 'green' | 'red' | 'amber' | 'slate';
 
@@ -37,9 +39,29 @@ const SavingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [requestAmount, setRequestAmount] = useState('');
+  const [online, setOnline] = useState<OnlineOverview | null>(null);
+  const [onlineError, setOnlineError] = useState('');
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [instantOpen, setInstantOpen] = useState(false);
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const returningDeposit = params.get('deposit');
 
+  const loadOnline = useCallback(async () => {
+    try {
+      setOnline(await onlinePaymentsService.overview());
+      setOnlineError('');
+    } catch (err) {
+      setOnline(null);
+      setOnlineError(err instanceof Error ? err.message : 'Online payments could not be loaded.');
+    }
+  }, []);
+
+  // Only the first load replaces the page; later refreshes (after a payment settles) update it in place.
+  const loadedOnce = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!loadedOnce.current) setLoading(true);
     setError('');
     try {
       const [acc, req, k] = await Promise.all([savingsService.accounts(), savingsService.requests(), profileService.kycStatus().catch(() => null)]);
@@ -47,16 +69,36 @@ const SavingsPage: React.FC = () => {
       setRequests(req);
       setKyc(k);
       setSelected((cur) => (cur && acc.some((a) => a.id === cur) ? cur : acc.find((a) => a.status !== 'CLOSED')?.id ?? acc[0]?.id ?? ''));
+      loadedOnce.current = true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load savings.');
+      const message = err instanceof Error ? err.message : 'Unable to load savings.';
+      if (loadedOnce.current) toast.error(message);
+      else setError(message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     load();
-  }, [load]);
+    loadOnline();
+  }, [load, loadOnline]);
+
+  // A payout on its way: refresh until the provider settles it.
+  const inFlight = online?.payouts.some((p) => p.status === 'SUBMITTING' || p.status === 'PROCESSING') ?? false;
+  useEffect(() => {
+    if (!inFlight) return;
+    const timer = setTimeout(() => {
+      loadOnline();
+      load();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [inFlight, online, loadOnline, load]);
+
+  const depositSettled = useCallback(() => {
+    load();
+    loadOnline();
+  }, [load, loadOnline]);
 
   useEffect(() => {
     if (!selected) return setStatement(null);
@@ -66,12 +108,15 @@ const SavingsPage: React.FC = () => {
   const account = accounts.find((a) => a.id === selected) ?? null;
   const pending = requests.filter((r) => r.status === 'PENDING');
 
-  const openWithdrawal = () => {
-    if (!isKycVerified(kyc?.kycStatus || 'NOT_STARTED')) {
-      toast.error('KYC verification must be approved before you can request withdrawals.');
-      navigate('/portal/kyc');
-      return;
-    }
+  const requireKyc = (what: string) => {
+    if (isKycVerified(kyc?.kycStatus || 'NOT_STARTED')) return true;
+    toast.error(`KYC verification must be approved before you can ${what}.`);
+    navigate('/portal/kyc');
+    return false;
+  };
+  const openWithdrawal = (amount = '') => {
+    if (!requireKyc('request withdrawals')) return;
+    setRequestAmount(amount);
     setWithdrawOpen(true);
   };
 
@@ -93,14 +138,37 @@ const SavingsPage: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Savings</h1>
-          <p className="text-sm text-slate-500">Your accounts, statements and withdrawal requests.</p>
+          <p className="text-sm text-slate-500">Your accounts, statements, online deposits and withdrawals.</p>
         </div>
         {account && account.status !== 'CLOSED' && (
-          <Button variant="outline" onClick={openWithdrawal} disabled={!!account.withdrawalBlockedBy} title={account.withdrawalBlockedBy ?? undefined}>
-            <ArrowUpFromLine className="h-4 w-4" /> Request withdrawal
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {online && (
+              <Button onClick={() => requireKyc('deposit online') && setDepositOpen(true)}>
+                <ArrowDownToLine className="h-4 w-4" /> Deposit online
+              </Button>
+            )}
+            {online && (
+              <Button variant="outline" onClick={() => requireKyc('withdraw') && setInstantOpen(true)} disabled={!!account.withdrawalBlockedBy} title={account.withdrawalBlockedBy ?? undefined}>
+                <Zap className="h-4 w-4" /> Withdraw instantly
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => openWithdrawal()} disabled={!!account.withdrawalBlockedBy} title={account.withdrawalBlockedBy ?? undefined}>
+              <ArrowUpFromLine className="h-4 w-4" /> Request withdrawal
+            </Button>
+          </div>
         )}
       </div>
+
+      {returningDeposit && (
+        <DepositReturnBanner
+          depositId={returningDeposit}
+          onSettled={depositSettled}
+          onDismiss={() => {
+            params.delete('deposit');
+            setParams(params, { replace: true });
+          }}
+        />
+      )}
 
       {accounts.length === 0 ? (
         <EmptyState
@@ -154,6 +222,12 @@ const SavingsPage: React.FC = () => {
         </Card>
       )}
 
+      {online ? (
+        <OnlinePaymentsCard online={online} onAddAccount={() => requireKyc('add a payout account') && setAddAccountOpen(true)} onChanged={loadOnline} onError={(m) => toast.error(m)} />
+      ) : (
+        onlineError && <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">Online deposits and instant withdrawals are not available right now. {onlineError}</p>
+      )}
+
       {requests.length > 0 && (
         <Card>
           <CardHeader>
@@ -188,9 +262,44 @@ const SavingsPage: React.FC = () => {
         </Card>
       )}
 
+      {depositOpen && account && <OnlineDepositModal account={account} onClose={() => setDepositOpen(false)} />}
+
+      {instantOpen && account && online && (
+        <InstantWithdrawModal
+          account={account}
+          online={online}
+          onClose={() => setInstantOpen(false)}
+          onDone={() => {
+            load();
+            loadOnline();
+          }}
+          onUseRequest={(amount) => {
+            setInstantOpen(false);
+            openWithdrawal(amount);
+          }}
+          onAddAccount={() => {
+            setInstantOpen(false);
+            setAddAccountOpen(true);
+          }}
+        />
+      )}
+
+      {addAccountOpen && online && (
+        <AddPayoutAccountModal
+          online={online}
+          onClose={() => setAddAccountOpen(false)}
+          onSaved={(a) => {
+            setAddAccountOpen(false);
+            toast.success(`${a.channelLabel} ${a.accountNumber} added. Your branch will verify it before your first instant withdrawal.`);
+            loadOnline();
+          }}
+        />
+      )}
+
       {withdrawOpen && account && (
         <WithdrawalRequestModal
           account={account}
+          initialAmount={requestAmount}
           onClose={() => setWithdrawOpen(false)}
           onDone={(r) => {
             setWithdrawOpen(false);
@@ -203,8 +312,8 @@ const SavingsPage: React.FC = () => {
   );
 };
 
-const WithdrawalRequestModal: React.FC<{ account: MemberSavingsAccount; onClose: () => void; onDone: (r: MemberWithdrawalRequest) => void }> = ({ account, onClose, onDone }) => {
-  const [amount, setAmount] = useState('');
+const WithdrawalRequestModal: React.FC<{ account: MemberSavingsAccount; initialAmount?: string; onClose: () => void; onDone: (r: MemberWithdrawalRequest) => void }> = ({ account, initialAmount = '', onClose, onDone }) => {
+  const [amount, setAmount] = useState(initialAmount);
   const [destination, setDestination] = useState<WithdrawalDestination>('CASH_PICKUP');
   const [destinationAccount, setDestinationAccount] = useState('');
   const [reason, setReason] = useState('');

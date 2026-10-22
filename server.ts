@@ -66,6 +66,9 @@ import {
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { clientMobileRouter } from './src/routes/clientMobileRoutes';
 import { branchRouter } from './src/routes/branchRoutes';
+import { paymentRouter } from './src/routes/paymentRoutes';
+import { paymentDeps } from './src/payments/config';
+import { sweepOnlinePayments } from './src/payments/service';
 import { psgcService } from './src/services/psgcService';
 
 dotenv.config();
@@ -2474,6 +2477,9 @@ app.get('/api/mobile/config', (req, res) => {
   });
 });
 
+// Provider confirmations and the mock checkout page (public; each confirmation is verified).
+app.use(paymentRouter);
+
 // Mount Client Mobile API routes for mobile app
 // The branch router relies on req.authUser being populated by authenticate().
 app.use(
@@ -2765,6 +2771,25 @@ function startInterestPosting() {
   setInterval(run, 6 * 60 * 60 * 1000).unref();
 }
 
+/**
+ * Settles online payments whose confirmation was missed (late deposits are
+ * credited, unconfirmed payouts checked or sent again), now and every 5 minutes.
+ */
+function startOnlinePaymentSweep() {
+  const run = async () => {
+    const db = getDb();
+    if (!db) return;
+    try {
+      const r = await sweepOnlinePayments(onboardingDb(), paymentDeps());
+      if (r.depositsChecked || r.payoutsChecked || r.errors.length) console.log(`[Online payments] checked ${r.depositsChecked} deposits, ${r.payoutsChecked} payouts (${r.sentAgain} sent again, ${r.toReview} to review)${r.errors.length ? `; errors: ${r.errors.join(' | ')}` : ''}`);
+    } catch (err) {
+      console.error('[Online payments] sweep failed:', err instanceof Error ? err.message : err);
+    }
+  };
+  void run();
+  setInterval(run, 5 * 60 * 1000).unref();
+}
+
 // Setup Vite development middleware or static file serving
 async function initServer() {
   // The schema comes from database/migrations (npm run db:migrate); this only
@@ -2773,6 +2798,7 @@ async function initServer() {
   if (schemaState?.ok) await seedDatabase();
   startOverdueChecks();
   startInterestPosting();
+  startOnlinePaymentSweep();
 
   const httpServer = http.createServer(app);
 

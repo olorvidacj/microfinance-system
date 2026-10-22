@@ -3,7 +3,7 @@ import nodemailer from 'nodemailer';
 interface SendOtpEmailOptions {
   to: string;
   code: string;
-  purpose?: 'registration' | 'password_reset';
+  purpose?: 'registration' | 'password_reset' | 'withdrawal';
 }
 
 export function isDirectSmtpConfigured(): boolean {
@@ -39,9 +39,14 @@ function getMailTransporter() {
 }
 
 export async function sendOtpEmail({ to, code, purpose = 'registration' }: SendOtpEmailOptions): Promise<{ sent: boolean; method: string }> {
-  const subject = purpose === 'registration'
-    ? `Your HOSCOMCO Verification Code: ${code}`
-    : `HOSCOMCO Password Reset Code: ${code}`;
+  const subject =
+    purpose === 'registration'
+      ? `Your HOSCOMCO Verification Code: ${code}`
+      : purpose === 'withdrawal'
+        ? `HOSCOMCO withdrawal code: ${code}`
+        : `HOSCOMCO Password Reset Code: ${code}`;
+  const action = purpose === 'registration' ? 'membership registration' : purpose === 'withdrawal' ? 'savings withdrawal' : 'password reset';
+  const expiry = purpose === 'withdrawal' ? '5 minutes' : '10 minutes';
 
   if (isDirectSmtpConfigured()) {
     try {
@@ -63,7 +68,7 @@ export async function sendOtpEmail({ to, code, purpose = 'registration' }: SendO
               Hello,
             </p>
             <p style="color: #334155; font-size: 15px; line-height: 1.5; margin: 0 0 24px 0;">
-              Here is your official verification code to complete your ${purpose === 'registration' ? 'membership registration' : 'password reset'}:
+              Here is your official verification code to complete your ${action}:
             </p>
 
             <div style="background-color: #f8fafc; border: 2px dashed #0284c7; border-radius: 12px; padding: 20px; text-align: center; margin: 0 0 24px 0;">
@@ -73,7 +78,7 @@ export async function sendOtpEmail({ to, code, purpose = 'registration' }: SendO
             </div>
 
             <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 12px 0;">
-              ⏳ This verification code expires in <strong>10 minutes</strong>.
+              ⏳ This verification code expires in <strong>${expiry}</strong>.
             </p>
             <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 0; border-top: 1px solid #f1f5f9; padding-top: 16px;">
               If you did not request this verification code, please disregard this email. Never share this code with anyone.

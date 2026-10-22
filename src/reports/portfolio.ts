@@ -76,8 +76,10 @@ export async function portfolioSummary(db: AppDb, scope: { branchId: string | nu
         .from(savingsTransactions)
         .where(branch ? inArray(savingsTransactions.memberId, memberIds) : undefined)
     : [];
-  const total = (rows: typeof txns, kind: string, day?: string) =>
-    centsToDecimal(rows.filter((t) => t.kind === kind && (!day || t.date === day)).reduce((s, t) => s + centsFromDb(t.amount), 0));
+  const cents = (rows: typeof txns, kind: string, day?: string) => rows.filter((t) => t.kind === kind && (!day || t.date === day)).reduce((s, t) => s + centsFromDb(t.amount), 0);
+  const total = (rows: typeof txns, kind: string, day?: string) => centsToDecimal(cents(rows, kind, day));
+  // An online payout that failed and came back (PAYOUT_REFUND) undoes its withdrawal.
+  const withdrawn = (day?: string) => centsToDecimal(cents(txns, 'WITHDRAWAL', day) - cents(txns, 'PAYOUT_REFUND', day));
 
   const groupRows = await db
     .select({ status: groupTable.status, fund: groupTable.fundBalance })
@@ -114,9 +116,9 @@ export async function portfolioSummary(db: AppDb, scope: { branchId: string | nu
       accounts: open.length,
       balance: centsToDecimal(open.reduce((s, a) => s + centsFromDb(a.balance), 0)),
       depositsToday: total(txns, 'DEPOSIT', today),
-      withdrawalsToday: total(txns, 'WITHDRAWAL', today),
+      withdrawalsToday: withdrawn(today),
       deposits: total(txns, 'DEPOSIT'),
-      withdrawals: total(txns, 'WITHDRAWAL'),
+      withdrawals: withdrawn(),
       interest: total(txns, 'INTEREST'),
     },
     groups: {

@@ -67,7 +67,7 @@ export const StatementView: React.FC<{
             <tr key={l.id} data-testid="statement-line">
               <td className="whitespace-nowrap px-4 py-2">{l.date}</td>
               <td className="whitespace-nowrap px-4 py-2 font-mono text-xs">{l.number}</td>
-              <td className="px-4 py-2">{l.label}{l.method && l.method !== 'CASH' ? ` · ${PAYMENT_METHOD_LABELS[l.method as keyof typeof PAYMENT_METHOD_LABELS] ?? l.method}` : ''}{l.destinationAccount ? ` to ${l.destinationAccount}` : ''}</td>
+              <td className="px-4 py-2">{l.label}{l.method && l.method !== 'CASH' ? ` · ${(l.method === 'ONLINE' ? 'Online' : PAYMENT_METHOD_LABELS[l.method as keyof typeof PAYMENT_METHOD_LABELS] ?? l.method)}` : ''}{l.destinationAccount ? ` to ${l.destinationAccount}` : ''}</td>
               <td className="px-4 py-2 text-xs text-slate-500">{l.reference ?? ''}</td>
               <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-emerald-700">{l.moneyIn ? peso(l.moneyIn) : ''}</td>
               <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-rose-700">{l.moneyOut ? peso(l.moneyOut) : ''}</td>

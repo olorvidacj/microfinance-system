@@ -266,7 +266,7 @@ export function interestForPeriod(input: {
 // Transactions and ledger
 // ---------------------------------------------------------------------------
 
-export const SAVINGS_TXN_KINDS = ['DEPOSIT', 'WITHDRAWAL', 'INTEREST', 'OPENING_BALANCE', 'TRANSFER_IN', 'TRANSFER_OUT'] as const;
+export const SAVINGS_TXN_KINDS = ['DEPOSIT', 'WITHDRAWAL', 'INTEREST', 'OPENING_BALANCE', 'TRANSFER_IN', 'TRANSFER_OUT', 'PAYOUT_REFUND'] as const;
 export type SavingsTxnKind = (typeof SAVINGS_TXN_KINDS)[number];
 export const SAVINGS_TXN_LABELS: Readonly<Record<SavingsTxnKind, string>> = {
   DEPOSIT: 'Deposit',
@@ -275,12 +275,15 @@ export const SAVINGS_TXN_LABELS: Readonly<Record<SavingsTxnKind, string>> = {
   OPENING_BALANCE: 'Opening balance (migrated)',
   TRANSFER_IN: 'Transfer in',
   TRANSFER_OUT: 'Transfer out',
+  PAYOUT_REFUND: 'Payout returned',
 };
 
 export const SAVINGS_LEDGER = {
   SAVINGS_PAYABLE: '2010',
   SPECIAL_DEPOSITS_PAYABLE: '2020',
   SAVINGS_INTEREST_EXPENSE: '4040',
+  /** Money the payment provider holds for the cooperative (online deposits in, payouts out). */
+  DUE_FROM_PROVIDER: '1030',
 } as const;
 
 /** Time deposits sit in Special Deposits Payable; other savings in Savings Deposits Payable. */
@@ -288,19 +291,36 @@ export function liabilityAccount(kind: SavingsKind): string {
   return kind === 'TIME_DEPOSIT' ? SAVINGS_LEDGER.SPECIAL_DEPOSITS_PAYABLE : SAVINGS_LEDGER.SAVINGS_PAYABLE;
 }
 
-export function savingsJournal(kind: 'DEPOSIT' | 'WITHDRAWAL' | 'INTEREST', productKind: SavingsKind, amount: Cents, method: DisbursementMethod = 'CASH'): JournalLine[] {
+/**
+ * The journal for a savings movement. The cash side is the method's account
+ * (cash on hand or bank), or `source` when given: online payments post against
+ * 1030 Due from Payment Provider. A PAYOUT_REFUND returns a failed payout.
+ */
+export function savingsJournal(
+  kind: 'DEPOSIT' | 'WITHDRAWAL' | 'INTEREST' | 'PAYOUT_REFUND',
+  productKind: SavingsKind,
+  amount: Cents,
+  method: DisbursementMethod = 'CASH',
+  source: string = DISBURSEMENT_SOURCE_ACCOUNT[method],
+): JournalLine[] {
   if (amount <= 0) throw new RangeError('Nothing to post.');
   const liability = liabilityAccount(productKind);
+  if (kind === 'PAYOUT_REFUND') {
+    return [
+      { accountCode: source, debit: amount, credit: 0, memo: 'Failed payout returned to savings' },
+      { accountCode: liability, debit: 0, credit: amount, memo: 'Failed payout returned to savings' },
+    ];
+  }
   if (kind === 'DEPOSIT') {
     return [
-      { accountCode: DISBURSEMENT_SOURCE_ACCOUNT[method], debit: amount, credit: 0, memo: 'Savings deposit' },
+      { accountCode: source, debit: amount, credit: 0, memo: 'Savings deposit' },
       { accountCode: liability, debit: 0, credit: amount, memo: 'Savings deposit' },
     ];
   }
   if (kind === 'WITHDRAWAL') {
     return [
       { accountCode: liability, debit: amount, credit: 0, memo: 'Savings withdrawal' },
-      { accountCode: DISBURSEMENT_SOURCE_ACCOUNT[method], debit: 0, credit: amount, memo: 'Savings withdrawal' },
+      { accountCode: source, debit: 0, credit: amount, memo: 'Savings withdrawal' },
     ];
   }
   return [
