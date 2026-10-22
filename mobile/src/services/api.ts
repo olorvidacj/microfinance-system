@@ -18,7 +18,7 @@ import type {
   FaceMatchView,
   FaqView,
   IdScanView,
-  KycStatusView,
+  KycStatusFullView,
   KycUploadView,
   PsgcPlaceView,
   LoanDetailView,
@@ -243,8 +243,8 @@ class ApiService {
   // KYC
   // -------------------------------------------------------------------------
 
-  async getKycStatus(): Promise<KycStatusView> {
-    return this.request<KycStatusView>('/client/kyc-status');
+  async getKycStatus(): Promise<KycStatusFullView> {
+    return this.request<KycStatusFullView>('/client/kyc-status');
   }
 
   /** A KYC document photo (ID back, proof of income, ...). */
@@ -252,14 +252,14 @@ class ApiService {
     return this.post<KycUploadView>('/client/kyc/documents/upload', payload);
   }
 
-  /** Stores the ID photo(s) and runs the automated reader on them. */
-  async processKycId(payload: { frontImageBase64: string; backImageBase64?: string; fileName?: string }): Promise<IdScanView> {
+  /** Stores any new ID photo(s), then reads the stored ones (with none sent, reads the stored ID again). */
+  async processKycId(payload: { frontImageBase64?: string; backImageBase64?: string; fileName?: string } = {}): Promise<IdScanView> {
     return this.post<IdScanView>('/client/kyc/process-id', payload);
   }
 
-  /** Stores the selfie and compares it with the stored ID photo. */
-  async matchKycFace(selfieImageBase64: string): Promise<FaceMatchView> {
-    return this.post<FaceMatchView>('/client/kyc/match-face', { selfieImageBase64 });
+  /** Stores a new selfie (if given), then compares the stored selfie with the stored ID photo. */
+  async matchKycFace(selfieImageBase64?: string): Promise<FaceMatchView> {
+    return this.post<FaceMatchView>('/client/kyc/match-face', selfieImageBase64 ? { selfieImageBase64 } : {});
   }
 
   async saveKycDraft(payload: KycApplicationPayload & { currentStep: number }): Promise<void> {
