@@ -120,22 +120,44 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
                   </View>
                   <View style={styles.kycBody}>
                     <Text style={styles.kycTitle}>
-                      {kycNeedsCorrection ? 'KYC needs corrections' : kycIsPending ? 'KYC under review' : kycStatus === 'REJECTED' ? 'KYC not approved' : 'Complete your KYC verification first.'}
+                      {kycNeedsCorrection
+                        ? 'Additional information required'
+                        : kycIsPending
+                          ? 'Verification under review'
+                          : kycStatus === 'REJECTED'
+                            ? 'Verification not approved'
+                            : kycStatus === 'SUSPENDED'
+                              ? 'Verification suspended'
+                              : 'Verify your identity'}
                     </Text>
                     <Text style={styles.kycText}>
                       {kycNeedsCorrection
-                        ? 'Some of your details or documents need updating before you can apply for loans.'
+                        ? 'Your branch asked you to update part of your application before you can apply for loans.'
                         : kycIsPending
-                          ? 'Your documents are being checked by the branch. Loan applications open once approved.'
-                          : 'Verify your identity to open loans and savings.'}
+                          ? 'A branch officer is checking your application. Loan applications open once it is approved.'
+                          : kycStatus === 'REJECTED' || kycStatus === 'SUSPENDED'
+                            ? 'See the reason and what to do next.'
+                            : kycStatus === 'IN_PROGRESS'
+                              ? 'Your progress is saved. Continue where you left off.'
+                              : 'Verify your identity to open loans and savings. It takes about 10 minutes.'}
                     </Text>
                     <View style={styles.kycActions}>
                       <AppButton
                         variant={kycNeedsCorrection ? 'secondary' : 'primary'}
                         size="sm"
                         style={{ alignSelf: 'flex-start', width: undefined, paddingHorizontal: 16 }}
-                        title={kycNeedsCorrection ? 'Update KYC' : kycIsPending ? 'View status' : 'Start KYC'}
-                        onPress={() => (kycIsPending ? navigation.navigate('KycStatus') : navigation.navigate('KycForm'))}
+                        title={
+                          kycNeedsCorrection
+                            ? 'Update my application'
+                            : kycIsPending || kycStatus === 'REJECTED' || kycStatus === 'SUSPENDED'
+                              ? 'View status'
+                              : kycStatus === 'IN_PROGRESS'
+                                ? 'Continue verification'
+                                : 'Start verification'
+                        }
+                        onPress={() =>
+                          kycIsPending || kycStatus === 'REJECTED' || kycStatus === 'SUSPENDED' ? navigation.navigate('KycStatus') : navigation.navigate('KycForm')
+                        }
                       />
                     </View>
                   </View>

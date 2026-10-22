@@ -1,6 +1,5 @@
-import type { KycDossierView } from '../../components/kyc/KycReviewPanel';
-import type { KycQueueResultView, KycQueueRow } from '../../components/kyc/KycQueueView';
-import type { KycDecision } from '../../../shared/kyc-core';
+import type { KycDecisionBody, KycDossierView } from '../../components/kyc/KycReviewPanel';
+import type { KycQueueParams, KycQueueResultView, KycQueueRow } from '../../components/kyc/KycQueueView';
 import type { ProductDto, SavingsProductDto } from '../../../shared/lending';
 import { authFetch } from '../../context/AuthContext';
 import type {
@@ -274,18 +273,20 @@ export const adminApi = {
     get<{ transactions: AdminTransaction[] }>(withBranch('/api/admin/transactions', branchId)).then((r) => r.transactions || []),
   groups: (branchId?: string | null): Promise<LendingGroup[]> => get<{ groups: LendingGroup[] }>(withBranch('/api/admin/groups', branchId)).then((r) => r.groups || []),
   /** Head-office KYC queue: every branch, or one. */
-  kycQueue: (params: { status?: string; search?: string; branchId?: string | null } = {}): Promise<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] }> => {
+  kycQueue: (params: KycQueueParams & { branchId?: string | null } = {}): Promise<{ data: KycQueueRow[]; counts: KycQueueResultView['counts'] }> => {
     const qs = new URLSearchParams();
     if (params.status) qs.set('status', params.status);
     if (params.search) qs.set('search', params.search);
     if (params.branchId) qs.set('branchId', params.branchId);
+    if (params.submittedFrom) qs.set('submittedFrom', params.submittedFrom);
+    if (params.submittedTo) qs.set('submittedTo', params.submittedTo);
     return get<{ requests: KycQueueRow[]; counts: KycQueueResultView['counts'] }>(`/api/admin/kyc-requests${qs.toString() ? `?${qs}` : ''}`).then((r) => ({ data: r.requests, counts: r.counts }));
   },
   kyc: {
     get: (borrowerId: string): Promise<KycDossierView> => get<{ data: KycDossierView }>(`/api/admin/kyc/${encodeURIComponent(borrowerId)}`).then((r) => r.data),
     claim: (borrowerId: string) => post(`/api/admin/kyc/${encodeURIComponent(borrowerId)}/claim`, {}),
     release: (borrowerId: string) => post(`/api/admin/kyc/${encodeURIComponent(borrowerId)}/release`, {}),
-    decide: (borrowerId: string, body: { decision: KycDecision; reason: string; sections: string[] }, idempotencyKey: string) =>
+    decide: (borrowerId: string, body: KycDecisionBody, idempotencyKey: string) =>
       request(`/api/admin/kyc/${encodeURIComponent(borrowerId)}/decision`, { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': idempotencyKey } }),
   },
   notifications: (branchId?: string | null): Promise<AdminNotification[]> =>

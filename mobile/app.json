@@ -30,7 +30,14 @@
           "backgroundColor": "#059669"
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "HOSCOMCO uses the camera to take photos of your ID and a selfie for identity verification.",
+          "recordAudioAndroid": false
+        }
+      ]
     ]
   }
 }

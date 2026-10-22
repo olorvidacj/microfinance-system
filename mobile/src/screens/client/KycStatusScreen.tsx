@@ -7,8 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppButton, AppCard, Badge, DocRow, ErrorView, InfoRow, LoadingView, ScreenHeader } from '../../components';
 import { colors, radius } from '../../theme';
 import { api, messageOf } from '../../services/api';
-import type { KycStatusView } from '../../shared/client';
-import { isAwaitingReview, kycGateMessage } from '../../shared/kyc';
+import { kycCanEdit, type KycStatusView } from '../../shared/client';
+import { KYC_SECTION_LABELS, isAwaitingReview, kycGateMessage, parseSections } from '../../shared/kyc';
 import { formatDateTime } from '../../utils/format';
 import type { HomeStackParamList } from '../../navigation/types';
 
@@ -46,7 +46,12 @@ export const KycStatusScreen: React.FC = () => {
     : waiting
       ? { icon: 'time-outline' as const, bg: colors.warningSoft, fg: colors.warning, text: kycGateMessage(status) }
       : status === 'REJECTED'
-        ? { icon: 'close-circle-outline' as const, bg: colors.dangerSoft, fg: colors.danger, text: data.rejectionReason ? `Reason: ${data.rejectionReason}` : kycGateMessage(status) }
+        ? {
+            icon: 'close-circle-outline' as const,
+            bg: colors.dangerSoft,
+            fg: colors.danger,
+            text: `${data.rejectionReason ? `Reason: ${data.rejectionReason} ` : ''}${data.resubmissionAllowed ? 'You may update your application and submit it again.' : 'Please contact your branch for help.'}`,
+          }
         : status === 'CORRECTION_REQUIRED'
           ? { icon: 'create-outline' as const, bg: colors.warningSoft, fg: colors.warning, text: data.correctionReason ? `Branch note: ${data.correctionReason}` : kycGateMessage(status) }
           : { icon: 'shield-outline' as const, bg: colors.primarySoft, fg: colors.primary, text: kycGateMessage(status) };
@@ -65,7 +70,7 @@ export const KycStatusScreen: React.FC = () => {
             <Badge label={data.statusLabel} status={status} />
             <Text style={styles.bannerText}>{banner.text}</Text>
             {data.correctionDetails?.sections.length ? (
-              <Text style={styles.bannerText}>Sections to fix: {data.correctionDetails.sections.join(', ')}</Text>
+              <Text style={styles.bannerText}>Please update: {parseSections(data.correctionDetails.sections).map((s) => KYC_SECTION_LABELS[s]).join(', ')}</Text>
             ) : null}
           </View>
         </View>
@@ -90,9 +95,9 @@ export const KycStatusScreen: React.FC = () => {
           </AppCard>
         )}
 
-        {data.editable ? (
+        {kycCanEdit(data) ? (
           <AppButton
-            title={status === 'CORRECTION_REQUIRED' ? 'Fix and resubmit' : status === 'REJECTED' ? 'Update and resubmit' : status === 'IN_PROGRESS' ? 'Continue KYC' : 'Start KYC'}
+            title={status === 'CORRECTION_REQUIRED' ? 'Update my application' : status === 'REJECTED' ? 'Update and resubmit' : status === 'IN_PROGRESS' ? 'Continue verification' : 'Start verification'}
             icon={<Ionicons name="arrow-forward" size={18} color={colors.white} />}
             onPress={() => navigation.navigate('KycForm')}
           />

@@ -4,16 +4,35 @@ import type { kycDossier } from '../../kyc/service';
 import { Modal } from '../../portal/components/ui/Modal';
 import { Button } from '../../portal/components/ui/Button';
 import { KycStatusBadge } from '../KycStatusBadge';
-import type { KycDecision } from '../../../shared/kyc-core';
+import {
+  KYC_SECTIONS,
+  KYC_SECTION_LABELS,
+  faceCheckIsVerification,
+  faceCheckSummary,
+  findIdType,
+  parseSections,
+  type KycDecision,
+} from '../../../shared/kyc-core';
 
 export type KycDossierView = Awaited<ReturnType<typeof kycDossier>>;
+
+/** What a reviewer sends with a decision (POST …/review or …/decision). */
+export interface KycDecisionBody {
+  decision: KycDecision;
+  reason: string;
+  sections: string[];
+  /** Reject only: whether the member may correct and submit again. */
+  allowResubmission?: boolean;
+  /** Approve only: the reviewer compared the selfie with the ID photo (needed when no face-verification service confirmed a match). */
+  faceReviewed?: boolean;
+}
 
 /** The calls the panel needs; the branch app and the head-office console bind their own endpoints. */
 export interface KycReviewApi {
   get(borrowerId: string): Promise<KycDossierView>;
   claim(borrowerId: string): Promise<unknown>;
   release(borrowerId: string): Promise<unknown>;
-  decide(borrowerId: string, body: { decision: KycDecision; reason: string; sections: string[] }, idempotencyKey: string): Promise<unknown>;
+  decide(borrowerId: string, body: KycDecisionBody, idempotencyKey: string): Promise<unknown>;
 }
 
 export interface KycReviewPanelProps {
@@ -24,15 +43,6 @@ export interface KycReviewPanelProps {
   onClose: () => void;
   onDone?: () => void;
 }
-
-const SECTIONS = [
-  { key: 'ID_UPLOAD', label: 'Government ID photo' },
-  { key: 'FACE_MATCH', label: 'Selfie' },
-  { key: 'PERSONAL_INFO', label: 'Personal information' },
-  { key: 'ADDRESS', label: 'Address' },
-  { key: 'FINANCIAL', label: 'Work and income' },
-  { key: 'DOCUMENTS', label: 'Supporting documents' },
-];
 
 const DECISION_COPY: Record<KycDecision, { title: string; button: string; variant: 'success' | 'danger' | 'primary'; placeholder: string }> = {
   APPROVE: { title: 'Approve and verify this member', button: 'Approve', variant: 'success', placeholder: 'e.g. ID and selfie checked against the original card at the branch.' },
@@ -64,13 +74,15 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
   const [sections, setSections] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState('');
+  const [allowResubmission, setAllowResubmission] = useState(true);
+  const [faceReviewed, setFaceReviewed] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
     try {
       setData(await api.get(clientId));
-    } catch (e: any) {
-      setError(e?.message || 'Could not load this application.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load this application.');
     }
   }, [api, clientId]);
 
@@ -85,8 +97,8 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
       await fn();
       await load();
       return true;
-    } catch (e: any) {
-      setError(e?.message || 'The action failed.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The action failed.');
       return false;
     } finally {
       setBusy(false);
@@ -97,12 +109,21 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
     setDecision(d);
     setReason('');
     setSections([]);
+    setAllowResubmission(true);
+    setFaceReviewed(false);
     setIdempotencyKey(crypto.randomUUID());
   };
 
   const submitDecision = async () => {
     if (!decision) return;
-    const ok = await act(() => api.decide(clientId, { decision, reason: reason.trim(), sections }, idempotencyKey));
+    const body: KycDecisionBody = {
+      decision,
+      reason: reason.trim(),
+      sections,
+      ...(decision === 'REJECT' ? { allowResubmission } : {}),
+      ...(decision === 'APPROVE' ? { faceReviewed } : {}),
+    };
+    const ok = await act(() => api.decide(clientId, body, idempotencyKey));
     if (ok) {
       setDecision(null);
       onDone?.();
@@ -113,10 +134,19 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
   const awaiting = status === 'SUBMITTED' || status === 'UNDER_REVIEW';
   const ocr = data?.checks.ocr;
   const face = data?.checks.faceCheck;
-  const discrepancies = (data?.checks.discrepancies as Array<{ field: string; message: string; declared: string | null; extracted: string | null; severity: string }>) ?? [];
-  const app = data?.application as any;
+  const discrepancies = data?.checks.discrepancies ?? [];
+  const gid = (data?.application.governmentId ?? null) as Record<string, string | null> | null;
+  const pi = (data?.application.personalInfo ?? null) as Record<string, string | boolean | null> | null;
+  const declarations = (data?.application.declarations ?? null) as Record<string, unknown> | null;
   const currentDocs = data?.documents.filter((d) => d.current) ?? [];
   const olderDocs = data?.documents.filter((d) => !d.current) ?? [];
+  const faceVerified = faceCheckIsVerification(face);
+  const docOf = (kind: string) => data?.requirements.find((r) => r.kind === kind)?.document ?? null;
+  const idFront = docOf('ID_FRONT');
+  const selfie = docOf('SELFIE');
+  const read = ocr?.fields ?? {};
+  const declaredName = pi ? [pi.firstName, pi.hasNoMiddleName ? null : pi.middleName, pi.lastName, pi.suffix].filter((p) => typeof p === 'string' && p.trim()).join(' ') : '';
+  const lastSections = parseSections(data?.correctionSections ?? []);
 
   return (
     <Modal
@@ -174,8 +204,37 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
           {(data.decisionReason || data.rejectionReason || data.correctionReason) && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
               <strong>Last decision</strong> by {data.reviewedByName ?? '—'} on {fmt(data.reviewedAt)}: {data.decisionReason || data.rejectionReason || data.correctionReason}
+              {lastSections.length > 0 && <span className="block">Asked to change: {lastSections.map((s) => KYC_SECTION_LABELS[s]).join(', ')}</span>}
+              {data.kycStatus === 'REJECTED' && <span className="block">{data.resubmissionAllowed ? 'The member may correct and resubmit.' : 'Resubmission not allowed.'}</span>}
             </div>
           )}
+
+          <section aria-label="Compare the selfie with the ID photo" className="rounded-xl border border-slate-200 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Is this the same person?</h3>
+              <CheckPill tone={faceVerified ? 'ok' : face?.status === 'NO_MATCH' ? 'bad' : face ? 'warn' : 'none'}>{faceCheckSummary(face)}</CheckPill>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'ID photo (front)', doc: idFront },
+                { label: 'Selfie', doc: selfie },
+              ].map(({ label, doc }) => (
+                <figure key={label} className="rounded-lg bg-slate-50 p-2">
+                  {doc?.url ? (
+                    <a href={doc.url} target="_blank" rel="noreferrer" title="Open full size">
+                      <img src={doc.url} alt={label} className="h-56 w-full rounded-md object-contain" />
+                    </a>
+                  ) : (
+                    <p className="flex h-56 items-center justify-center text-xs text-rose-700">Not uploaded</p>
+                  )}
+                  <figcaption className="mt-1 text-center text-[11px] text-slate-600">{label}</figcaption>
+                </figure>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              Biometric consent: {declarations?.biometricConsent === true ? 'given' : 'not given'}. No liveness check is run, so look for signs of a photo of a photo or a screen.
+            </p>
+          </section>
 
           <section className="grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 p-3">
@@ -209,37 +268,47 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-slate-500">Face comparison:</span>
-                {!face ? (
-                  <CheckPill tone="none">Not run</CheckPill>
-                ) : (
-                  <CheckPill tone={face.status === 'MATCH' ? 'ok' : face.status === 'NO_MATCH' ? 'bad' : 'warn'}>
-                    {face.status.replace('_', ' ').toLowerCase()}
-                    {face.confidence != null ? ` · ${face.confidence}%` : ''}
-                  </CheckPill>
-                )}
+                <CheckPill tone={faceVerified ? 'ok' : face?.status === 'NO_MATCH' ? 'bad' : face ? 'warn' : 'none'}>
+                  {face ? `${face.status.replace('_', ' ').toLowerCase()}${face.confidence != null ? ` · ${face.confidence}%` : ''}${face.provider ? ` · ${face.provider}` : ''}` : 'Not run'}
+                </CheckPill>
               </div>
-              {(ocr?.status !== 'COMPLETED' || face?.status === 'UNAVAILABLE' || face?.status === 'FAILED') && (
+              {(ocr?.status !== 'COMPLETED' || !faceVerified) && (
                 <p className="flex items-start gap-1.5 text-[11px] text-amber-800">
-                  <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Some automated checks did not run. Compare the photos and the member record yourself.
+                  <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Some checks were not done by a verification service. Compare the photos and the details yourself; a readable ID is not proof
+                  that it is genuine.
                 </p>
               )}
-              {discrepancies.length > 0 && (
-                <ul className="space-y-1 rounded-lg bg-rose-50 p-2 text-[11px] text-rose-800">
-                  {discrepancies.map((d) => (
-                    <li key={d.field}>
-                      <strong>{d.message}</strong> Declared: {d.declared ?? '—'} · On ID: {d.extracted ?? '—'}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {app?.governmentId && (
-                <div>
-                  <Row label="ID type (declared)" value={app.governmentId.idType} />
-                  <Row label="ID number (declared)" value={app.governmentId.idNumber} />
-                  <Row label="Name on ID (declared)" value={app.governmentId.nameOnId} />
-                  <Row label="ID expiry" value={app.governmentId.expirationDate} />
-                </div>
-              )}
+              <table className="w-full text-[11px]">
+                <caption className="sr-only">What the member declared, next to what was read from the ID</caption>
+                <thead>
+                  <tr className="text-left text-slate-500">
+                    <th className="py-1 font-medium" />
+                    <th className="py-1 font-medium">Declared</th>
+                    <th className="py-1 font-medium">Read from the ID</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {[
+                    { field: 'fullName', label: 'Name', declared: gid?.nameOnId || declaredName, read: read.fullName },
+                    { field: 'dateOfBirth', label: 'Date of birth', declared: typeof pi?.dateOfBirth === 'string' ? pi.dateOfBirth : null, read: read.dateOfBirth },
+                    { field: 'idNumber', label: 'ID number', declared: gid?.idNumber, read: read.idNumber },
+                    { field: 'expirationDate', label: 'Valid until', declared: gid?.expirationDate, read: read.expirationDate },
+                  ].map((r) => {
+                    const flagged = discrepancies.find((d) => d.field === r.field);
+                    return (
+                      <tr key={r.field} className={flagged ? 'bg-rose-50 text-rose-800' : 'text-slate-800'}>
+                        <td className="py-1 pr-2 text-slate-500">{r.label}</td>
+                        <td className="py-1 pr-2 font-medium">{r.declared || '—'}</td>
+                        <td className="py-1 font-medium">
+                          {r.read || '—'}
+                          {flagged && <span className="block text-[10px] font-normal">{flagged.message}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <Row label="ID type" value={`${findIdType(gid?.idType)?.label ?? gid?.idType ?? '—'}${ocr?.detectedIdType && ocr.detectedIdType !== gid?.idType ? ` (looks like ${findIdType(ocr.detectedIdType)?.label ?? ocr.detectedIdType})` : ''}`} />
             </div>
           </section>
 
@@ -321,7 +390,13 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
           footer={
             <>
               <Button variant="outline" onClick={() => setDecision(null)}>Cancel</Button>
-              <Button id="kyc-decision-confirm" variant={DECISION_COPY[decision].variant} loading={busy} disabled={reason.trim().length < 3 || (decision === 'REQUEST_RESUBMISSION' && sections.length === 0)} onClick={submitDecision}>
+              <Button
+                id="kyc-decision-confirm"
+                variant={DECISION_COPY[decision].variant}
+                loading={busy}
+                disabled={reason.trim().length < 3 || (decision === 'REQUEST_RESUBMISSION' && sections.length === 0) || (decision === 'APPROVE' && !faceVerified && !faceReviewed)}
+                onClick={submitDecision}
+              >
                 {DECISION_COPY[decision].button}
               </Button>
             </>
@@ -342,14 +417,36 @@ export const KycReviewPanel: React.FC<KycReviewPanelProps> = ({ clientId, api, c
             <fieldset className="mt-3">
               <legend className="mb-1 text-xs font-medium text-slate-600">What must the member change? <span className="text-rose-500">*</span></legend>
               <div className="grid grid-cols-2 gap-1.5">
-                {SECTIONS.map((s) => (
-                  <label key={s.key} className="flex items-center gap-2 text-xs text-slate-700">
-                    <input type="checkbox" checked={sections.includes(s.key)} onChange={(e) => setSections((prev) => (e.target.checked ? [...prev, s.key] : prev.filter((x) => x !== s.key)))} />
-                    {s.label}
+                {KYC_SECTIONS.map((s) => (
+                  <label key={s} className="flex items-center gap-2 text-xs text-slate-700">
+                    <input type="checkbox" checked={sections.includes(s)} onChange={(e) => setSections((prev) => (e.target.checked ? [...prev, s] : prev.filter((x) => x !== s)))} />
+                    {KYC_SECTION_LABELS[s]}
                   </label>
                 ))}
               </div>
+              <p className="mt-1 text-[11px] text-slate-500">The member can change only these parts. A new ID photo also needs a new selfie check.</p>
             </fieldset>
+          )}
+          {decision === 'REJECT' && (
+            <label className="mt-3 flex items-start gap-2 text-xs text-slate-700">
+              <input type="checkbox" checked={allowResubmission} onChange={(e) => setAllowResubmission(e.target.checked)} className="mt-0.5" />
+              <span>
+                Let the member correct the application and submit again.
+                <span className="block text-slate-500">Untick for a final rejection (for example a forged ID); the member is told to contact the branch.</span>
+              </span>
+            </label>
+          )}
+          {decision === 'APPROVE' && (
+            <div className="mt-3 space-y-2 text-xs">
+              <p className={faceVerified ? 'text-emerald-700' : 'text-amber-800'}>{faceCheckSummary(face)}</p>
+              {!faceVerified && (
+                <label className="flex items-start gap-2 text-slate-700">
+                  <input type="checkbox" checked={faceReviewed} onChange={(e) => setFaceReviewed(e.target.checked)} className="mt-0.5" />
+                  <span>I compared the selfie with the ID photo myself and they show the same person.</span>
+                </label>
+              )}
+              <p className="text-slate-500">Approving confirms you checked the ID is genuine and belongs to this member. Automated reading alone does not show that.</p>
+            </div>
           )}
         </Modal>
       )}

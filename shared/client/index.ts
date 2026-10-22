@@ -4,3 +4,4 @@ export * from './statement';
 export * from './support';
 export * from './transactions';
 export * from './kycForm';
+export * from './kycSteps';

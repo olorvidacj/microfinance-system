@@ -35,7 +35,8 @@ export function isPlaceholderConnectionString(url?: string | null): boolean {
   }
 
   // Localhost connection in container environment with no local daemon
-  if (lower.includes('localhost:5432') || lower.includes('127.0.0.1:5432')) {
+  // (Port 5432 exactly: the local database from npm run db:local listens on 54329.)
+  if (/(localhost|127\.0\.0\.1):5432(?!\d)/.test(lower)) {
     return true;
   }
 

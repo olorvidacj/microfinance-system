@@ -8,6 +8,7 @@ import { Modal, ConfirmDialog } from '../components/Modal';
 import { SearchInput, FilterSelect } from '../components/SearchFilter';
 import { AdminClient, formatPHP, formatDate } from '../data/mockData';
 import { Avatar } from '../../ui';
+import { isKycVerified, kycStatusLabel } from '../../../shared/kyc-core';
 import { adminApi, ClientDetail } from '../services/adminApi';
 import { useAdminBranch } from '../branchScope';
 
@@ -155,7 +156,7 @@ export const ClientManagementPage: React.FC = () => {
             {
               key: 'kycStatus',
               header: 'KYC Status',
-              render: (c) => <Badge variant={c.kycStatus === 'Verified' ? 'success' : 'warning'} dot>{c.kycStatus}</Badge>,
+              render: (c) => <Badge variant={isKycVerified(c.kycStatus) ? 'success' : 'warning'} dot>{kycStatusLabel(c.kycStatus)}</Badge>,
             },
             {
               key: 'status',
@@ -212,7 +213,7 @@ export const ClientManagementPage: React.FC = () => {
                     </p>
                     <div className="mt-2 flex gap-2 flex-wrap">
                       <Badge dot>{selectedClient.status}</Badge>
-                      <Badge variant={selectedClient.kycStatus === 'Verified' ? 'success' : 'warning'}>{selectedClient.kycStatus}</Badge>
+                      <Badge variant={isKycVerified(selectedClient.kycStatus) ? 'success' : 'warning'}>{kycStatusLabel(selectedClient.kycStatus)}</Badge>
                     </div>
                   </div>
                 </div>

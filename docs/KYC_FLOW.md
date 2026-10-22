@@ -1,4 +1,162 @@
-# KYC flow — schema and migration notes
+# KYC flow
+
+## Guided verification (current)
+
+Members verify their identity in a guided flow, on the web portal (`/portal/kyc`,
+`src/portal/kyc/`) and in the mobile app (`mobile/src/screens/client/KycFormScreen.tsx`).
+Both use the same steps, payload and checks from `shared/client/kycSteps.ts` and
+`shared/client/kycForm.ts`. The server (`src/kyc/service.ts`) decides what is
+accepted; the screens only explain its rules early.
+
+### What the member does
+
+A welcome screen says what to prepare and how the data is protected. Then six
+steps, with "Step N of 6":
+
+1. **Personal information**: name, birth details, contact details, PSGC address.
+2. **Government ID**: front, plus the back for IDs that have one (required by the
+   server for those types). Guided camera or file upload. The server checks each
+   photo's quality before keeping it.
+3. **Check your ID details**: what was read from the ID, next to each field, for
+   the member to confirm or correct. Differences are shown to the member and to
+   staff.
+4. **Selfie**: explicit consent to the biometric comparison first (RA 10173), then
+   the selfie.
+5. **Work and documents**: income details and the supporting documents the branch
+   requires.
+6. **Review and submit**: a summary with links back to each step, then the
+   declarations.
+
+Progress is saved automatically (a few seconds after typing stops, on every step
+change, and when the tab is hidden). A member who comes back resumes at the first
+unfinished step. The dashboard card shows the status, the steps still to do, staff
+feedback and the next action. The loan page explains the KYC requirement.
+
+| Status | Shown as | Member can |
+|---|---|---|
+| `NOT_STARTED` | Not started | start |
+| `IN_PROGRESS` | In progress | continue |
+| `SUBMITTED` | Pending review | wait |
+| `UNDER_REVIEW` | Under review | wait |
+| `CORRECTION_REQUIRED` | Additional information required | change only the requested parts |
+| `APPROVED` | Approved | apply for loans and savings |
+| `REJECTED` | Rejected | resubmit only if staff allowed it |
+| `SUSPENDED` | Suspended | contact the branch |
+
+### What is automated, and what is not
+
+- **ID reading** (Gemini, `GEMINI_API_KEY`) only fills in details for the member to
+  check. It never verifies an ID. Without a key the member types the details.
+- **Photo quality** (blur, light, glare, size, real file type) is checked by the
+  server on every upload. Passing it means the photo is usable, not that the ID is
+  genuine.
+- **Face comparison** uses AWS Rekognition CompareFaces when
+  `FACE_VERIFICATION_PROVIDER=aws-rekognition` is configured. Without it the result
+  is "unavailable" and a branch officer compares the photos. Nothing estimates a
+  match without a verification service.
+- **Approval needs a person.** The server refuses to approve
+  (`409 FACE_REVIEW_REQUIRED`) unless the face service reported a match or the
+  reviewer confirms comparing the selfie with the ID photo themselves.
+- **No liveness check.** A photo of a photo is not detected automatically, and the
+  review panel tells staff so. Adding one needs a liveness provider, for example
+  AWS Rekognition Face Liveness with its mobile and web components.
+
+### Staff review
+
+The branch queue (`/staff/app/kyc`) and the head-office queue filter by status,
+name, member number, reference and submission date. The review panel shows:
+
+- the ID photo and the selfie side by side;
+- the declared details next to what was read from the ID, with differences
+  highlighted;
+- the face-check result in plain words, and the member's biometric consent.
+
+Decisions:
+
+- **Request changes** names the parts the member must change (`KYC_SECTIONS`). The
+  server refuses changes to other parts (`409 NOT_REQUESTED`). A new ID photo
+  reopens the selfie check.
+- **Reject** either allows resubmission, or is final and tells the member to
+  contact the branch.
+- **Approve** requires the face confirmation described above.
+
+Every decision needs a reason, notifies the member and is written to
+`kyc_audit_log`.
+
+### Security
+
+- Members can only reach their own application. Status changes go through the
+  server's state machine and the database guard (`kyc_transition_allowed`,
+  migration 0023). A member cannot approve or change their own status.
+- KYC files live in the private `kyc-documents` bucket. Only the server reads them,
+  with the service-role key, and hands out 5-minute signed links. KYC tables have
+  RLS on with no member policies and no `anon`/`authenticated` grants (0023). No
+  provider secret or service-role key reaches the browser or the app.
+- Limits per member are counted in the audit log, so they hold across restarts:
+  - 40 uploads an hour;
+  - 10 ID readings an hour;
+  - 10 face checks an hour;
+  - 5 submissions a day.
+
+  An in-memory cap of 60 requests per 10 minutes also covers the upload, check
+  and submit endpoints.
+- Consent to the biometric comparison is recorded as `CONSENT_GIVEN` or
+  `CONSENT_WITHDRAWN` in the append-only audit log. Audit entries record actions,
+  outcomes and file hashes; they hold no ID numbers, passwords or tokens.
+  Unexpected server errors are logged whole (`src/routes/httpErrors.ts`), so
+  database error text can appear in the server log.
+
+### Retention
+
+KYC records and files are kept, never deleted automatically. The Anti-Money
+Laundering Act (RA 9160 as amended) requires identification records to be kept
+for at least five years after an account is closed. Confirm the period with
+compliance before adding any deletion. Replaced files stay on record as
+superseded, and every submitted version is kept as a snapshot.
+
+### Setup
+
+1. Set `GEMINI_API_KEY` for ID reading (optional).
+2. For automated face comparison, create an AWS IAM user allowed
+   `rekognition:CompareFaces` only. Set `FACE_VERIFICATION_PROVIDER=aws-rekognition`,
+   `AWS_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Optionally set
+   `FACE_MATCH_MIN_SIMILARITY`, which defaults to 95.
+3. No new migration is needed. This flow uses the tables from 0023 onwards.
+4. Mobile: `expo-camera` is included in Expo Go. For custom builds, its plugin
+   in `mobile/app.json` sets the camera-permission message.
+
+### Endpoints
+
+Member (`/api/client`, the signed-in member's own application):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /kyc-status` | Status, saved application, requirements, ID reading, face result, differences |
+| `POST /kyc/save-draft` | Save progress (only the requested parts while changes are requested) |
+| `POST /kyc/documents/upload` | One document or ID side |
+| `POST /kyc/process-id` | Store any new ID photo, then read the stored ID |
+| `POST /kyc/match-face` | Store a new selfie (optional), then compare it with the stored ID photo |
+| `POST /kyc/submit` | Submit; refused with the list of issues and the step to fix |
+
+Branch staff (`/api/branch`, own branch):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /kyc-queue` | Query: `status`, `search`, `submittedFrom`, `submittedTo` |
+| `GET /kyc/:id` | The review dossier |
+| `POST /kyc/:id/claim` and `/release` | Take or return a review |
+| `POST /kyc/:id/review` | `{ decision, reason, sections, allowResubmission, faceReviewed }`, with an `Idempotency-Key` header |
+
+Head office (`/api/admin`) has the same calls:
+
+- `GET /kyc-requests`
+- `GET /kyc/:borrowerId`
+- `POST /kyc/:borrowerId/claim`, `/release` and `/decision`
+
+---
+
+The sections below are earlier notes from the migration work (0019–0022). They are
+kept for history.
 
 ## The state of this repository's schema
 

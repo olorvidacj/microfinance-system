@@ -68,6 +68,17 @@ export function documentKindFor(code: string | null | undefined): DocumentKind {
 /** Required for every submission regardless of configuration: the face check needs both. */
 export const ALWAYS_REQUIRED_KINDS: readonly DocumentKind[] = ['ID_FRONT', 'SELFIE'];
 
+/**
+ * The documents a submission needs: the ID front and the selfie, the back of
+ * an ID that has information on its back, and the documents the branch
+ * configured. In the usual order (ID, selfie, then supporting documents).
+ */
+export function requiredDocumentKinds(configured: readonly DocumentKind[], idType: string | null | undefined): DocumentKind[] {
+  const wanted = new Set<DocumentKind>([...ALWAYS_REQUIRED_KINDS, ...configured.filter((k) => k !== 'OTHER')]);
+  if (findIdType(idType)?.hasBackSide) wanted.add('ID_BACK');
+  return DOCUMENT_KINDS.filter((k) => wanted.has(k));
+}
+
 /** Matches the kyc-documents bucket limits (10485760 bytes; jpeg/png/webp/pdf). */
 export const UPLOAD_LIMITS = {
   maxBytes: 10 * 1024 * 1024,
@@ -113,9 +124,6 @@ export const QUALITY_THRESHOLDS: Readonly<Record<DocumentKind, QualityThresholds
   PROOF_OF_INCOME: DEFAULT_QUALITY,
   OTHER: DEFAULT_QUALITY,
 };
-
-/** Face comparison confidence bands (0-100). */
-export const FACE_MATCH_THRESHOLDS = { match: 80, lowConfidence: 55 } as const;
 
 export const AGE_LIMITS = { min: 18, max: 100 } as const;
 

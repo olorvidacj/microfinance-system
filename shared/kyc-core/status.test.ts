@@ -93,10 +93,10 @@ describe('transition graph', () => {
 });
 
 describe('member-facing helpers', () => {
-  it('labels APPROVED as Verified and CORRECTION_REQUIRED as Resubmission required', () => {
-    expect(kycStatusLabel('APPROVED')).toBe('Verified');
-    expect(kycStatusLabel('VERIFIED')).toBe('Verified');
-    expect(kycStatusLabel('CORRECTION_REQUIRED')).toBe('Resubmission required');
+  it('uses the cooperative’s status names', () => {
+    expect(kycStatusLabel('APPROVED')).toBe('Approved');
+    expect(kycStatusLabel('VERIFIED')).toBe('Approved');
+    expect(kycStatusLabel('CORRECTION_REQUIRED')).toBe('Additional information required');
     expect(kycStatusLabel('SUBMITTED')).toBe('Pending review');
   });
 

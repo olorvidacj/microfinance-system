@@ -155,7 +155,7 @@ describe('validateKycApplication', () => {
     contactInfo: { mobileNumber: '09171234567', email: 'juan@example.com' },
     employment: { employmentStatus: 'Self-Employed', businessName: 'JDC Store', monthlyIncome: 25000, monthlyExpenses: 12000, sourceOfIncome: 'Business' },
     governmentId: { idType: 'UMID', idNumber: '0111-2345678-9', nameOnId: 'JUAN SANTOS DELA CRUZ' },
-    declarations: { truthfulInformation: true, documentOwnership: true, privacyNotice: true },
+    declarations: { truthfulInformation: true, documentOwnership: true, privacyNotice: true, biometricConsent: true },
   });
 
   it('accepts a complete application', () => {

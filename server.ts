@@ -1796,6 +1796,8 @@ app.get('/api/admin/kyc-requests', requireHeadOfficeKyc(false), async (req: Auth
       status: req.query.status ? String(req.query.status) : undefined,
       search: req.query.search ? String(req.query.search) : undefined,
       branchId: (await adminBranch(req)) ?? undefined,
+      submittedFrom: req.query.submittedFrom ? String(req.query.submittedFrom) : undefined,
+      submittedTo: req.query.submittedTo ? String(req.query.submittedTo) : undefined,
     });
     res.json({ success: true, requests: items, counts });
   } catch (err) {
@@ -1833,6 +1835,8 @@ app.post('/api/admin/kyc/:borrowerId/decision', requireHeadOfficeKyc(true), asyn
       decision: req.body?.decision,
       reason: req.body?.reason,
       sections: req.body?.sections,
+      allowResubmission: req.body?.allowResubmission,
+      faceReviewed: req.body?.faceReviewed,
       idempotencyKey: req.get('Idempotency-Key') || null,
     });
     res.json({ success: true, ...result });

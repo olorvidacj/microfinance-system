@@ -99,14 +99,14 @@ export function assertTransition(from: KycStatus, to: KycStatus, actor: KycActor
   if (!canTransition(from, to, actor)) throw new KycTransitionError(from, to, actor);
 }
 
-/** Labels shown to members and staff. APPROVED reads "Verified" everywhere. */
+/** Labels shown to members and staff. */
 export const KYC_STATUS_LABELS: Readonly<Record<KycStatus, string>> = {
   NOT_STARTED: 'Not started',
   IN_PROGRESS: 'In progress',
   SUBMITTED: 'Pending review',
   UNDER_REVIEW: 'Under review',
-  CORRECTION_REQUIRED: 'Resubmission required',
-  APPROVED: 'Verified',
+  CORRECTION_REQUIRED: 'Additional information required',
+  APPROVED: 'Approved',
   REJECTED: 'Rejected',
   SUSPENDED: 'Suspended',
 };

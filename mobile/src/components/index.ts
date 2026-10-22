@@ -16,3 +16,4 @@ export { DocRow } from './DocRow';
 export { ScreenHeader } from './ScreenHeader';
 export { MenuItem } from './MenuItem';
 export { PasswordStrengthIndicator } from './PasswordStrengthIndicator';export { SelectField, type SelectOption } from './SelectField';
+export { GuidedCamera, type GuidedCameraProps } from './GuidedCamera';

@@ -66,6 +66,10 @@ export const AppButton: React.FC<AppButtonProps> = ({
     <TouchableOpacity
       activeOpacity={0.85}
       disabled={disabled || loading}
+      // Announced as a button, by its title even while the spinner replaces it.
+      accessibilityRole="button"
+      accessibilityLabel={rest.accessibilityLabel ?? title}
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: loading }}
       style={[
         styles.base,
         {

@@ -3,7 +3,8 @@ import type { LoanDetailView } from '../../lending/service';
 import type { PaymentView, ProofView } from '../../lending/repayment';
 import { branchRequest } from './api';
 import type { KycDossierView } from '../../components/kyc/KycReviewPanel';
-import type { KycDecision } from '../../../shared/kyc-core';
+import type { KycDecisionBody } from '../../components/kyc/KycReviewPanel';
+import type { KycQueueParams } from '../../components/kyc/KycQueueView';
 import {
   BranchContextData,
   BranchDashboard,
@@ -129,8 +130,13 @@ export const clientsService = {
 };
 
 export const kycService = {
-  queue: async (params?: { status?: string; search?: string }): Promise<KycQueueResult> => {
-    const qs = toQuery({ status: params?.status && params.status !== 'ALL' ? params.status : undefined, search: params?.search });
+  queue: async (params?: KycQueueParams): Promise<KycQueueResult> => {
+    const qs = toQuery({
+      status: params?.status && params.status !== 'ALL' ? params.status : undefined,
+      search: params?.search,
+      submittedFrom: params?.submittedFrom,
+      submittedTo: params?.submittedTo,
+    });
     const payload = await branchRequest(`/api/branch/kyc-queue${qs ? `?${qs}` : ''}`);
     return { data: payload?.data || [], counts: payload?.counts };
   },
@@ -146,7 +152,7 @@ export const kycService = {
   release: async (clientId: string) =>
     branchRequest(`/api/branch/kyc/${encodeURIComponent(clientId)}/release`, { method: 'POST' }),
 
-  decide: async (clientId: string, body: { decision: KycDecision; reason: string; sections: string[] }, idempotencyKey: string) =>
+  decide: async (clientId: string, body: KycDecisionBody, idempotencyKey: string) =>
     branchRequest(`/api/branch/kyc/${encodeURIComponent(clientId)}/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },

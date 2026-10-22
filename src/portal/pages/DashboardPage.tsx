@@ -2,11 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
-  BadgeCheck,
   Bell,
   ChevronRight,
-  Clock,
-  Eye,
   FilePlus2,
   HandCoins,
   PiggyBank,
@@ -14,7 +11,6 @@ import {
   ShieldCheck,
   UsersRound,
   Wallet,
-  XCircle,
 } from 'lucide-react';
 import { dashboardService, type ClientDashboardView } from '../services/dashboard';
 import { profileService } from '../services/profile';
@@ -24,6 +20,7 @@ import { formatDate } from '../../utils/loanMath';
 import { Button, Card, CardBody, CardHeader, CardTitle, ErrorState, LoadingState, StatusBadge, AreaChartCard } from '../components/ui';
 import { StatCard } from '../components/common';
 import { KycStatusBadge } from '../../components/KycStatusBadge';
+import { KycStatusPanel } from '../kyc/KycStatusPanel';
 import { isKycVerified } from '../../../shared/kyc-core';
 import { GROUP_ROLE_LABELS, centsFromDb, type GroupRole } from '../../../shared/lending';
 import { peso } from '../../components/lending';
@@ -77,7 +74,7 @@ const DashboardPage: React.FC = () => {
         <KycApplyButton status={kycStatus} />
       </div>
 
-      {!isKycVerified(kycStatus) && <KycAlertCard kyc={kyc} status={kycStatus} />}
+      {kyc && !isKycVerified(kyc.kycStatus) && <KycStatusPanel status={kyc} />}
       {loans.overdueCount > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
           <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {loans.overdueCount === 1 ? 'One of your loans is' : `${loans.overdueCount} of your loans are`} behind. Paying now stops further penalties.</span>
@@ -288,94 +285,6 @@ const KycApplyButton: React.FC<{ status: KYCStatus }> = ({ status }) => {
         <ShieldCheck className="h-4 w-4" /> {action.label}
       </Button>
     </Link>
-  );
-};
-
-const KycAlertCard: React.FC<{ kyc: KycStatusData | null; status: KYCStatus }> = ({ kyc, status }) => {
-  const base = 'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3';
-  const reason = kyc?.correctionReason || kyc?.rejectionReason;
-  const config: Record<KYCStatus, { cls: string; icon: React.ElementType; title: string; desc: string }> = {
-    NOT_STARTED: {
-      cls: 'border-amber-200 bg-amber-50',
-      icon: ShieldCheck,
-      title: 'KYC verification required',
-      desc: 'Complete your Know-Your-Customer verification to access microfinance services and loans.',
-    },
-    IN_PROGRESS: {
-      cls: 'border-amber-200 bg-amber-50',
-      icon: ShieldCheck,
-      title: 'KYC draft in progress',
-      desc: 'You have a draft KYC submission. Please complete all steps and submit for verification.',
-    },
-    SUBMITTED: {
-      cls: 'border-gold-400/30 bg-gold-500/10',
-      icon: Clock,
-      title: 'KYC submitted for review',
-      desc: 'Your KYC submission has been received and is waiting for compliance review.',
-    },
-    PENDING: {
-      cls: 'border-gold-400/30 bg-gold-500/10',
-      icon: Clock,
-      title: 'KYC under review',
-      desc: 'Your KYC submission is being reviewed. You can apply for a loan once verified.',
-    },
-    UNDER_REVIEW: {
-      cls: 'border-gold-400/30 bg-gold-500/10',
-      icon: Eye,
-      title: 'KYC under review',
-      desc: 'Your information is being reviewed by our compliance staff.',
-    },
-    CORRECTION_REQUIRED: {
-      cls: 'border-amber-200 bg-amber-50',
-      icon: AlertTriangle,
-      title: 'KYC correction required',
-      desc: reason ? `Correction needed: ${reason}` : 'Please update your KYC information.',
-    },
-    REJECTED: {
-      cls: 'border-rose-200 bg-rose-50',
-      icon: XCircle,
-      title: 'KYC rejected',
-      desc: reason ? `Reason: ${reason}` : 'Your KYC application was not approved.',
-    },
-    SUSPENDED: {
-      cls: 'border-rose-200 bg-rose-50',
-      icon: XCircle,
-      title: 'KYC suspended',
-      desc: 'Your KYC status has been suspended. Please contact your branch officer.',
-    },
-    EXPIRED: {
-      cls: 'border-rose-200 bg-rose-50',
-      icon: Clock,
-      title: 'KYC expired',
-      desc: 'Your KYC verification has expired. Please update your information.',
-    },
-    VERIFIED: {
-      cls: 'border-emerald-200 bg-emerald-50',
-      icon: BadgeCheck,
-      title: 'KYC verified',
-      desc: 'Your identity has been verified. You are eligible to apply for a loan.',
-    },
-    APPROVED: {
-      cls: 'border-emerald-200 bg-emerald-50',
-      icon: BadgeCheck,
-      title: 'KYC verified & approved',
-      desc: 'Your identity has been verified. You are eligible to apply for a loan.',
-    },
-  };
-  const cfg = config[status] || config.NOT_STARTED;
-  const Icon = cfg.icon;
-  return (
-    <div className={`${base} ${cfg.cls}`}>
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/70">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold">{cfg.title}</p>
-          <p className="text-xs opacity-80">{cfg.desc}</p>
-        </div>
-      </div>
-    </div>
   );
 };
 
