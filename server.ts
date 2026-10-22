@@ -2806,11 +2806,28 @@ async function initServer() {
       },
       appType: 'spa',
     });
+    // As in production: a path naming a file that is in neither the project nor public/ is a
+    // missing file, not an app route (Vite's fallback would answer it with index.html).
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || !path.extname(req.path) || req.path.startsWith('/@') || req.path.startsWith('/node_modules/')) return next();
+      let file: string;
+      try {
+        file = decodeURIComponent(req.path);
+      } catch {
+        return res.status(400).json({ error: 'Bad request path' });
+      }
+      const root = process.cwd();
+      if (fs.existsSync(path.join(root, file)) || fs.existsSync(path.join(root, 'public', file))) return next();
+      res.status(404).json({ error: 'Not found' });
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
+      // A path naming a file that is not in dist/ is a missing file, not an app route
+      // (as in development, where Vite's fallback does the same).
+      if (path.extname(req.path)) return res.status(404).json({ error: 'Not found' });
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
