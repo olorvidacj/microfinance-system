@@ -80,7 +80,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || (process.env.NODE_ENV === 'production' ? 5000 : 3000);
 
 app.use(express.json({ limit: '20mb' }));
 
@@ -356,7 +356,7 @@ function getAi(): GoogleGenAI {
 }
 
 // API Routes
-app.get('/api/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 

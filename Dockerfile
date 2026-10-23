@@ -12,6 +12,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=5000
 
 COPY --from=build /app/dist ./dist
 # The server checks the database against these at start (src/db/initDb.ts).
@@ -19,5 +20,5 @@ COPY --from=build /app/database/migrations ./database/migrations
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-EXPOSE 3003
+EXPOSE 5000
 CMD ["node", "dist/server.cjs"]
