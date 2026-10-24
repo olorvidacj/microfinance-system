@@ -80,7 +80,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
-const PORT = Number(process.env.PORT) || (process.env.NODE_ENV === 'production' ? 5000 : 3000);
+const PORT = Number(process.env.PORT) || 5000;
 
 app.use(express.json({ limit: '20mb' }));
 
@@ -2787,15 +2787,6 @@ function startOnlinePaymentSweep() {
 
 // Setup Vite development middleware or static file serving
 async function initServer() {
-  // The schema comes from database/migrations (npm run db:migrate); this only
-  // reports pending migrations, then seeds an empty database.
-  const schemaState = await verifyDbSchema();
-  if (schemaState?.ok) await seedDatabase();
-  if (schemaState?.pending.includes(PAYMENTS_MIGRATION)) markPaymentsSchemaMissing(PAYMENTS_MIGRATION);
-  startOverdueChecks();
-  startInterestPosting();
-  startOnlinePaymentSweep();
-
   const httpServer = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {
@@ -2833,8 +2824,23 @@ async function initServer() {
   }
 
   const server = httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Cooperative Loan & Savings Management server running on http://localhost:${PORT}`);
+    console.log(`Cooperative Loan & Savings Management server running on http://0.0.0.0:${PORT}`);
   });
+
+  // Background initialization: verify schema, seed if empty, and start background workers
+  // Runs asynchronously so the server can accept connections and health checks immediately!
+  (async () => {
+    try {
+      const schemaState = await verifyDbSchema();
+      if (schemaState?.ok) await seedDatabase();
+      if (schemaState?.pending.includes(PAYMENTS_MIGRATION)) markPaymentsSchemaMissing(PAYMENTS_MIGRATION);
+      startOverdueChecks();
+      startInterestPosting();
+      startOnlinePaymentSweep();
+    } catch (err) {
+      console.error('[Startup] Background initialization error:', err);
+    }
+  })();
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {

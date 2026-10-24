@@ -1,9 +1,10 @@
 import app from './app.js';
 import { env } from './config/env.js';
 
-const server = app.listen(env.port, () => {
+const port = Number(process.env.PORT) || env.port || 5000;
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(
-    `[server] csft-backend listening on port ${env.port} (${env.nodeEnv})`
+    `[server] csft-backend listening on http://0.0.0.0:${port} (${env.nodeEnv})`
   );
 });
 

@@ -25,6 +25,10 @@ app.use(express.json({ limit: '100kb' }));
 
 app.use('/api/v1', routes);
 
+app.get(['/health', '/api/health'], (_req, res) =>
+  res.status(200).json({ status: 'ok', service: 'csft-backend' })
+);
+
 app.get('/', (_req, res) =>
   res.json({ success: true, data: { service: 'csft-backend', docs: '/api/v1' } })
 );
